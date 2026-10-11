@@ -1,0 +1,131 @@
+.site-header.site-header-interior { position: relative; inset: auto; min-height: 104px; padding-block: 24px; border-bottom: var(--border-subtle); }
+.destinations-layout { background: var(--paper); }
+.destinations-layout main:focus { outline: none; }
+.destinations-layout .section-heading { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.destinations-layout .section-heading > .eyebrow { padding-top: 0; }
+.destinations-layout .section-heading h2 { font-family: var(--font-body), sans-serif; font-size: var(--text-section); font-weight: 500; letter-spacing: -.025em; line-height: 1.3; }
+.destinations-layout .section-introduction { max-width: 640px; }
+.breadcrumbs { padding-top: var(--space-4); }
+.breadcrumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; margin: 0; padding: 0; list-style: none; }
+.breadcrumbs li { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--muted); font-size: var(--text-small); line-height: 1.6; }
+.breadcrumbs a { display: inline-flex; align-items: center; min-height: var(--touch-target); }
+.breadcrumbs [aria-current="page"] { color: var(--ink); overflow-wrap: anywhere; }
+.breadcrumbs a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Le pays inspire le voyage ; les escales permettent de choisir directement. */
+.destination-directory-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-6); padding-block: var(--space-5) var(--space-6); }
+.destination-directory-heading h1 { margin-top: 10px; font-size: clamp(2.5rem, 3.8vw, 3.75rem); letter-spacing: -.04em; line-height: 1.12; text-wrap: balance; }
+.destination-directory-heading h1 em { color: var(--accent); }
+.destination-directory-heading > p { flex-shrink: 0; max-width: 230px; padding-bottom: 4px; color: var(--muted); font-size: var(--text-secondary); line-height: 1.7; }
+.destination-directory { padding-bottom: var(--space-7); }
+.destination-atlas { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); }
+.destination-atlas + .destination-atlas { margin-top: var(--space-9); }
+.atlas-country { position: relative; display: flex; align-items: flex-end; min-height: 500px; min-width: 0; overflow: hidden; isolation: isolate; background: var(--ink); color: var(--paper); }
+.atlas-country > img { z-index: -1; object-fit: cover; transition: transform 600ms var(--ease-standard); }
+.atlas-country-copy { width: 100%; padding: 64px clamp(24px, 3vw, 44px) 28px; background: linear-gradient(transparent, rgb(20 34 25 / 84%) 60px, rgb(20 34 25 / 96%)); }
+.atlas-country-region { font-size: var(--text-small); letter-spacing: .06em; text-transform: uppercase; }
+.atlas-country h2 { margin-top: 8px; font-size: clamp(4rem, 6.5vw, 6rem); line-height: 1; letter-spacing: -.045em; overflow-wrap: anywhere; }
+.atlas-country-invitation { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; margin-top: 24px; padding-top: 12px; border-top: 1px solid rgb(245 244 239 / 45%); font-size: var(--text-secondary); }
+.atlas-country-invitation svg { transition: transform var(--duration-normal) var(--ease-standard); }
+.atlas-cities { min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+.atlas-cities-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding-block: 8px 20px; border-bottom: var(--border-subtle); }
+.atlas-cities-heading h3 { font-family: var(--font-body), sans-serif; font-size: 18px; font-weight: 500; line-height: 1.4; }
+.atlas-cities-heading > span { color: var(--muted); font-size: var(--text-small); }
+.atlas-city-list { flex: 1; display: grid; grid-auto-rows: 1fr; margin: 0; padding: 0; list-style: none; }
+.atlas-city-list > li { min-width: 0; border-bottom: var(--border-subtle); }
+.atlas-city { display: grid; grid-template-columns: 96px minmax(0, 1fr) 20px; align-items: center; gap: 20px; height: 100%; min-height: 112px; padding-block: 16px; transition: background var(--duration-fast); }
+.atlas-city-photo { position: relative; display: block; width: 96px; height: 80px; overflow: hidden; background: var(--background); }
+.atlas-city-photo img { object-fit: cover; transition: transform 500ms var(--ease-standard); }
+.atlas-city-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.atlas-city-name { font-family: var(--font-editorial), Georgia, serif; font-size: clamp(1.75rem, 2.4vw, 2.25rem); line-height: 1.1; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.atlas-city-mood { color: var(--muted); font-size: var(--text-secondary); line-height: 1.5; }
+.atlas-city-context { color: var(--color-text-subtle); font-size: var(--text-small); line-height: 1.5; }
+.atlas-city-arrow { color: var(--accent); transition: transform var(--duration-normal) var(--ease-standard); }
+.atlas-country:focus-visible { outline-offset: 5px; }
+.atlas-city:focus-visible { outline-offset: 3px; }
+.atlas-empty { padding-block: var(--space-6); color: var(--muted); }
+.atlas-note { display: flex; align-items: baseline; gap: 12px; margin-top: var(--space-5); color: var(--muted); font-size: var(--text-small); }
+.atlas-note > span { flex: 0 0 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+.place-hero { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: 6%; align-items: center; padding-block: var(--space-6) var(--space-7); }
+.place-hero-copy { padding-block: var(--space-4); }
+.place-hero h1 { margin-top: var(--space-4); font-size: var(--text-editorial); letter-spacing: -.04em; line-height: 1.1; overflow-wrap: anywhere; }
+.place-mood { margin-top: var(--space-3); font-family: var(--font-editorial), Georgia, serif; font-size: clamp(1.625rem, 2.5vw, 2rem); font-style: italic; line-height: 1.25; }
+.place-introduction { max-width: 460px; margin-top: var(--space-5); color: var(--muted); }
+.place-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: var(--space-5); }
+.place-actions .text-link { padding-block: 10px; }
+.place-hero-figure { min-width: 0; }
+.place-hero-image { position: relative; aspect-ratio: 5 / 4; max-height: 620px; overflow: hidden; background: var(--background); }
+.place-hero-image img { object-fit: cover; }
+.place-hero-figure figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; margin-top: 12px; color: var(--muted); font-size: var(--text-small); line-height: 1.6; }
+.country-presentation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); padding-block: var(--space-6); margin: 0; background: var(--background); }
+.country-presentation dd { margin: 10px 0 0; font-size: var(--text-body); }
+
+.place-collection { padding-block: var(--section-space); }
+.place-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7) var(--space-6); margin-top: var(--space-6); }
+.place-card { min-width: 0; }
+.place-card > a { display: block; height: 100%; border-bottom: var(--border-subtle); padding-bottom: var(--space-5); }
+.place-card-image { position: relative; aspect-ratio: 3 / 2; overflow: hidden; border-radius: var(--radius-small); background: var(--background); }
+.place-card-image img { object-fit: cover; transition: transform 500ms var(--ease-standard); }
+.place-card-image figcaption { position: absolute; left: 16px; bottom: 16px; padding: 6px 10px; max-width: calc(100% - 32px); background: var(--paper); border-radius: 2px; font-size: var(--text-small); }
+.place-card-copy { position: relative; padding-top: var(--space-5); }
+.place-card-number { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--muted); font-size: var(--text-small); }
+.place-card h3 { font-family: var(--font-body), sans-serif; font-weight: 500; font-size: var(--text-card); line-height: 1.35; letter-spacing: -.02em; }
+.place-card-mood { margin-top: 10px; color: var(--muted); font-size: var(--text-secondary); }
+.place-card-description { margin-top: 12px; max-width: 540px; color: var(--muted); }
+.place-card-invitation { display: inline-flex; align-items: center; min-height: var(--touch-target); margin-top: 12px; font-size: var(--text-secondary); text-decoration: underline; text-underline-offset: 5px; }
+.collection-empty { padding: var(--space-6); margin-top: var(--space-6); background: var(--color-surface); border-radius: var(--radius-medium); color: var(--muted); }
+.place-return { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding-block: var(--space-5); border-top: var(--border-subtle); }
+.place-return a { display: inline-flex; align-items: center; gap: 12px; min-height: var(--touch-target); font-size: var(--text-secondary); line-height: 1.6; }
+.place-return a:hover span { text-decoration: underline; text-underline-offset: 5px; }
+.destinations-layout .site-footer { background: var(--background); }
+.destination-not-found { max-width: 1000px; min-height: 65svh; padding-block: var(--section-space); }
+.destination-not-found h1 { margin-top: var(--space-5); font-size: var(--text-editorial); line-height: var(--leading-title); letter-spacing: -.04em; }
+.destination-not-found > p:not(.eyebrow) { max-width: 500px; margin-top: var(--space-5); color: var(--muted); }
+.destination-not-found .text-link { max-width: 360px; margin-top: var(--space-5); }
+@media (hover: hover) {
+  .place-card a:hover .place-card-image img, .atlas-country:hover > img, .atlas-city:hover img { transform: scale(1.025); }
+  .place-card a:hover h3 { color: var(--accent); text-decoration: underline; text-underline-offset: 5px; }
+  .atlas-country:hover .atlas-country-invitation svg, .atlas-city:hover .atlas-city-arrow { transform: translate(3px, -3px); }
+  .atlas-country:hover .atlas-country-invitation { text-decoration: underline; text-underline-offset: 5px; }
+  .atlas-city:hover { background: var(--color-surface); }
+  .atlas-city:hover .atlas-city-name { color: var(--accent); }
+}
+@media (min-width: 761px) and (max-width: 1023px) {
+  .place-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-6); }
+  .place-hero-image { aspect-ratio: 3 / 4; }
+}
+@media (max-width: 960px) {
+  .destination-atlas { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+  .atlas-country { min-height: 380px; }
+  .atlas-country-copy { padding-top: 60px; }
+  .atlas-city-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-6); }
+  .atlas-city { gap: 16px; }
+}
+@media (max-width: 760px) {
+  .site-header.site-header-interior { min-height: 88px; padding-block: 20px; }
+  .breadcrumbs { padding-top: 8px; }
+  .breadcrumbs ol, .breadcrumbs li { column-gap: 8px; }
+  .destination-directory-heading { align-items: flex-start; flex-direction: column; gap: var(--space-3); }
+  .destination-directory-heading > p { max-width: none; }
+  .place-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); padding-top: var(--space-5); }
+  .place-hero-copy { padding: 0; }
+  .place-introduction { max-width: 540px; }
+  .place-hero-image { aspect-ratio: 5 / 4; }
+  .place-hero-figure figcaption span:last-child { display: none; }
+  .country-presentation { grid-template-columns: 1fr; gap: var(--space-5); }
+  .country-presentation > div { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--space-4); align-items: baseline; }
+  .country-presentation dd { margin: 0; }
+  .place-grid { grid-template-columns: minmax(0, 1fr); }
+  .place-return > .eyebrow { display: none; }
+}
+@media (max-width: 600px) {
+  .atlas-country { min-height: 360px; }
+  .atlas-country-copy { padding: 70px 24px 24px; }
+  .atlas-country h2 { font-size: 72px; }
+  .atlas-country-invitation { margin-top: 18px; }
+  .atlas-city-list { grid-template-columns: minmax(0, 1fr); }
+  .atlas-city { grid-template-columns: 72px minmax(0, 1fr) 20px; gap: 14px; min-height: 104px; padding-block: 14px; }
+  .atlas-city-photo { width: 72px; height: 76px; }
+  .atlas-cities-heading { padding-bottom: 16px; }
+}
