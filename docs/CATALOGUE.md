@@ -43,7 +43,7 @@ Le contexte `?depuis=<identifiant de destination>&univers=<univers d’origine>`
 
 ## Onglets et historique
 
-`PlaceUniverses` prépare les cartes à partir d’une seule requête géographique et les répartit par univers. `DestinationTabs` reçoit ces sélections, sans dupliquer les données éditoriales. Le panneau actif est déterminé par `useSearchParams` ; il n’existe pas de second état React de sélection susceptible de diverger de l’historique.
+`PlaceUniverses` utilise la géographie publique active et la source explicite des fiches. Le mode statique répartit les cartes locales ; le mode Firestore interroge uniquement l’onglet actif et sa destination, par pages de 24 fiches. `DestinationTabs` reçoit ces sélections, sans dupliquer les données éditoriales. Le panneau actif est déterminé par `useSearchParams` ; il n’existe pas de second état React de sélection susceptible de diverger de l’historique.
 
 Un clic ajoute une entrée avec `history.pushState`, que Next.js synchronise avec ses hooks. Il ne provoque ni changement de route, ni requête RSC de navigation, ni défilement programmé. Le chemin, les autres paramètres et l’ancre existante sont conservés. Précédent/Suivant rétablissent la sélection depuis l’URL. Un clic sur l’onglet déjà actif n’ajoute pas d’entrée.
 
@@ -53,17 +53,17 @@ Les rôles `tablist`, `tab` et `tabpanel`, les relations ARIA et le focus mobile
 
 Le panneau garde une hauteur minimale pour limiter les sauts entre une grille et un état vide. Les recherches et filtres sont réinitialisés lorsque l’on change d’univers. Les images des panneaux inactifs ne sont pas montées. Sur mobile, la barre reste horizontale et défile si les quatre libellés ne tiennent pas dans la largeur disponible.
 
-`src/proxy.ts` intercepte uniquement les chemins géographiques Ville/Quartier. Le validateur pur `isKnownGeographicRoute()` vérifie la chaîne pays/ville/quartier et les anciens segments de catégories. Un chemin invalide est réécrit vers la 404 statique existante, avec statut 404 et URL inchangée : cela préserve le HTML complet de la page d’erreur malgré le comportement observé de Next 16.4 pour `notFound()` sur ces routes dynamiques.
+`src/proxy.ts` intercepte les routes géographiques et les fiches canoniques, en utilisant leurs sources publiques actives et en contrôlant leur visibilité. Le validateur pur `isKnownGeographicRoute()` vérifie la chaîne pays/ville/quartier et les anciens segments de catégories. Un chemin invalide est réécrit vers la 404 statique existante, avec statut 404 et URL inchangée : cela préserve le HTML complet de la page d’erreur malgré le comportement observé de Next 16.4 pour `notFound()` sur ces routes dynamiques.
 
 ## Organisation et évolution
 
 Les contenus sont répartis dans `src/data/catalogue/` par univers, puis réunis dans `src/data/discoveries.ts`. Les valeurs communes de publication ne sont déclarées qu’une fois. Les ressources photographiques et leurs crédits vivent dans leur registre, distinct des textes éditoriaux.
 
-Les pages restent des Server Components. Les onglets reçoivent les cartes des quatre univers de leur destination ; la recherche reçoit uniquement celles du panneau actif. Les petites zones qui conservent le contexte des fiches utilisent `useSearchParams` sous `Suspense`, avec des liens de repli rendus côté serveur. Les contenus des quatre univers restent locaux. Leurs liens utilisent la géographie publique active, locale ou Firestore, sans SDK Firebase client. Aucun téléchargement de police n’est nécessaire au build.
+Les pages restent des Server Components. Le mode statique fournit les quatre sélections locales ; le mode Firestore fournit uniquement les cartes paginées de l’onglet actif. La recherche locale porte sur la sélection affichée. Les petites zones qui conservent le contexte des fiches utilisent `useSearchParams` sous `Suspense`, avec des liens de repli rendus côté serveur. Les fiches utilisent `NAGI_CONTENT_SOURCE=static|firestore`, sans mélange ni SDK Firebase client. Le mode Firestore exige la géographie Firestore. Leurs liens utilisent les associations géographiques effectivement publiques. Aucun téléchargement de police n’est nécessaire au build.
 
 Pour ajouter une fiche : créer un identifiant, choisir un slug libre dans son univers, renseigner le parent ou les destinations, puis ajouter uniquement les relations de référence. Ajouter les sources et les crédits de toute photo. Lancer `npm test`, `npm run lint`, `npm run typecheck` et `npm run build`, puis vérifier le serveur avec `npm run test:routes`. Le nombre attendu dans ce dernier script est celui du jeu de démonstration actuel et doit évoluer lorsque des pages sont ajoutées.
 
-Pour Firestore, conserver les identifiants stables et ces relations normalisées. La couche de lecture pourra devenir asynchrone et utiliser des requêtes/index adaptés ; les composants reçoivent déjà des données typées. La politique de publication et de génération statique devra alors être définie avec l’administration. Aucun connecteur Firestore ni schéma d’index de production n’est imposé prématurément.
+L’administration, les requêtes Firestore, les arêtes de relations, les index et la migration sont désormais implémentés. Voir [CONTENTS.md](CONTENTS.md). Les fonctions pures ci-dessus restent utiles pour le catalogue statique et le rendu des voisins déjà chargés ; elles ne servent pas à charger toute la base Firestore.
 
 ## Vérification
 

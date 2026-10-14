@@ -2,7 +2,7 @@ import type { Discovery, Reservation } from "@/types/discoveries";
 
 const reservations: Record<Reservation, string> = { required: "Nécessaire", recommended: "Conseillée", "not-required": "Non nécessaire" };
 
-export function PracticalInformation({ item }: { item: Discovery }) {
+export function PracticalInformation({ item, complete = false }: { item: Discovery; complete?: boolean }) {
   const facts: [string, string | undefined][] = [];
 
   if (item.universe === "gastronomie") {
@@ -33,7 +33,8 @@ export function PracticalInformation({ item }: { item: Discovery }) {
 
   // La fiche d’un écran privilégie trois repères ; les contenus détaillés
   // restent dans le catalogue et le site source demeure accessible.
-  const essentials = facts.filter(([, value]) => Boolean(value)).slice(0, 3);
+  if (complete) facts.push(...(item.extraFacts ?? []).map(({ label, value }): [string, string] => [label, value]));
+  const essentials = facts.filter(([, value]) => Boolean(value)).slice(0, complete ? undefined : 3);
   if (!essentials.length) return null;
   return (
     <dl className="discovery-sheet-facts" aria-label="Les informations essentielles">

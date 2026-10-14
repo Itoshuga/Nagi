@@ -16,7 +16,9 @@
     "test:firebase-rules": "firebase emulators:exec --project demo-nagi --only firestore,storage \"node --test tests/firebase-rules.test.mjs\"",
     "test:admin-auth": "firebase emulators:exec --project demo-nagi --only auth,firestore \"node scripts/check-admin-auth.mjs\"",
     "geography:import": "node --conditions=react-server --import tsx scripts/import-geography.ts",
-    "test:geography": "firebase emulators:exec --project demo-nagi --only auth,firestore \"node --conditions=react-server --import tsx scripts/check-geography.mjs\""
+    "test:geography": "firebase emulators:exec --project demo-nagi --only auth,firestore \"node --conditions=react-server --import tsx scripts/check-geography.mjs\"",
+    "contents:import": "node --conditions=react-server --import tsx scripts/import-contents.ts",
+    "test:contents": "firebase emulators:exec --project demo-nagi --only auth,firestore \"node --conditions=react-server --import tsx scripts/check-contents.mjs\""
   },
   "engines": {
     "node": ">=22.0.0"

@@ -1,5 +1,5 @@
 import { getPublicGeography } from "@/lib/geography/public";
-import { visibleDiscoveryCatalogue } from "@/lib/discoveries";
+import { getPublicContentBundle } from "@/lib/contents/public";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Breadcrumbs, type BreadcrumbItem } from "@/components/destinations/breadcrumbs";
@@ -8,15 +8,19 @@ import { getActivitiesForVenue, getAddressesForSpecialty, getAssociatedVenue, ge
 import { explorerPath, getNavigationContexts, resolveGeography } from "@/lib/discovery-geography";
 import { cityPath, countryPath } from "@/lib/destinations";
 import type { Discovery } from "@/types/discoveries";
+import type { PublicGeography } from "@/types/destinations";
+import { notFound } from "next/navigation";
 import { DiscoveryImage } from "./discovery-image";
 import { PhotoCredit } from "./photo-credit";
 import { PracticalInformation } from "./practical-information";
 import { RelatedDiscoveries } from "./related-discoveries";
 import { ContextReturn } from "./context-return";
 
-export async function DiscoveryArticle({ item }: { item: Discovery }) {
-  const geography = await getPublicGeography();
-  const catalogue = visibleDiscoveryCatalogue(geography);
+export async function DiscoveryArticle({ item: initial, preview }: { item: Discovery; preview?: { geography: PublicGeography; catalogue: Discovery[] } }) {
+  const geography = preview?.geography ?? await getPublicGeography();
+  const bundle = preview ? { item: initial, catalogue: preview.catalogue } : await getPublicContentBundle(initial.universe, initial.slug);
+  if (!bundle.item) notFound();
+  const item = bundle.item; const catalogue = bundle.catalogue;
   const universe = universeDetails[item.universe];
   const geographies = getDiscoveryGeography(item).flatMap((reference) => {
     const value = resolveGeography(reference, geography);
@@ -36,16 +40,17 @@ export async function DiscoveryArticle({ item }: { item: Discovery }) {
   const contextIds = contexts.map((context) => context.key);
   const venue = item.universe === "activites" ? getAssociatedVenue(item, catalogue) : undefined;
   const related = item.universe === "gastronomie" ? getAddressesForSpecialty(item.id, catalogue)
-    : item.universe === "adresses" ? getSpecialtiesForAddress(item.id, catalogue)
-    : item.universe === "activites" ? (venue ? [venue] : [])
+    : item.universe === "adresses" ? [...getSpecialtiesForAddress(item.id, catalogue), ...getActivitiesForVenue(item.id, catalogue)]
+    : item.universe === "activites" ? [...(venue ? [venue] : []), ...catalogue.filter((candidate) => candidate.id === item.organizer?.id)]
     : getActivitiesForVenue(item.id, catalogue);
   const relatedTitle = item.universe === "gastronomie" ? "Où goûter"
-    : item.universe === "adresses" ? "À la carte"
-    : item.universe === "activites" ? "Le lieu" : "À vivre ici";
+    : item.universe === "adresses" ? "Spécialités & expériences"
+    : item.universe === "activites" ? "Lieux & organisateurs" : "À vivre ici";
   const officialUrl = item.universe === "tourisme" ? item.officialUrl
     : item.universe === "adresses" ? item.website
     : item.universe === "activites" && item.format === "offered-experience" ? item.bookingUrl : undefined;
   const externalUrl = officialUrl ?? item.sources[0]?.url;
+  const bookingUrl = item.universe === "adresses" || item.universe === "activites" && item.format === "offered-experience" ? item.bookingUrl : undefined;
 
   return (
     <>
@@ -77,6 +82,17 @@ export async function DiscoveryArticle({ item }: { item: Discovery }) {
         </figcaption>}
       </figure>
     </article>
+    <section className="discovery-story section-shell" aria-label="Le carnet en détail">
+      <div className="discovery-story-text"><h2>À découvrir</h2>{item.description.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+      {item.sections?.map((section) => <section key={section.title}><h2>{section.title}</h2><p className="discovery-preserve-lines">{section.text}</p></section>)}
+      {!item.sections && item.universe === "gastronomie" && <section><h2>Origine & histoire</h2>{item.history.map((paragraph, index) => <p key={index}>{paragraph}</p>)}<h2>Variantes</h2><p>{item.variants.join(" · ")}</p></section>}
+      {!!item.tags.length && <p className="discovery-story-tags">{item.tags.join(" · ")}</p>}
+      <PracticalInformation item={item} complete />
+      {bookingUrl && bookingUrl !== externalUrl && <p><a href={bookingUrl}>Consulter les modalités de réservation</a></p>}
+      {!!item.sources.length && <section><h2>Pour aller plus loin</h2><ul>{item.sources.map((source) => <li key={`${source.label}-${source.url}`}><a href={source.url}>{source.label}</a></li>)}</ul>{item.verifiedAt && <p>Informations vérifiées le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(item.verifiedAt))}.</p>}</section>}
+      </div>
+      {!!item.gallery?.length && <div className="discovery-story-gallery">{item.gallery.map((photo, index) => <figure key={`${photo.src}-${index}`}><DiscoveryImage photograph={photo} title={photo.alt} sizes="(max-width: 760px) 92vw, 40vw" />{photo.caption && <figcaption>{photo.caption}</figcaption>}<PhotoCredit src={photo.src} /></figure>)}</div>}
+    </section>
     </>
   );
 }

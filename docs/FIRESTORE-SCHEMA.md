@@ -1,59 +1,38 @@
-# Catalogue Firestore — géographie active et contenus préparatoires
+# Catalogue Firestore — schéma actif
 
-La géographie est maintenant définie par les modèles Zod de `src/lib/geography/schema.ts`. [GEOGRAPHY.md](GEOGRAPHY.md) décrit les collections actives, les réservations de slugs, l’archivage, la migration et la visibilité héritée. Les paragraphes ci-dessous restent une proposition pour les quatre univers, non encore administrés.
+Les schémas Zod sont la référence runtime : `src/lib/geography/schema.ts` pour
+la géographie, `src/lib/contents/schema.ts` pour les fiches et leurs relations.
 
-La bascule géographique est contrôlée par `NAGI_GEOGRAPHY_SOURCE` et ne mélange pas les sources. Les quatre univers conservent leurs données statiques. Les interfaces préparatoires sont dans
-`src/types/firestore.ts` et réutilisent les modèles métier existants.
-
-| Collection racine | Modèle | Relation stable |
+| Collection | Document | Références |
 | --- | --- | --- |
-| `countries` | `ManagedCountry` | ID actuel, ex. `country-jp` |
-| `cities` | `ManagedCity` | `countryId` → `countries` |
-| `districts` | `ManagedDistrict` | `cityId` → `cities` |
-| `tourism` | `TourismDiscovery` | `location: { kind: 'city' ou 'district', id }` |
-| `activities` | `ActivityDiscovery` | `location`, `venue` optionnel vers tourisme ou adresse |
-| `food` | `FoodDiscovery` | `destinations[]` → pays, villes ou quartiers |
-| `addresses` | `AddressDiscovery` | `location`, `specialtyIds[]` → `food` |
+| `countries` | `ManagedCountry` | ID stable |
+| `cities` | `ManagedCity` | `countryId` |
+| `districts` | `ManagedDistrict` | `cityId` |
+| `geographySlugs` | Réservation géographique privée | Destination et périmètre |
+| `contents` | `ManagedContent`, discriminé par `type` | `destinations[]`, clés d’agrégation dérivées |
+| `contentSlugs` | Réservation de fiche privée | Univers + slug → ID de fiche |
+| `contentRelations` | `ContentRelation` | Deux références `{ id, type }`, index `memberKeys` |
 
-L’ID Firestore reprend exactement l’ID statique et reste indépendant du slug.
-Chaque document conserve `id` pour faciliter les adaptateurs futurs ; l’ID de
-document est la référence faisant autorité. Les slugs restent des valeurs de
-routage modifiables. Les types `universe` actuels restent inchangés ; la collection
-anglaise est un détail de persistance, pas une nouvelle URL publique.
+Le modèle commun réutilise les quatre types de rendu publics. Les anciennes
+collections `tourism`, `activities`, `food`, `addresses` sont conservées sans
+écriture client ni raccordement public. L’import refuse de les ignorer si elles
+contiennent des données personnalisées.
 
-Une ville possède un seul pays, un quartier une seule ville. Les lieux et
-activités n’ont qu’un parent local ; ville et pays sont dérivés. Les spécialités
-sont partagées entre plusieurs destinations. La relation avec les établissements
-reste définie uniquement par `addresses.specialtyIds` : ne pas ajouter un second
-tableau d’adresses dans `food` qui risquerait de diverger.
+Les ID sont indépendants des slugs. Les dates sont des chaînes ISO UTC. Une
+première publication protège l’adresse ; une archive conserve données et
+réservations. `revision` refuse les éditions concurrentes périmées. Une relation
+n’existe qu’une fois, dans une arête canonique qui ne copie pas ses cibles.
+Les champs publics historiques `specialtyIds` et `venue` sont calculés par projection.
 
-Tous les documents de catalogue ajoutent `status: 'draft' | 'published'` et
-`visibility: 'public' | 'private'`. L’import géographique reprend explicitement la publication des destinations actuelles. Ne pas
-considérer une valeur absente comme publiée. `createdAt` et `updatedAt` utilisent
-des chaînes ISO 8601 UTC ; les dates statiques au format date seule seront
-normalisées lors de la migration. Ne pas mélanger des `Timestamp` et des chaînes.
+Les requêtes publiques de fiches utilisent statut, visibilité, absence d’archive,
+univers et clé géographique. Parents et extrémités des relations sont vérifiés
+avant projection. Les règles n’autorisent aucune lecture publique directe des
+fiches complètes. Toute écriture passe par un contrôleur autorisé, protégé contre
+les requêtes intersites et validant les données côté serveur.
 
-Un document publié public est lisible dans son **intégralité** : réserver les
-notes internes et les données d’audit utilisateur à de futures collections
-privées distinctes, fermées par défaut. Les sources et la date de vérification
-éditoriale peuvent rester publiques. Les règles n’assurent pas de projection
-masquant des champs privés.
+Les sources publiques sont explicites et exclusives : `NAGI_GEOGRAPHY_SOURCE` et
+`NAGI_CONTENT_SOURCE`, initialement `static`. Imports et déploiements nécessitent
+une action volontaire.
 
-Pour les futures listes publiques, filtrer simultanément `status == 'published'`
-et `visibility == 'public'` : les règles ne filtrent pas les résultats à la place
-d’une requête. Les index composites seront ajoutés selon les requêtes réellement
-utilisées, par exemple lieu + statut + visibilité + tri. Éviter les collections
-profondément imbriquées et prévoir la pagination avant les grandes listes.
-
-`readAdminCatalogueDocument()` offre une première lecture serveur brute et
-protégée. Elle n’est utilisée par aucune page actuelle et ne prétend pas valider
-le document en un modèle TypeScript. Ajouter les parseurs et convertisseurs de
-chaque entité lors de la migration avant de brancher les composants publics.
-Le SDK Admin contournant les règles, cette fonction appelle `requireAdmin()`.
-
-Ces contrôles sont opérationnels pour la géographie. Pour les futurs formulaires des quatre univers, prévoir validation runtime, intégrité des destinations, unicité des slugs, dates serveur et transitions de publication. L’audit privé et les références de médias seront
-définis lorsque les fonctionnalités correspondantes seront développées.
-
-La future migration devra être rejouable à partir des identifiants actuels,
-contrôler les relations, comparer les contenus et conserver un retour possible
-aux données statiques avant le basculement public.
+Voir [la géographie](GEOGRAPHY.md) et [les quatre univers](CONTENTS.md) pour les
+champs, invariants, index, limites et procédures de migration et de bascule.

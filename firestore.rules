@@ -28,10 +28,20 @@ service cloud.firestore {
       allow read: if isAdmin() || (published(resource.data) && publicCity(resource.data.cityId));
       allow write: if false;
     }
+    // Les fiches et relations sont projetées par le serveur après vérification
+    // de TOUS les parents. Aucun accès public direct à un document complet.
+    match /contents/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /contentRelations/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    // Anciennes fondations conservées pour une conversion non destructive.
     match /{collection}/{id} {
-      allow read: if collection in ['tourism', 'activities', 'food', 'addresses'] &&
-        (isAdmin() || (resource.data.status == 'published' && resource.data.visibility == 'public'));
-      allow write: if collection in ['tourism', 'activities', 'food', 'addresses'] && isAdmin();
+      allow read: if collection in ['tourism', 'activities', 'food', 'addresses'] && isAdmin();
+      allow write: if false;
     }
     // geographySlugs, collections inconnues et sous-collections : refus implicite.
   }

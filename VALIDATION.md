@@ -426,3 +426,109 @@ chemins, champs pays vides sur les enfants et pays en brouillon sans présentati
 - `npm run typecheck`, `npm run lint` et `npm run build` : réussis.
 - Les formats non reconnus indiquent maintenant le document concerné dans
   l’administration. Aucun message brut du SDK Firebase n’est renvoyé au client.
+
+## Étape 07 — administration des quatre univers
+
+### Fonctionnalités livrées
+
+- Liste commune `/admin/contents`, choix d’univers et éditeur discriminé : champs
+  de présentation, informations propres au type, publication, destinations et
+  photographies existantes. Recherche par préfixe de titre, filtres de type,
+  statut et destination, archives et pagination Firestore par curseur de 24 fiches.
+- Brouillons incomplets, publication validée, adresse immuable après publication,
+  révisions concurrentes, archivage/restauration non destructifs et refus de DELETE.
+- Relations recherchables et sélectionnables dans les deux sens, avec une seule
+  arête stockée et révision des voisins lors d’une modification. Limite explicite
+  de 40 relations par fiche ; un lieu et un organisateur par activité.
+- Destinations multiples de gastronomie, association directe à une ville ou à un
+  quartier pour les autres fiches, agrégation en ville sans duplication.
+- Prévisualisation privée de la version enregistrée et avertissement de sortie
+  pour les modifications non enregistrées. Formulaires adaptés au mobile.
+- Raccordement des onglets et routes canoniques aux sources explicites, requêtes
+  bornées pour l’onglet actif, projection des seules associations et relations
+  publiques, récit détaillé, galerie et informations pratiques complètes.
+- `contents`, `contentRelations`, `contentSlugs`, schémas Zod et index composites ;
+  écritures exclusivement serveur. Anciennes collections conservées, accessibles
+  en lecture administrateur, sans raccordement ni écriture client.
+- Migration des 20 fiches et relations historiques, simulation, garde de projet,
+  confirmation volontaire, rapprochement géographique par ID ou hiérarchie de
+  slugs non ambiguë. Les documents édités et relations retirées sont conservés.
+
+### Vérifications effectuées
+
+- `npm test` : **44 tests réussis**, dont neuf groupes couvrant les modèles de
+  contenus, migration, références, photographies, relations, visibilité et
+  projection publique sans métadonnées privées.
+- `npm run typecheck`, `npm run lint`, `npm run build` : réussis. Aucun ajout de
+  dépendance ; le manifeste et le lockfile restent cohérents.
+- `npm run test:contents` : réussi sur une base d’émulation neuve après correction
+  d’un cas de migration repéré dans la revue mobile. Les arêtes importées sont
+  validées et ne copient plus les documents de leurs extrémités. Le test lit les
+  fiches historiques Tonkatsu et Ginza Bairin dans les deux sens.
+- Ce scénario vérifie les quatre créations, quartier Ueno puis agrégation Tokyo,
+  activité liée à un lieu, spécialité liée à plusieurs destinations sans doublon,
+  restaurant lié à deux spécialités, retrait inverse, révision périmée refusée,
+  édition publique actualisée, dépublication, héritage du pays et du quartier,
+  archive/restauration, URL publiée protégée, brouillon incomplet et prévisualisation
+  refusée aux visiteurs/comptes ordinaires.
+- Les appels sans session, sans rôle, avec origine étrangère ou CSRF invalide,
+  images inconnues, URL exécutables, champs techniques, cibles absentes et relations
+  incompatibles sont refusés. Deux créations simultanées du même slug produisent
+  une réussite et un `409`. Pagination de 30 fiches : **24 + 6**, sans doublon,
+  filtres conservés et curseur refusé s’il appartient à une autre recherche.
+- Réimport idempotent, mauvaise cible et confirmation absente refusées, simulation
+  sans écriture, descriptions administrées préservées et relations retirées non
+  restaurées. Mode Firestore vide sans repli sur les démonstrations ; mode statique
+  sans fusion des nouvelles fiches.
+- `npm run test:firebase-rules` : **5 groupes réussis**, incluant les nouvelles
+  collections, anciennes fondations, réservations, trois profils et Storage.
+- `npm run test:geography` : réussi ; régressions de gestion et de visibilité des
+  destinations et compatibilité des anciens documents préservées.
+- `npm run test:routes -- http://127.0.0.1:3110` sur le build final : **32 pages,
+  36 variantes d’onglets, 1 397 liens internes, 23 variantes d’images, 36 redirections
+  et 13 pages 404**. L’ancien contrôle imposant une seule image a été remplacé
+  pour vérifier le récit et la galerie demandés : deux images et légende historique
+  présentes pour Sensō-ji, texte détaillé présent pour Tonkatsu.
+- `npm run test:contrast` : 26 contrastes des tokens existants, minimum texte
+  4,68:1 et contours/focus 3,17:1. Aucun audit automatique exhaustif de toutes les
+  nouvelles surfaces n’est revendiqué. Pas d’audit npm renouvelé pour cette étape.
+- Bundles navigateur contrôlés : aucun PEM privé, compte de service Admin ou nom
+  de variable de clé privée serveur. `.env` ignoré par Git, permissions `600`.
+
+### Revue dans le navigateur
+
+Sur le seul projet d’émulation `demo-nagi`, serveur isolé `3109` :
+
+- Choix du type, création de « Le jardin des regards », validation à vide avec
+  focus sur le titre, slug proposé, sélection Japon → Tokyo → Ueno et image locale.
+- Enregistrement du brouillon, publication, consultation de l’onglet Tourisme
+  d’Ueno puis de sa fiche détaillée, changement réel vers Gastronomie et retour.
+- Création mobile de « La table du carnet », recherche et sélection Tonkatsu +
+  Taiyaki, état vide de recherche, sauvegarde puis liens publics dans les deux sens.
+- Dialogue de protection des modifications : focus, retour à l’édition et champs
+  conservés. L’avertissement de rechargement reste celui du navigateur.
+- Contrôles 390, 320 et 768 px : pas de débordement horizontal de l’éditeur ;
+  ordre des sections, libellés et actions inspectés. Contrôle visuel sur ordinateur.
+
+Captures ignorées par Git : `.qa/contents-public-desktop.png`,
+`.qa/contents-editor-mobile.png`, `.qa/contents-relations-desktop.png`.
+Les comptes, données, serveurs et copies temporaires de revue ont été arrêtés
+avec leurs émulateurs. Le serveur de développement du projet a été conservé.
+
+### Projet réel et interventions restantes
+
+Les deux sources du `.env` local restent **`static`**. Aucun contenu, aucune
+relation, règle, permission ou index du projet réel n’a été modifié. La simulation
+`contents:import --project=nagi-travelapp --dry-run` a été exécutée en lecture seule.
+Elle s’est arrêtée avant écriture sur des références géographiques absentes ou
+ne correspondant pas à la chaîne de slugs historique : Asakusa, Ueno, Shinjuku,
+Kyoto, Fujiyoshida, Ginza et Osaka. Cela ne signifie pas que tous ces noms sont
+absents : une destination existante portant un autre slug doit être rapprochée,
+sans recréer automatiquement de doublon.
+
+Il reste à rapprocher/compléter et valider la géographie, enregistrer ses anciens
+documents au format courant, examiner puis appliquer volontairement l’import,
+déployer règles/index et attendre leur disponibilité, puis activer les deux sources
+Firestore après validation. Les émulateurs ne valident pas la construction des
+index du projet réel. La procédure et les limites sont décrites dans
+[docs/CONTENTS.md](docs/CONTENTS.md).

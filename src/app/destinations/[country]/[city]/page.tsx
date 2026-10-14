@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: PageProps<"/destinations/[cou
   return destinationMetadata(`${city.name}, ${country.name}`, city.description, cityPath(country, city));
 }
 
-export default async function CityPage({ params }: PageProps<"/destinations/[country]/[city]">) {
+export default async function CityPage({ params, searchParams }: PageProps<"/destinations/[country]/[city]">) {
   await connection();
   const { country, city } = await requireCity(await params);
   const hasDistricts = city.districts.length > 0;
@@ -32,7 +32,7 @@ export default async function CityPage({ params }: PageProps<"/destinations/[cou
         id: district.id, name: district.name, label: `${city.name}, ${country.name}`, mood: district.mood, description: district.description,
         photograph: district.photograph, href: districtPath(country, city, district),
       }))} /> : null}
-      <PlaceUniverses name={city.name} scope={{ kind: "city", id: city.id }} />
+      <PlaceUniverses name={city.name} scope={{ kind: "city", id: city.id }} query={await searchParams} />
       <ReturnLink href={countryPath(country)}>Toutes les villes · {country.name}</ReturnLink>
     </>
   );

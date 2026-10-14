@@ -115,3 +115,17 @@
   .discovery-sheet-visual { height: auto; min-height: 0; max-height: none; }
   .discovery-sheet-visual .discovery-image { flex: none; aspect-ratio: 4 / 5; }
 }
+
+.discovery-story { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:clamp(28px,6vw,100px); padding-block:60px 100px; border-top:1px solid var(--line); }
+.discovery-story-text { max-width:720px; }
+.discovery-story h2 { margin:32px 0 16px; font-size:clamp(24px,3vw,36px); }
+.discovery-story p { margin:0 0 20px; line-height:1.9; }
+.discovery-preserve-lines { white-space:pre-line; }
+.discovery-story a { text-decoration:underline; text-underline-offset:4px; }
+.discovery-story li { margin-bottom:12px; }
+.discovery-story-tags { color:var(--muted); font-size:13px; }
+.discovery-story-gallery { display:grid; align-content:start; gap:30px; }
+.discovery-story-gallery figure { position:relative; }
+.discovery-story-gallery .discovery-image { min-height:280px; }
+.discovery-story-gallery figcaption { margin-top:12px; font-size:13px; }
+@media(max-width:760px) { .discovery-story { grid-template-columns:minmax(0,1fr); } }

@@ -5,7 +5,8 @@ import { doc, getDoc, getDocs, collection, query, where, setDoc, deleteDoc, setL
 import { ref, uploadBytes, getBytes } from "firebase/storage";
 
 const geographicCollections = ["countries", "cities", "districts"];
-const collections = ["countries", "cities", "districts", "tourism", "activities", "food", "addresses"];
+const collections = geographicCollections;
+const serverCollections = ["contents", "contentRelations", "tourism", "activities", "food", "addresses"];
 // Les refus intentionnels sont vérifiés par assertFails, sans polluer la sortie.
 setLogLevel("silent");
 let env;
@@ -16,7 +17,7 @@ before(async () => {
     storage: { host: "127.0.0.1", port: 9199, rules: await readFile("storage.rules", "utf8") },
   });
   await env.withSecurityRulesDisabled(async (context) => {
-    for (const name of collections) {
+    for (const name of [...collections, ...serverCollections]) {
       for (const [id, status, visibility] of [["public", "published", "public"], ["draft", "draft", "public"], ["private", "published", "private"]]) {
         await setDoc(doc(context.firestore(), name, id), { status, visibility, archivedAt: null, ...(name === "cities" ? { countryId: "public" } : name === "districts" ? { cityId: "public" } : {}) });
       }
@@ -49,10 +50,27 @@ test("admin : lecture du catalogue, écritures géographiques réservées au ser
     await assertSucceeds(getDoc(doc(db, name, "draft")));
     await assertSucceeds(getDoc(doc(db, name, "private")));
     await assertSucceeds(getDocs(collection(db, name)));
-    const write = geographicCollections.includes(name) ? assertFails : assertSucceeds;
+    const write = assertFails;
     await write(setDoc(doc(db, name, "managed"), { status: "draft", visibility: "private" }));
     await write(setDoc(doc(db, name, "managed"), { status: "published", visibility: "public" }));
     await write(deleteDoc(doc(db, name, geographicCollections.includes(name) ? "public" : "managed")));
+  }
+});
+
+test("fiches et relations : lectures publiques et toutes écritures client refusées", async () => {
+  for (const name of serverCollections) {
+    for (const context of [env.unauthenticatedContext(), env.authenticatedContext("ordinary"), env.authenticatedContext("forged", { admin: "true" })]) {
+      const db = context.firestore();
+      await assertFails(getDoc(doc(db, name, "public")));
+      await assertFails(getDocs(query(collection(db, name), where("status", "==", "published"), where("visibility", "==", "public"))));
+      await assertFails(setDoc(doc(db, name, "intruder"), { status: "published" }));
+    }
+    const db = env.authenticatedContext("admin", { admin: true }).firestore();
+    await assertSucceeds(getDoc(doc(db, name, "draft")));
+    await assertFails(setDoc(doc(db, name, "intruder"), { status: "published" }));
+    await assertFails(deleteDoc(doc(db, name, "public")));
+    await assertFails(getDoc(doc(db, "contentSlugs", "tourisme:reserved")));
+    await assertFails(setDoc(doc(db, "contentSlugs", "tourisme:reserved"), { contentId: "intruder" }));
   }
 });
 

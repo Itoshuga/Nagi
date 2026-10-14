@@ -1,7 +1,6 @@
-import { getPublicGeography } from "./geography/public";
-import { visibleDiscoveryCatalogue } from "./discoveries";
+import { getPublicContent } from "./contents/public";
 import { notFound } from "next/navigation";
-import { getDiscoveryBySlug, isUniverse } from "./discoveries";
+import { isUniverse } from "./discoveries";
 
 export function requireUniverse(value: string) {
   if (!isUniverse(value)) notFound();
@@ -9,7 +8,7 @@ export function requireUniverse(value: string) {
 }
 
 export async function requireDiscovery(universe: string, slug: string) {
-  const content = getDiscoveryBySlug(requireUniverse(universe), slug, visibleDiscoveryCatalogue(await getPublicGeography()));
+  const content = await getPublicContent(requireUniverse(universe), slug);
   if (!content) notFound();
   return content;
 }

@@ -18,14 +18,14 @@ export async function generateMetadata({ params }: PageProps<"/destinations/[cou
   return destinationMetadata(`${district.name}, ${city.name}, ${country.name}`, district.description, districtPath(country, city, district));
 }
 
-export default async function DistrictPage({ params }: PageProps<"/destinations/[country]/[city]/[district]">) {
+export default async function DistrictPage({ params, searchParams }: PageProps<"/destinations/[country]/[city]/[district]">) {
   await connection();
   const { country, city, district } = await requireDistrict(await params);
   return (
     <>
       <Breadcrumbs items={[{ label: "Destinations", href: "/destinations" }, { label: country.name, href: countryPath(country) }, { label: city.name, href: cityPath(country, city) }, { label: district.name }]} />
       <PlaceHero name={district.name} eyebrow={`${country.name} / ${city.name} / Le quartier`} mood={district.mood} introduction={district.introduction} photograph={district.photograph} caption={`${district.name} — ${city.name}, ${country.name}`} next={{ href: "#univers", label: "Découvrir les quatre univers" }} />
-      <PlaceUniverses name={district.name} scope={{ kind: "district", id: district.id }} />
+      <PlaceUniverses name={district.name} scope={{ kind: "district", id: district.id }} query={await searchParams} />
       <ReturnLink href={cityPath(country, city)}>Tous les quartiers · {city.name}</ReturnLink>
     </>
   );

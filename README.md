@@ -109,7 +109,7 @@ L’accueil conserve ses photographies asymétriques, son hero d’au moins une 
 
 `src/app/tokens.css` centralise les couleurs sémantiques, l’échelle de texte, les espacements, les rayons, les transitions et les largeurs. `.section-shell`, `.section-heading`, `.button` avec les variantes `button-primary`, `button-secondary`, `button-quiet`, et le composant `TextLink` forment les primitives partagées. Les surfaces fonctionnelles restent réservées aux filtres, onglets, états vides et repères pratiques.
 
-Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque ville et quartier, indépendamment des subdivisions. Les fiches détaillées sont volontairement courtes : informations à gauche, une photographie à droite, sans galerie, long récit, recommandations ni pied de page en dessous. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes longs restent disponibles dans les données du catalogue.
+Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque ville et quartier, indépendamment des subdivisions. Les fiches détaillées conservent une ouverture avec informations à gauche et photographie à droite, puis présentent le récit, les sections spécifiques, les informations pratiques et la galerie facultative. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes détaillés apparaissent dans la suite du carnet.
 
 La page `/destinations` adopte une composition d’atlas : une grande photographie ouvre le carnet du pays, et une liste de villes illustrées permet un accès direct à chaque escale. Tokyo annonce ses cinq quartiers. Les villes passent sous la photographie sur tablette, puis sur une seule colonne sur mobile. La page est rendue sur le serveur, sans interaction JavaScript supplémentaire ; les pays, villes et nombres de quartiers proviennent du catalogue géographique.
 
@@ -152,7 +152,7 @@ Exemples de parcours :
 
 Les villes ayant des quartiers, comme Tokyo, présentent leurs quartiers et conservent leur catalogue de découvertes. Les villes sans quartier affichent directement ce catalogue. Une page de quartier contient seulement les associations explicites à ce quartier. La couche de lecture agrège les contenus directs et ceux des quartiers au niveau de la ville. Les établissements portent les identifiants des spécialités qu’ils proposent ; les activités portent l’identifiant de leur lieu éventuel. Les relations inverses sont calculées.
 
-Les quatre onglets sont sur toutes les pages Ville et Quartier. `?onglet=gastronomie` sélectionne Gastronomie ; une valeur absente, invalide ou répétée sélectionne Tourisme. Un changement utilise `history.pushState` et `useSearchParams`, sans rechargement ni nouvelle page. Précédent/Suivant relisent l’URL. Les flèches gauche/droite, Début/Fin et Entrée/Espace sont pris en charge ; les onglets peuvent défiler horizontalement sur petit écran. Le contenu des panneaux inactifs n’est pas monté, et leurs images ne sont donc pas chargées.
+Les quatre onglets sont sur toutes les pages Ville et Quartier. `?onglet=gastronomie` sélectionne Gastronomie ; une valeur absente, invalide ou répétée sélectionne Tourisme. En mode statique, un changement utilise `history.pushState` et `useSearchParams`. En mode Firestore, la navigation Next.js recharge les données du seul onglet choisi sur la même page, avec pagination. Précédent/Suivant relisent l’URL. Les flèches gauche/droite, Début/Fin et Entrée/Espace sont pris en charge ; les onglets peuvent défiler horizontalement sur petit écran. Le contenu des panneaux inactifs n’est pas monté, et leurs images ne sont donc pas chargées.
 
 Les 36 anciens chemins `/explorer/[universe]` renvoient un statut 308 vers la destination avec `?onglet=…#univers`, y compris pour les villes avec quartiers. Les liens du site utilisent directement la bonne destination. Les paramètres ne modifient pas la canonique de la ville ou du quartier.
 
@@ -185,7 +185,7 @@ Les licences des typographies figurent dans [src/app/fonts](src/app/fonts).
 
 ## Périmètre
 
-Trente-deux pages : l’accueil, onze pages de destinations et vingt fiches détaillées. Les quatre univers sont intégrés aux pages Ville et Quartier. Le contenu est local ; seules ces neuf pages sont rendues à la requête. Aucun compte, authentification, administration, base de données, carte interactive, système de réservation, favoris, itinéraire ou fonction communautaire. Aucune nouvelle dépendance n’a été nécessaire.
+Le jeu de démonstration comprend l’accueil, onze pages de destinations et vingt fiches détaillées. Firebase fournit une administration sécurisée, la géographie et les quatre univers administrables. Les sources publiques restent explicitement statiques ou Firestore, sans fusion. Carte interactive, réservation en temps réel, comptes publics, favoris, itinéraires et fonctions communautaires ne font pas partie de cette étape.
 
 Les métadonnées incluent titre, description, Open Graph et Twitter. Les pages Ville/Quartier et les fiches possèdent une URL canonique indépendante des paramètres d’onglet et de contexte. Le domaine public doit être configuré avant un déploiement ; aucune image sociale spécifique n’est encore générée.
 
@@ -204,7 +204,7 @@ Firebase Admin ; Node.js 24 est conseillé.
 La configuration locale est dans `.env`, exclu de Git. Consulter
 [la procédure Firebase](docs/FIREBASE.md) pour créer le premier administrateur,
 renseigner les variables, utiliser les émulateurs et déployer les règles, puis
-[le schéma proposé](docs/FIRESTORE-SCHEMA.md) pour les prochaines étapes.
+[le schéma actif](docs/FIRESTORE-SCHEMA.md) pour la géographie, les fiches et les relations.
 
 ```sh
 npm run admin:role -- UID_EXISTANT grant
@@ -225,3 +225,25 @@ Consulter [le guide complet de l’étape 06](docs/GEOGRAPHY.md) avant la bascul
 npm run geography:import -- --project=nagi-travelapp --dry-run
 npm run test:geography
 ```
+
+## Administration des quatre univers — étape 07
+
+`/admin/contents` réunit les fiches, avec recherche de début de titre, filtres et
+pagination par curseur. Un éditeur partagé adapte ses champs à l’univers, gère les
+destinations Firestore et les relations bidirectionnelles, les images existantes,
+les brouillons, publications et archives. La prévisualisation reste privée.
+
+Les nouvelles collections sont `contents`, `contentRelations` et `contentSlugs`.
+Le public conserve les onglets Ville / Quartier et les routes canoniques existantes.
+`NAGI_CONTENT_SOURCE=static` conserve le catalogue actuel jusqu’à validation de
+la migration ; `firestore` exige également la géographie Firestore.
+
+```sh
+npm run contents:import -- --project=nagi-travelapp --dry-run
+npm run test:contents
+```
+
+Consulter [CONTENTS.md](docs/CONTENTS.md) pour le schéma, les limites de recherche,
+les index, la migration non destructive et les étapes d’activation. La simulation
+réelle signale encore des destinations à rapprocher ou compléter ; aucune
+importation ni activation réelle n’a été effectuée.

@@ -1,7 +1,8 @@
 import type { ManagedCountry, ManagedCity, ManagedDistrict } from "../lib/geography/schema";
 import type { TourismDiscovery, ActivityDiscovery, FoodDiscovery, AddressDiscovery } from "./discoveries";
+import type { ManagedContent, ContentRelation } from "../lib/contents/schema";
 
-export const catalogueCollections = ["countries", "cities", "districts", "tourism", "activities", "food", "addresses"] as const;
+export const catalogueCollections = ["countries", "cities", "districts", "contents", "contentRelations", "tourism", "activities", "food", "addresses"] as const;
 export type CatalogueCollection = (typeof catalogueCollections)[number];
 
 export interface PublicationMetadata {
@@ -15,6 +16,8 @@ export interface PublicationMetadata {
 export type CatalogueDocument<T> = Omit<T, keyof PublicationMetadata> & PublicationMetadata;
 
 export interface CatalogueDocuments {
+  contents: ManagedContent;
+  contentRelations: ContentRelation;
   countries: ManagedCountry;
   cities: ManagedCity;
   districts: ManagedDistrict;

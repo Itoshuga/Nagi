@@ -285,3 +285,47 @@
 }
 
 .admin-root h1, .admin-root h2, .admin-root h3, .admin-root p { overflow-wrap: anywhere; }
+
+/* L’atelier commun des quatre univers. */
+.content-type-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px; }
+.content-type-grid .admin-universe-card { display:block; min-height:240px; transition:background .15s; }
+.content-type-grid .admin-universe-card:hover { background:#e9ede2; }
+.content-type-grid h2 { margin-block:24px 12px; font-size:24px; }
+.content-type-grid .admin-inline-link { margin-top:24px; }
+.content-editor { display:grid; grid-template-columns:minmax(0,1fr) minmax(270px,340px); gap:26px; align-items:start; }
+.content-editor-main,.content-editor-side { min-width:0; }
+.content-wide { grid-column:1/-1; }
+.content-editor .geo-fieldset { padding:22px; }
+.content-editor-side .geo-fieldset { padding:20px; }
+.content-editor-side .admin-field + .admin-field { margin-top:22px; }
+.content-editor .geo-fieldset > .admin-field + .admin-field { margin-top:24px; }
+.content-location-fields { display:grid; gap:18px; margin-bottom:18px; }
+.content-save { width:100%; margin-top:22px; white-space:normal; }
+.content-save-state { margin-top:12px; color:var(--muted); font-size:11px; }
+.content-editor-side .admin-back-link { margin-top:16px; }
+.content-cover { position:relative; height:210px; overflow:hidden; border-radius:6px; margin-block:20px; }
+.content-cover img { object-fit:cover; }
+.content-chips { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:16px 0 22px; padding:0; }
+.content-chips li { display:flex; gap:12px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:8px 10px 8px 14px; background:#e9eddf; font-size:13px; }
+.content-chips small,.content-relation-results small { display:block; font-size:11px; color:var(--muted); margin-top:4px; }
+.content-chips button { flex-shrink:0; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:22px; }
+.content-relation-results { max-height:340px; overflow-y:auto; margin-top:18px; padding:14px; border:1px solid var(--line); border-radius:6px; font-size:13px; }
+.content-relation-results ul { padding:0; list-style:none; }
+.content-relation-results li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; }
+.content-relation-results li + li { border-top:1px solid var(--line); }
+.content-relation-results li > span { min-width:0; overflow-wrap:anywhere; }
+.content-relations .geo-form-grid { margin-bottom:12px; }
+.content-list-toolbar { gap:14px; align-items:end; }
+.content-list-toolbar > .admin-field { flex:1 1 150px; min-width:0; }
+.content-list-toolbar input { min-height:46px; }
+.content-list-toolbar > .admin-field select { max-width:100%; }
+.content-next { margin-top:24px; }
+.content-gallery-selection { list-style:none; margin-block:16px; padding:0; }
+.content-gallery-selection li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-block:10px; font-size:11px; }
+.content-source { display:grid; gap:16px; margin-block:20px; }
+.content-preview { overflow:hidden; }
+.content-preview .section-shell { width:100%; padding-inline:0; }
+.content-preview .discovery-sheet { gap:25px; }
+@media(min-width:1350px) { .content-editor-side { position:sticky; top:20px; } }
+@media(max-width:1100px) { .content-editor { grid-template-columns:minmax(0,1fr); } .content-editor-side { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; } .content-editor-side > :first-child { grid-column:1/-1; } }
+@media(max-width:600px) { .content-type-grid,.content-editor-side { grid-template-columns:minmax(0,1fr); } .content-editor .geo-fieldset { padding:20px 16px; } .content-row .geo-row-actions { justify-content:space-between; } .content-list-toolbar > .admin-field { flex-basis:100%; } .content-preview .discovery-sheet { grid-template-columns:minmax(0,1fr); } }

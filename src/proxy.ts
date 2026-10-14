@@ -1,4 +1,4 @@
-import { getDiscoveryBySlug, visibleDiscoveryCatalogue } from "./lib/discoveries";
+import { loadPublicContent } from "./lib/contents/public";
 import { NextResponse, type NextRequest } from "next/server";
 import { loadPublicGeography } from "./lib/geography/public";
 import { isKnownGeographicRoute } from "./lib/geographic-routing";
@@ -9,7 +9,7 @@ export async function proxy(request: NextRequest) {
     const geography = await loadPublicGeography();
     if (request.nextUrl.pathname.startsWith("/decouvertes")) {
       const parts = request.nextUrl.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-      known = parts.length === 3 && Boolean(getDiscoveryBySlug(parts[1], parts[2], visibleDiscoveryCatalogue(geography)));
+      known = parts.length === 3 && Boolean(await loadPublicContent(parts[1], parts[2], geography));
     } else known = isKnownGeographicRoute(request.nextUrl.pathname, geography);
   }
   catch { return new NextResponse("Le carnet est momentanément indisponible. Réessayez dans un instant.", { status: 503, headers: { "Cache-Control": "no-store" } }); }

@@ -152,7 +152,7 @@ Les lectures des pays, villes et quartiers vérifient `status == 'published'`,
 écritures passent uniquement par le serveur autorisé : même un client avec le
 claim admin ne peut pas modifier directement ces collections ni les réservations
 privées `geographySlugs`. Le serveur applique Zod, les relations et les transactions.
-Les quatre collections de contenus conservent leurs règles préparatoires de l’étape 05.
+Les fiches sont désormais dans `contents`, les relations dans `contentRelations` et les réservations dans `contentSlugs`. Toutes les écritures passent par le serveur autorisé. Le public accède aux projections serveur ; les lectures directes des fiches et relations sont réservées aux administrateurs. Les quatre anciennes collections restent en lecture administrateur seulement. Voir [CONTENTS.md](CONTENTS.md).
 Les collections inconnues, sous-collections et Storage restent fermés.
 Le SDK Admin contourne les règles : les gardes serveur restent obligatoires.
 Voir [GEOGRAPHY.md](GEOGRAPHY.md) pour les invariants et la migration.
@@ -164,8 +164,7 @@ npx firebase deploy --project nagi-travelapp --only firestore:rules,firestore:in
 
 Le déploiement est une opération manuelle sur le projet réel. Il n’a pas été
 exécuté dans cette étape. Les règles Storage peuvent être déployées une fois
-le bucket provisionné. Les index sont vides tant que les requêtes métier finales
-ne sont pas connues.
+le bucket provisionné. Les index des listes et recherches de fiches sont versionnés dans `firestore.indexes.json` ; attendre leur construction avant d’activer la source Firestore.
 
 ## Développement local
 
@@ -233,7 +232,7 @@ principal et `.env` ne sont pas modifiés. Il couvre la création du cookie,
 les routes, le refus des comptes ordinaires, le retrait du rôle, la révocation,
 les requêtes invalides et la déconnexion protégée par CSRF.
 
-Les tests de règles vérifient les sept collections, trois profils, les requêtes
+Les tests de règles vérifient la géographie, les fiches, relations, réservations et anciennes collections, trois profils, les requêtes
 publiques filtrées, les écritures, les sous-collections et Storage. Les tests
 unitaires vérifient aussi le rôle booléen, l’origine et la fraîcheur des tokens.
 Ces contrôles locaux ne constituent pas une connexion réelle au projet Firebase.

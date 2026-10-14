@@ -22,6 +22,8 @@ interface DiscoveryBase {
   readonly updatedAt: string;
   readonly verifiedAt?: string;
   readonly sources: readonly Source[];
+  readonly sections?: readonly { title: string; text: string }[];
+  readonly extraFacts?: readonly { label: string; value: string }[];
 }
 
 interface LocatedDiscovery extends DiscoveryBase {
@@ -53,13 +55,14 @@ export interface ActivityDiscovery extends LocatedDiscovery {
   readonly bookingUrl?: string;
   readonly audience?: readonly string[];
   readonly venue?: { universe: "tourisme" | "adresses"; id: string };
+  readonly organizer?: { universe: "tourisme" | "adresses"; id: string };
   readonly additionalInformation?: string;
 }
 
 export interface FoodDiscovery extends DiscoveryBase {
   readonly universe: "gastronomie";
   readonly originalName: string;
-  readonly foodType: "Plat" | "Dessert" | "Pâtisserie" | "Boisson";
+  readonly foodType: "Plat" | "Dessert" | "Pâtisserie" | "Boisson" | "Confiserie" | "Autre";
   readonly origins: string;
   readonly history: readonly string[];
   readonly ingredients: readonly string[];
@@ -77,6 +80,7 @@ export interface AddressDiscovery extends LocatedDiscovery {
   readonly budget?: string;
   readonly waitingTime?: string;
   readonly reservation?: Reservation;
+  readonly bookingUrl?: string;
   // Source unique de la relation plusieurs-à-plusieurs avec les spécialités.
   readonly specialtyIds: readonly string[];
 }

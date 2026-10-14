@@ -46,7 +46,8 @@ while (queue.length > 0) {
   }
   if (route.startsWith("/decouvertes/")) {
     assert.doesNotMatch(html, /<footer\b/, `${route} : aucun pied de page sous la fiche`);
-    assert.ok((html.match(/<img\b/g) ?? []).length <= 1, `${route} : une seule photographie, sans galerie ni cartes supplémentaires`);
+    assert.match(html, /class="discovery-story section-shell"/, `${route} : présentation détaillée après l’ouverture`);
+    assert.ok((html.match(/<img\b/g) ?? []).length <= 13, `${route} : couverture et galerie bornée à douze photographies`);
   }
   if (districtCityRoutes.includes(pathname)) {
     assert.match(html, /id="quartiers"/, `${route} : liste des quartiers`);
@@ -114,6 +115,9 @@ for (const specialty of ["monjayaki", "okonomiyaki"]) assert.ok(hasLink(pages.ge
 assert.ok(hasLink(pages.get("/decouvertes/activites/carnet-croquis-ueno"), "/decouvertes/tourisme/parc-ueno"));
 assert.ok(hasLink(pages.get("/decouvertes/tourisme/parc-ueno"), "/decouvertes/activites/carnet-croquis-ueno"));
 assert.match(pages.get("/decouvertes/adresses/maisen-aoyama"), /Photographie à venir/);
+assert.equal((pages.get("/decouvertes/tourisme/senso-ji").match(/<img\b/g) ?? []).length, 2, "La couverture et la photographie historique de la galerie restent affichées.");
+assert.match(pages.get("/decouvertes/tourisme/senso-ji"), /Kaminarimon marque l’entrée/);
+assert.match(pages.get("/decouvertes/gastronomie/tonkatsu"), /Le tonkatsu repose sur un contraste/);
 assert.doesNotMatch(pages.get("/decouvertes/gastronomie/taiyaki"), /class="discovery-sheet-related"/, "Une fiche sans relation ne montre pas de rubrique vide.");
 assert.match(pages.get("/destinations/japon/tokyo"), /id="catalogue-query"/, "La ville garde accès à ses découvertes, même avec des quartiers.");
 assert.doesNotMatch(pages.get("/destinations/japon/fujiyoshida?onglet=tourisme"), /id="catalogue-query"/);
