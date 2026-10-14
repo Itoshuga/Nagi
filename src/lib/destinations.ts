@@ -1,30 +1,32 @@
 import { cities, countries, districts } from "../data/geography";
-import type { City, CityWithDistricts, Country, CountryWithCities, District } from "../types/destinations";
+import type { City, CityWithDistricts, Country, CountryWithCities, District, PublicGeography } from "../types/destinations";
 
-export function getCountries(): readonly Country[] {
-  return countries;
+export const staticGeography: PublicGeography = { countries, cities, districts };
+
+export function getCountries(geography: PublicGeography = staticGeography): readonly Country[] {
+  return geography.countries;
 }
 
-export function getCitiesByCountry(countryId: Country["id"]): readonly City[] {
-  return cities.filter((city) => city.countryId === countryId);
+export function getCitiesByCountry(countryId: Country["id"], geography: PublicGeography = staticGeography): readonly City[] {
+  return geography.cities.filter((city) => city.countryId === countryId);
 }
 
-export function getDistrictsByCity(cityId: City["id"]): readonly District[] {
-  return districts.filter((district) => district.cityId === cityId);
+export function getDistrictsByCity(cityId: City["id"], geography: PublicGeography = staticGeography): readonly District[] {
+  return geography.districts.filter((district) => district.cityId === cityId);
 }
 
-export function getCountryBySlug(slug: string): CountryWithCities | undefined {
-  const country = countries.find((entry) => entry.slug === slug);
-  return country ? { ...country, cities: getCitiesByCountry(country.id) } : undefined;
+export function getCountryBySlug(slug: string, geography: PublicGeography = staticGeography): CountryWithCities | undefined {
+  const country = geography.countries.find((entry) => entry.slug === slug);
+  return country ? { ...country, cities: getCitiesByCountry(country.id, geography) } : undefined;
 }
 
-export function getCityBySlug(countryId: Country["id"], slug: string): CityWithDistricts | undefined {
-  const city = cities.find((entry) => entry.countryId === countryId && entry.slug === slug);
-  return city ? { ...city, districts: getDistrictsByCity(city.id) } : undefined;
+export function getCityBySlug(countryId: Country["id"], slug: string, geography: PublicGeography = staticGeography): CityWithDistricts | undefined {
+  const city = geography.cities.find((entry) => entry.countryId === countryId && entry.slug === slug);
+  return city ? { ...city, districts: getDistrictsByCity(city.id, geography) } : undefined;
 }
 
-export function getDistrictBySlug(cityId: City["id"], slug: string): District | undefined {
-  return districts.find((entry) => entry.cityId === cityId && entry.slug === slug);
+export function getDistrictBySlug(cityId: City["id"], slug: string, geography: PublicGeography = staticGeography): District | undefined {
+  return geography.districts.find((entry) => entry.cityId === cityId && entry.slug === slug);
 }
 
 export function countryPath(country: Pick<Country, "slug">): string {

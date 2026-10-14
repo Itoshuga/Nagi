@@ -1,3 +1,4 @@
+import { getPublicGeography } from "@/lib/geography/public";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
@@ -5,10 +6,11 @@ import { Breadcrumbs } from "@/components/destinations/breadcrumbs";
 import { cityPath, countryPath, getCitiesByCountry, getCountries, getDistrictsByCity } from "@/lib/destinations";
 import { destinationMetadata } from "@/lib/destination-metadata";
 
-export const metadata = destinationMetadata("Les destinations", "Choisir un horizon avec Nagi. Découvrez le Japon, ses villes et ses quartiers dans un carnet de voyage culturel et sensible.", "/destinations");
+export const metadata = destinationMetadata("Les destinations", "Choisir un horizon avec Nagi. Découvrez les pays, leurs villes et leurs quartiers dans un carnet de voyage culturel et sensible.", "/destinations");
 
-export default function DestinationsPage() {
-  const countries = getCountries();
+export default async function DestinationsPage() {
+  const geography = await getPublicGeography();
+  const countries = getCountries(geography);
   return (
     <>
       <Breadcrumbs items={[{ label: "Destinations" }]} />
@@ -18,7 +20,7 @@ export default function DestinationsPage() {
       </header>
       <div className="destination-directory section-shell">
         {countries.map((country, index) => {
-          const cities = getCitiesByCountry(country.id);
+          const cities = getCitiesByCountry(country.id, geography);
           return (
             <section className="destination-atlas" key={country.id} aria-labelledby={`country-${country.id}`}>
               <Link href={countryPath(country)} className="atlas-country" aria-label={`Explorer le carnet : ${country.name}`}>
@@ -37,7 +39,7 @@ export default function DestinationsPage() {
                 <ul className="atlas-city-list">
                   {cities.map((city) => {
                     const photograph = city.discoveryPhotograph ?? city.featurePhotograph ?? city.photograph;
-                    const districtCount = getDistrictsByCity(city.id).length;
+                    const districtCount = getDistrictsByCity(city.id, geography).length;
                     return <li key={city.id}>
                       <Link href={cityPath(country, city)} className="atlas-city" aria-label={`Découvrir ${city.name}${districtCount > 0 ? ` et ses ${districtCount} quartiers` : ""}`}>
                         <span className="atlas-city-photo"><Image src={photograph.src} alt="" fill sizes="(max-width: 600px) 72px, 96px" style={{ objectPosition: photograph.position }} /></span>

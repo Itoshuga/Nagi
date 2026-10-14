@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+    function published(data) {
+      return data.status == 'published' && data.visibility == 'public' && data.archivedAt == null;
+    }
+    function publicCountry(id) {
+      return exists(/databases/$(database)/documents/countries/$(id)) && published(get(/databases/$(database)/documents/countries/$(id)).data);
+    }
+    function publicCity(id) {
+      let city = get(/databases/$(database)/documents/cities/$(id));
+      return city != null && published(city.data) && publicCountry(city.data.countryId);
+    }
+    // Les écritures géographiques et réservations passent exclusivement par le
+    // serveur autorisé : impossible de contourner Zod, l’unicité ou le gel des URL.
+    match /countries/{id} {
+      allow read: if isAdmin() || published(resource.data);
+      allow write: if false;
+    }
+    match /cities/{id} {
+      allow read: if isAdmin() || (published(resource.data) && publicCountry(resource.data.countryId));
+      allow write: if false;
+    }
+    match /districts/{id} {
+      allow read: if isAdmin() || (published(resource.data) && publicCity(resource.data.cityId));
+      allow write: if false;
+    }
+    match /{collection}/{id} {
+      allow read: if collection in ['tourism', 'activities', 'food', 'addresses'] &&
+        (isAdmin() || (resource.data.status == 'published' && resource.data.visibility == 'public'));
+      allow write: if collection in ['tourism', 'activities', 'food', 'addresses'] && isAdmin();
+    }
+    // geographySlugs, collections inconnues et sous-collections : refus implicite.
+  }
+}

@@ -129,3 +129,8 @@
   .atlas-city-photo { width: 72px; height: 76px; }
   .atlas-cities-heading { padding-bottom: 16px; }
 }
+
+/* Les présentations rédigées dans le carnet conservent leurs paragraphes. */
+.place-introduction { white-space: pre-line; }
+
+.place-hero h1, .place-introduction, .atlas-country h2, .place-card h3 { overflow-wrap: anywhere; }

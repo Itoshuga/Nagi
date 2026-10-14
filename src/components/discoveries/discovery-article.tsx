@@ -1,3 +1,5 @@
+import { getPublicGeography } from "@/lib/geography/public";
+import { visibleDiscoveryCatalogue } from "@/lib/discoveries";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Breadcrumbs, type BreadcrumbItem } from "@/components/destinations/breadcrumbs";
@@ -12,10 +14,12 @@ import { PracticalInformation } from "./practical-information";
 import { RelatedDiscoveries } from "./related-discoveries";
 import { ContextReturn } from "./context-return";
 
-export function DiscoveryArticle({ item }: { item: Discovery }) {
+export async function DiscoveryArticle({ item }: { item: Discovery }) {
+  const geography = await getPublicGeography();
+  const catalogue = visibleDiscoveryCatalogue(geography);
   const universe = universeDetails[item.universe];
   const geographies = getDiscoveryGeography(item).flatMap((reference) => {
-    const value = resolveGeography(reference);
+    const value = resolveGeography(reference, geography);
     return value ? [value] : [];
   });
   const primary = geographies.find((scope) => scope.reference.kind !== "country" && !scope.hasDistricts)
@@ -25,16 +29,16 @@ export function DiscoveryArticle({ item }: { item: Discovery }) {
     ...(primary ? [{ label: primary.country.name, href: countryPath(primary.country) }] : []),
     ...(primary?.city ? [{ label: primary.city.name, href: cityPath(primary.country, primary.city) }] : []),
     ...(primary?.district ? [{ label: primary.district.name, href: primary.path }] : []),
-    ...(primary && primary.reference.kind !== "country" && !primary.hasDistricts ? [{ label: universe.name, href: explorerPath(primary.reference, item.universe) }] : []),
+    ...(primary && primary.reference.kind !== "country" ? [{ label: universe.name, href: explorerPath(primary.reference, item.universe, geography) }] : []),
     { label: item.title },
   ];
-  const contexts = getNavigationContexts();
+  const contexts = getNavigationContexts(geography);
   const contextIds = contexts.map((context) => context.key);
-  const venue = item.universe === "activites" ? getAssociatedVenue(item) : undefined;
-  const related = item.universe === "gastronomie" ? getAddressesForSpecialty(item.id)
-    : item.universe === "adresses" ? getSpecialtiesForAddress(item.id)
+  const venue = item.universe === "activites" ? getAssociatedVenue(item, catalogue) : undefined;
+  const related = item.universe === "gastronomie" ? getAddressesForSpecialty(item.id, catalogue)
+    : item.universe === "adresses" ? getSpecialtiesForAddress(item.id, catalogue)
     : item.universe === "activites" ? (venue ? [venue] : [])
-    : getActivitiesForVenue(item.id);
+    : getActivitiesForVenue(item.id, catalogue);
   const relatedTitle = item.universe === "gastronomie" ? "Où goûter"
     : item.universe === "adresses" ? "À la carte"
     : item.universe === "activites" ? "Le lieu" : "À vivre ici";

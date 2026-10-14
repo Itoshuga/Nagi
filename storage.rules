@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // La médiathèque n’est pas encore développée : aucun accès, même admin.
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

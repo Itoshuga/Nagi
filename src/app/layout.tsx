@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr" className={`${editorial.variable} ${body.variable}`}>
+    <html lang="fr" data-scroll-behavior="smooth" className={`${editorial.variable} ${body.variable}`}>
       <body><a href="#contenu" className="skip-link">Aller au contenu</a>{children}</body>
     </html>
   );

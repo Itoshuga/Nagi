@@ -230,3 +230,199 @@ La page Destinations associe une photographie de pays, cliquable vers son carnet
 - Contraste calculé du texte ivoire sur la photographie : minimum 9,05:1 pour le voile à 84 % sur une image entièrement blanche. Les autres couleurs emploient les tokens existants.
 - Grille de villes sur deux colonnes sous 961 px, puis une seule sous 601 px ; chaque ligne est un lien entier, avec focus visible et mouvements soumis à la préférence de réduction des animations. Ces comportements sont définis et examinés dans le code, sans nouveau contrôle visuel dans un navigateur.
 - Aucun ajout de dépendance, de photographie ni de JavaScript client. Une copie locale de la page et de sa feuille de style précédentes est conservée dans `.qa/destinations-before-atlas/`.
+## Étape 05 — Firebase et administration — 14 octobre 2026
+
+### Modifications
+
+- Firebase Web 13.0.0 et Admin 14.5.0, initialisation différée et frontières
+  `client-only` / `server-only`. Node.js minimum relevé à 22 pour Admin.
+- Configuration fournie placée dans `.env`, permissions `600`, fichier ignoré
+  et non suivi par Git. `.env.example` documente les variables sans secrets.
+- Connexion `/admin/login`, pages `/admin` et `/admin/settings` protégées côté
+  serveur, interface responsive, navigation future explicitement indisponible.
+- Sessions Firebase de 8 heures : HttpOnly, SameSite Strict, Secure et préfixe
+  `__Host-` en production, CSRF, contrôle des révocations et du rôle courant.
+- Script sécurisé d’attribution / retrait du rôle et révocation globale.
+- Règles Firestore et Storage, configuration des émulateurs, proposition de
+  schéma et accès serveur préparatoires sans migration des données publiques.
+
+### Vérifications réellement effectuées
+
+- `npm run typecheck` : réussi.
+- `npm run lint` : réussi, aucun avertissement.
+- `npm test` : 27 tests réussis, dont les nouvelles politiques d’autorisation,
+  de fraîcheur d’authentification et de contrôle d’origine.
+- `npm run test:firebase-rules` : 3 groupes réussis sur les émulateurs Firestore
+  et Storage, JDK 21. Les sept collections, documents publics, brouillons,
+  documents privés, champs de publication absents, requêtes filtrées, écritures,
+  sous-collections et collections inconnues ont été contrôlés pour visiteurs,
+  comptes ordinaires et administrateurs. Storage est fermé à tous.
+- `npm run test:admin-auth` : réussi sur Auth Emulator et Next.js isolé. Script
+  d’attribution du rôle, connexion, création de cookie, garde des deux pages,
+  absence de contenu administratif pour les visiteurs, refus des comptes ordinaires,
+  token forgé, CSRF invalide, origine étrangère, JSON invalide, corps trop volumineux,
+  retrait immédiat du rôle, révocation et déconnexion locale vérifiés.
+- Le même test redémarre sans configuration : formulaire désactivé, création
+  de session en erreur 503 et accueil / destinations / Tokyo toujours HTTP 200.
+- Garde de configuration contrôlée séparément : émulateurs refusés en production,
+  refus d’un projet réel en mode émulation, hôtes non activés et secrets absents.
+- `npm run build` : compilation de production réussie après les derniers
+  ajustements ; les routes d’administration sont dynamiques, 64 pages générées.
+- `npm run test:routes -- http://127.0.0.1:3106` sur un build de production :
+  32 pages, 32 variantes d’onglets, 1 270 liens internes, 23 variantes d’images,
+  43 redirections 308 et 13 pages 404 contrôlés.
+- `npm run test:contrast` : 26 contrastes sémantiques existants contrôlés,
+  minimum texte 4,68:1 ; contours et focus 3,17:1. Ce script concerne les
+  tokens publics ; il ne constitue pas un audit complet des couleurs admin.
+- Cookie CSRF du serveur de production : `Secure`, `HttpOnly`, `SameSite=Strict`,
+  préfixe `__Host-` constatés. Aucun PEM privé, email de compte de service ou
+  variable de clé Admin dans les fichiers JavaScript des bundles navigateur.
+- Contrôle du PEM fourni : clé RSA correctement analysée localement, sans
+  afficher son contenu. Cela ne vérifie pas sa validité auprès de Google Cloud.
+- Revue réelle dans le navigateur avec un utilisateur d’émulation : connexion,
+  erreur de mot de passe, soumission par Entrée, déconnexion et message de succès,
+  ouverture du menu mobile, fermeture par Échap avec restitution du focus et
+  navigation vers Paramètres. Tableau de bord revu sur ordinateur, tablette
+  768 px et mobiles 390 / 320 px ; aucun débordement horizontal sur ces largeurs.
+  Aperçu local conservé dans `.qa/admin-dashboard-step05.jpg` (ignoré par Git).
+
+Les serveurs et utilisateurs temporaires de vérification ont été arrêtés et
+nettoyés. Le serveur de développement déjà ouvert sur le projet a été conservé.
+
+### Audit des dépendances et limites
+
+L’audit initial signalait une dépendance gRPC ancienne embarquée par le SDK
+Firestore Web pour Node.js. Un override ciblé vers `@grpc/grpc-js ^1.14.6`
+la remplace ; les tests d’émulateurs ont été rejoués après ce changement.
+`npm audit --omit=dev` : **0 vulnérabilité**. L’audit complet conserve
+**15 alertes dans l’outillage de développement** (11 élevées, 4 modérées),
+notamment dans les dépendances transitives du CLI Firebase et d’ESLint.
+Les rétrogradations majeures proposées par `npm audit fix --force` n’ont pas
+été appliquées. Les rapports sont conservés localement dans `.qa/`.
+
+Aucune connexion réelle d’un utilisateur de `nagi-travelapp`, écriture de donnée,
+création d’administrateur de production ou publication de règles n’a été faite.
+Activer Email/Password, créer le premier compte, attribuer son rôle, vérifier les
+domaines autorisés et déployer les règles restent des actions Firebase manuelles.
+La clé privée communiquée doit être remplacée avant déploiement. Le guide complet
+est dans [docs/FIREBASE.md](docs/FIREBASE.md), le schéma dans
+[docs/FIRESTORE-SCHEMA.md](docs/FIRESTORE-SCHEMA.md).
+
+## Étape 06 — Administration géographique — 14 octobre 2026
+
+### Fonctionnalités livrées
+
+- Pays, villes et quartiers administrables avec formulaires Zod, choix des images
+  existantes, recherche, tri, statuts, visibilité et archives réversibles.
+- Parcours hiérarchique, fil d’Ariane et parents présélectionnés ; quartiers
+  facultatifs. Les villes conservent leurs quatre univers avec ou sans quartiers.
+- Vérification serveur des sessions et rôles avant chaque mutation, CSRF, corps
+  de requête borné, parents valides et immuables, contrôle des révisions.
+- Réservations de slugs transactionnelles par périmètre. Concurrence des créations
+  gérée ; URL protégées après première publication, même après dépublication.
+- Source publique exclusive `static` ou `firestore`, rendu serveur dynamique,
+  projection publique et visibilité héritée ; invalidation des chemins concernés.
+- Import des dix destinations historiques, simulation, garde de projet et double
+  paramètre volontaire pour appliquer. Les documents existants restent intacts.
+- Règles refusant toute écriture géographique par le SDK client, même administrateur,
+  et vérifiant les parents pour les lectures publiques. Storage reste fermé.
+
+### Vérifications réellement effectuées
+
+- `npm run typecheck` et `npm run lint` : réussis, sans avertissement ESLint.
+- `npm test` : **32 tests réussis**. Cinq nouveaux groupes couvrent la fidélité de
+  l’import, la visibilité héritée, les villes sans quartiers, la projection publique,
+  les périmètres de slugs et la validation des entrées.
+- `npm run test:geography` : réussi sur `demo-nagi`, Auth + Firestore et Next.js
+  temporaire sur `3107`. Les six scénarios demandés ont été vérifiés par requêtes
+  réelles : pays en brouillon puis publié, ville ajoutée au Japon et ses quatre
+  onglets sans quartier, quartier ajouté à Tokyo, modifications visibles, masquage
+  des descendants et des fiches associées après dépublication du pays, refus des
+  requêtes sans session / sans rôle / d’origine étrangère et de la suppression.
+- Ce test vérifie également les conflits simultanés de slugs (**une création réussit,
+  l’autre reçoit 409**), les éditions concurrentes, les URLs gelées, les références
+  d’images non autorisées, parents inexistants, déplacements refusés, archivage et
+  restauration, réservations conservées, catalogue Firestore vide sans repli local,
+  séparation du mode statique, simulation sans écriture, confirmation obligatoire,
+  mauvais projet refusé, IDs préservés et réimport conservant les modifications.
+- `npm run test:firebase-rules` : **4 groupes réussis**. Publications privées et
+  brouillons, requêtes filtrées, écritures, réservations, sous-collections, héritage
+  du pays et Storage vérifiés pour visiteurs, comptes ordinaires et administrateurs.
+- `npm run test:admin-auth` : réussi après raccordement de l’émulateur Firestore.
+  Connexion, refus non-admin, CSRF, cookies, garde des routes, révocation, retrait
+  du rôle, déconnexion et absence de configuration restent contrôlés.
+- `npm run build` : réussi avec Turbopack. Les routes de géographie, d’administration
+  et les fiches liées sont maintenant dynamiques pour intégrer les modifications.
+- `npm run test:routes -- http://127.0.0.1:3106` sur le build de production :
+  **32 pages, 36 variantes d’onglets, 1 397 liens internes, 23 variantes d’images,
+  36 redirections 308 et 13 pages 404** contrôlés. Les anciens tests imposant
+  l’absence d’univers dans une ville avec quartiers ont été adaptés à la demande
+  de cette étape ; ces villes possèdent désormais leurs propres onglets.
+- `npm run test:contrast` : 26 contrastes des tokens existants vérifiés ; minimum
+  texte 4,68:1 et contours / focus 3,17:1. Pas d’audit automatique exhaustif des
+  nouvelles surfaces d’administration.
+- Audit des dépendances de production : **0 vulnérabilité**. Zod est explicitement
+  une dépendance de production. Les limites de l’outillage de développement de
+  l’étape 05 restent consignées dans ce document.
+- Contrôle des bundles JavaScript : aucun PEM privé, email de compte de service ou
+  variable de clé privée Admin dans les ressources navigateur.
+
+### Revue dans le navigateur
+
+Parcours effectué sur un serveur isolé avec un compte d’émulation :
+
+- Création complète d’un pays depuis un affichage 390 px, validation des champs
+  vides avec focus sur le premier champ, proposition automatique du slug, sélection
+  d’une image et sauvegarde avec confirmation.
+- Création d’une ville, puis d’un quartier sans ressaisir le parent ; noms et
+  contextes hiérarchiques conservés après chaque sauvegarde.
+- Publication des enfants sous un pays encore en brouillon : indication explicite
+  du masquage. Publication du pays puis consultation réelle des nouvelles pages
+  publiques avec quartier et quatre onglets.
+- Dialogue d’archivage indiquant les deux destinations enfants, fermeture par
+  Échap et restitution du focus ; dialogue recentré après revue mobile.
+- Listes et navigation contrôlées sur ordinateur, tablette 768 px, mobiles 390 et
+  320 px. Aucun débordement horizontal sur ces cas. Menu mobile ouvert et fermé
+  au clavier. Ce contrôle ne constitue pas une certification d’accessibilité complète.
+
+Aperçus locaux ignorés par Git : `.qa/geography-japan-desktop.jpg` et
+`.qa/geography-archive-mobile.jpg`. Les données de revue sont restées dans
+l’émulateur. Les serveurs, comptes et copies temporaires de test ont été nettoyés ;
+le serveur de développement déjà ouvert sur le projet a été conservé.
+
+### Mise en service du projet réel
+
+Aucune écriture, importation, modification de rôle ou publication de règles n’a
+été effectuée sur `nagi-travelapp`. Une connexion utilisateur réelle Firebase n’est
+pas revendiquée. `.env` conserve **`NAGI_GEOGRAPHY_SOURCE=static`** afin de maintenir
+le carnet public existant jusqu’à validation explicite de la migration.
+
+Pour activer le catalogue administré : vérifier la base Firestore (default), les
+accès administrateurs et l’origine de session, simuler puis appliquer l’import
+volontairement, contrôler les dix destinations, déployer les nouvelles règles,
+puis définir `NAGI_GEOGRAPHY_SOURCE=firestore` et redémarrer le serveur. La procédure
+complète et les conséquences d’un retour au mode statique sont documentées dans
+[docs/GEOGRAPHY.md](docs/GEOGRAPHY.md).
+
+## Correctif — lecture des destinations Firestore historiques
+
+Le message d’indisponibilité sur Pays et Villes & Quartiers provenait du format
+des trois documents déjà présents, et non d’un refus de connexion Firebase :
+absence de `kind` et des métadonnées du nouveau modèle, images sous forme de
+chemins, champs pays vides sur les enfants et pays en brouillon sans présentation.
+
+- Lecture du projet réel `nagi-travelapp` avant et après le correctif : le lecteur
+  commun à l’administration retourne désormais Japon, Tokyo et Shinjuku. Le Japon
+  reste en brouillon et ses enfants publiés restent masqués par héritage.
+- Aucune écriture sur le projet réel, aucune modification de rôle, de règles ou
+  de variable d’environnement ; adaptation des anciens documents en mémoire.
+- `npm test` : **35 tests réussis**, dont la lecture historique sans mutation,
+  la conservation des relations et images, le brouillon incomplet et le refus
+  des documents invalides ou versions inconnues.
+- `npm run test:geography` : réussi sur les émulateurs. Régression reproduite avec
+  l’ancien format sur les pages Pays, Villes, détail de ville et édition de pays ;
+  affichage sans écriture, édition au format courant, archivage, héritage de
+  visibilité et refus de modifier une adresse publiée vérifiés.
+- `npm run typecheck`, `npm run lint` et `npm run build` : réussis.
+- Les formats non reconnus indiquent maintenant le document concerné dans
+  l’administration. Aucun message brut du SDK Firebase n’est renvoyé au client.

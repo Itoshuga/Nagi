@@ -1,9 +1,11 @@
+import { getPublicGeography } from "@/lib/geography/public";
 import { DestinationTabs } from "@/components/discoveries/destination-tabs";
-import { getDiscoveriesForDestination, toDiscoveryCard } from "@/lib/discoveries";
+import { getDiscoveriesForDestination, toDiscoveryCard, visibleDiscoveryCatalogue } from "@/lib/discoveries";
 import type { LocalDestination } from "@/types/discoveries";
 
-export function PlaceUniverses({ name, scope }: { name: string; scope: LocalDestination }) {
-  const cards = getDiscoveriesForDestination(scope).map((item) => toDiscoveryCard(item, scope));
+export async function PlaceUniverses({ name, scope }: { name: string; scope: LocalDestination }) {
+  const geography = await getPublicGeography();
+  const cards = getDiscoveriesForDestination(scope, undefined, visibleDiscoveryCatalogue(geography), geography).map((item) => toDiscoveryCard(item, scope, geography));
   return (
     <section className="destination-exploration section-shell" id="univers" aria-labelledby="universes-title">
       <div className="section-heading">

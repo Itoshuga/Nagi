@@ -10,7 +10,7 @@ export function destinationTabPath(path: string, universe: UniverseSlug): string
 }
 
 export function destinationExplorationPath(destination: { path: string; hasDistricts: boolean }, universe: UniverseSlug): string {
-  return destination.hasDistricts ? `${destination.path}#quartiers` : destinationTabPath(destination.path, universe);
+  return destinationTabPath(destination.path, universe);
 }
 
 export function changedTabPath(path: string, search: string, universe: UniverseSlug, hash: string): string {

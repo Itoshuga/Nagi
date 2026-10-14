@@ -47,7 +47,7 @@ test("relire les entrées précédente et suivante restitue leur onglet, sans é
   assert.equal(read(2), "adresses");
 });
 
-test("les liens d’exploration et de retour mènent aux quartiers pour une ville subdivisée", () => {
+test("les villes conservent leurs univers, avec ou sans quartiers", () => {
   const cases = [
     { kind: "city", id: "city-jp-tokyo", path: "/destinations/japon/tokyo", hasDistricts: true },
     { kind: "city", id: "city-jp-kyoto", path: "/destinations/japon/kyoto", hasDistricts: false },
@@ -59,7 +59,7 @@ test("les liens d’exploration et de retour mènent aux quartiers pour une vill
     assert.ok(context);
     assert.equal(context.hasDistricts, destination.hasDistricts);
     for (const universe of universeSlugs) {
-      const expected = destination.hasDistricts ? `${destination.path}#quartiers` : `${destination.path}?onglet=${universe}#univers`;
+      const expected = `${destination.path}?onglet=${universe}#univers`;
       assert.equal(explorerPath(destination, universe), expected);
       assert.equal(destinationExplorationPath(context, universe), expected);
     }

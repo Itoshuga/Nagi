@@ -1,13 +1,15 @@
 "use client";
 
+import type { City } from "@/types/destinations";
+
 import Image from "next/image";
 import { ArrowDown } from "lucide-react";
 import { useRef, useState } from "react";
-import { copy, destinations } from "@/data/fr";
+import { copy } from "@/data/fr";
 import { formatIndex } from "@/lib/format";
 import { TextLink } from "@/components/text-link";
 
-export function Hero() {
+export function Hero({ destinations, countryName }: { destinations: readonly City[]; countryName: string }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [visited, setVisited] = useState<readonly number[]>([0]);
   const loadedImages = useRef(new Set<number>());
@@ -26,7 +28,7 @@ export function Hero() {
         <span className="vertical-note">L’art de regarder ailleurs</span>
         <div className="destination-index">
           <p className="eyebrow">Carnet de voyage</p>
-          <p className="country-label">Le Japon</p>
+          <p className="country-label">{countryName || "Le carnet"}</p>
           <div className="destination-selector" role="group" aria-label="Destination mise en avant">
             {destinations.map((destination, index) => (
               <button key={destination.id} onClick={() => selectDestination(index)} aria-pressed={selectedIndex === index}>
@@ -42,6 +44,7 @@ export function Hero() {
 
       <figure className="hero-figure">
         <div className="hero-image-stack" id="destination-photograph">
+          {!selected && <Image src="/images/destination-placeholder.svg" alt="Illustration Nagi — de nouveaux horizons se préparent" fill className="hero-photo is-selected" sizes="50vw" />}
           {destinations.map((destination, index) => visited.includes(index) && (
             <Image
               key={destination.id}
@@ -63,7 +66,7 @@ export function Hero() {
             />
           ))}
         </div>
-        <figcaption><span>{selected.caption}</span><span>{formatIndex(selectedIndex)} / 03</span></figcaption>
+        <figcaption><span>{selected?.caption ?? "De nouveaux horizons se préparent"}</span>{selected && <span>{formatIndex(selectedIndex)} / {String(destinations.length).padStart(2, "0")}</span>}</figcaption>
       </figure>
 
       <div className="hero-editorial">
@@ -84,10 +87,10 @@ export function Hero() {
             </button>
           ))}
         </div>
-        <p className="gallery-caption" aria-live="polite" aria-atomic="true"><span>{formatIndex(selectedIndex)}</span>{selected.name} · {selected.mood}</p>
+        <p className="gallery-caption" aria-live="polite" aria-atomic="true"><span>{formatIndex(selectedIndex)}</span>{selected ? `${selected.name} · ${selected.mood}` : "Le carnet s’ouvre bientôt"}</p>
         <TextLink href="/destinations" className="hero-link">{copy.hero.cta}</TextLink>
       </div>
-      <span className="hero-edition">Édition 001 — Japon</span>
+      <span className="hero-edition">Édition 001{countryName ? ` — ${countryName}` : ""}</span>
     </section>
   );
 }

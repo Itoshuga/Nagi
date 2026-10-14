@@ -9,7 +9,7 @@ L’audit a porté sur les composants, les feuilles de styles, l’arborescence 
 | Accueil | Descriptions à 11–12 px, légendes à 8–9 px, vignettes de 30–35 px sur petit écran | Corps 16 px, métadonnées 13 px, vignettes mobiles de 56 × 72 px ; photo portrait et compositions décalées conservées |
 | Navigation | Accès aux destinations caché sur mobile, menu presque exclusivement éditorial | Lien Destinations toujours visible, menu sans-serif, lien Accueil explicite, zones tactiles de 44 px |
 | Pays et destinations | Introductions petites, grandes variations de taille, fil d’Ariane à 9–10 px | Titres éditoriaux 40–64 px, paragraphes 16 px, fil d’Ariane 13 px avec liens de 44 px de haut |
-| Villes | Clarifier le niveau géographique de la sélection | Villes subdivisées : introduction puis choix des quartiers ; quatre univers dans les quartiers et les villes sans subdivision |
+| Villes | Clarifier le niveau géographique de la sélection | Introduction, quartiers facultatifs et quatre univers disponibles dans toutes les villes et tous les quartiers |
 | Villes et quartiers | Onglets fins, état actif peu marqué, libellés à 11–12 px | Surface légère, indicateur de 3 px, cibles de 52 px, nombres de fiches et défilement horizontal local |
 | Collections | Décalage systématique d’une colonne, titres de fiches à 30–44 px, descriptions à 12 px | Grilles régulières, images 3:2, titres sans-serif à 20 px, description à 16 px et invitation « Voir la fiche » |
 | Recherche et filtres | Champs réduits à une ligne, texte à 12 px | Fonds identifiables, contour contrasté, hauteur de 48 px, saisie 16 px, focus groupé et filtre « Filtrer par thème » |

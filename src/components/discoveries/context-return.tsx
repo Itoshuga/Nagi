@@ -13,7 +13,7 @@ interface Props { contexts: readonly { key: string; name: string; path: string; 
 
 function ReturnContent({ contexts, universe, universeName, fallbackId, origin, compact = false }: Props & { origin?: string | null }) {
   const context = contexts.find((item) => item.key === origin) ?? contexts.find((item) => item.key === fallbackId);
-  const label = context ? context.hasDistricts ? `Revenir aux quartiers · ${context.name}` : `Revenir à ${universeName} · ${context.name}` : "Explorer les destinations";
+  const label = context ? `Revenir à ${universeName} · ${context.name}` : "Explorer les destinations";
   return <div className={`reading-return section-shell${compact ? " reading-return-compact" : ""}`}><Link href={context ? destinationExplorationPath(context, universe) : "/destinations"}><ArrowLeft size={17} strokeWidth={1.5} aria-hidden="true" /><span>{label}</span></Link>{!compact && context && <Link href={context.path}>La destination · {context.name}</Link>}</div>;
 }
 

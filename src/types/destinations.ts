@@ -36,3 +36,9 @@ export interface CountryWithCities extends Country {
 export interface CityWithDistricts extends City {
   readonly districts: readonly District[];
 }
+
+export interface PublicGeography {
+  countries: readonly Country[];
+  cities: readonly City[];
+  districts: readonly District[];
+}

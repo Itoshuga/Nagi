@@ -1,5 +1,4 @@
 import type { Universe } from "@/types/content";
-import { cities, countries } from "@/data/geography";
 
 // Les contenus sont regroupés par langue ; aucune bibliothèque i18n n'est
 // nécessaire tant que la page n'existe qu'en français.
@@ -9,13 +8,6 @@ export const navigation = [
   { href: "#esprit", label: "L’esprit Nagi" },
 ] as const;
 
-// Sélection éditoriale de la landing, dérivée du même catalogue que les pages.
-export const destinations = ["kyoto", "tokyo", "fujiyoshida"].flatMap((slug) => {
-  const city = cities.find((entry) => entry.countryId === "country-jp" && entry.slug === slug);
-  if (!city) return [];
-  const country = countries.find((entry) => entry.id === city.countryId);
-  return [{ ...city, region: `${city.region}, ${country?.name ?? ""}` }];
-});
 export const universes: readonly Universe[] = [
   {
     name: "Tourisme",

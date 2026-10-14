@@ -1,13 +1,17 @@
+import { getPublicGeography } from "@/lib/geography/public";
 import Image from "next/image";
 import Link from "next/link";
-import { copy, destinations } from "@/data/fr";
+import { copy } from "@/data/fr";
 import { formatIndex } from "@/lib/format";
-import { cityPath, getCountryBySlug } from "@/lib/destinations";
+import { cityPath } from "@/lib/destinations";
 
-export function Discover() {
-  const orderedDestinations = [destinations[1], destinations[0], destinations[2]];
-  const country = getCountryBySlug("japon");
+export async function Discover() {
+  const geography = await getPublicGeography();
+  const country = geography.countries.find((item) => item.id === "country-jp") ?? geography.countries[0];
   if (!country) return null;
+  const cities = geography.cities.filter((city) => city.countryId === country.id);
+  const preferred = ["city-jp-tokyo", "city-jp-kyoto", "city-jp-fujiyoshida"].flatMap((id) => { const city = cities.find((city) => city.id === id); return city ? [city] : []; });
+  const orderedDestinations = preferred.length ? preferred : cities.slice(0, 3);
 
   return (
     <section className="discover-section section-shell" id="decouvrir" aria-labelledby="discover-title">
@@ -33,7 +37,7 @@ export function Discover() {
           );
         })}
       </div>
-      <div className="section-endnote"><span>Notre première escale</span><span>Le Japon, au-delà de la carte postale.</span></div>
+      <div className="section-endnote"><span>Notre première escale</span><span>{country.name}, au-delà de la carte postale.</span></div>
     </section>
   );
 }

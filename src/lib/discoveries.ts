@@ -1,3 +1,5 @@
+import type { PublicGeography } from "../types/destinations";
+import { staticGeography } from "./destinations";
 import { discoveries } from "../data/discoveries";
 import { universeSlugs, type ActivityDiscovery, type AddressDiscovery, type Discovery, type DiscoveryCardData, type FoodDiscovery, type GeographicReference, type LocalDestination, type UniverseSlug } from "../types/discoveries";
 import { belongsToDestination, resolveGeography } from "./discovery-geography";
@@ -22,10 +24,10 @@ export function getDiscoveryGeography(item: Discovery): readonly GeographicRefer
   return item.universe === "gastronomie" ? item.destinations : [item.location];
 }
 
-export function getDiscoveriesForDestination(scope: GeographicReference, universe?: UniverseSlug, catalogue: readonly Discovery[] = discoveries): Discovery[] {
-  if (!resolveGeography(scope)) return [];
+export function getDiscoveriesForDestination(scope: GeographicReference, universe?: UniverseSlug, catalogue: readonly Discovery[] = discoveries, geography: PublicGeography = staticGeography): Discovery[] {
+  if (!resolveGeography(scope, geography)) return [];
   // filter, plutôt que flatMap des associations : une fiche ne ressort qu’une fois.
-  return getPublishedDiscoveries(catalogue).filter((item) => (!universe || item.universe === universe) && getDiscoveryGeography(item).some((reference) => belongsToDestination(reference, scope)));
+  return getPublishedDiscoveries(catalogue).filter((item) => (!universe || item.universe === universe) && getDiscoveryGeography(item).some((reference) => belongsToDestination(reference, scope, geography)));
 }
 
 export function getAddressesForSpecialty(specialtyId: string, catalogue: readonly Discovery[] = discoveries): AddressDiscovery[] {
@@ -70,14 +72,18 @@ export function discoveryType(item: Discovery): string {
   }
 }
 
-export function toDiscoveryCard(item: Discovery, context?: LocalDestination): DiscoveryCardData {
+export function toDiscoveryCard(item: Discovery, context?: LocalDestination, geography: PublicGeography = staticGeography): DiscoveryCardData {
   const practicalDetails = item.universe === "activites" && item.duration ? [{ label: "Durée indicative", value: item.duration }] : item.universe === "adresses" && item.budget ? [{ label: "Budget indicatif", value: item.budget }] : undefined;
   return {
     id: item.id, universe: item.universe, title: item.title, summary: item.summary, photograph: item.photograph, tags: item.tags, typeLabel: discoveryType(item),
     imageNote: item.universe === "adresses" && item.photographCaption ? "Vue du quartier · photographie d’ambiance" : undefined,
     href: discoveryPath(item) + (context ? `?depuis=${encodeURIComponent(context.id)}&univers=${item.universe}` : ""),
-    locationLabel: item.universe === "gastronomie" ? item.origins : resolveGeography(item.location)?.label ?? "",
+    locationLabel: item.universe === "gastronomie" ? item.origins : resolveGeography(item.location, geography)?.label ?? "",
     originalName: item.universe === "gastronomie" ? item.originalName : undefined,
     practicalDetails,
   };
+}
+
+export function visibleDiscoveryCatalogue(geography: PublicGeography, catalogue: readonly Discovery[] = discoveries) {
+  return getPublishedDiscoveries(catalogue).filter((item) => getDiscoveryGeography(item).some((reference) => resolveGeography(reference, geography)));
 }

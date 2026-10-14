@@ -14,7 +14,7 @@ const geographicRoutes = [
   ...["shinjuku", "ueno", "asakusa", "shibuya", "ginza"].map((slug) => `/destinations/japon/tokyo/${slug}`),
 ];
 const districtCityRoutes = ["/destinations/japon/tokyo"];
-const tabRoutes = geographicRoutes.filter((route) => !districtCityRoutes.includes(route));
+const tabRoutes = geographicRoutes;
 const decodeHref = (value) => value.replaceAll("&amp;", "&");
 const pageKey = (url) => tabRoutes.includes(url.pathname) && universes.includes(url.searchParams.get("onglet")) ? `${url.pathname}?onglet=${url.searchParams.get("onglet")}` : url.pathname;
 const selectedTab = (html) => [...html.matchAll(/<a\b[^>]*role="tab"[^>]*>/g)].find(([tag]) => tag.includes('aria-selected="true"'))?.[0].match(/id="tab-([^"]+)"/)?.[1];
@@ -51,7 +51,7 @@ while (queue.length > 0) {
   if (districtCityRoutes.includes(pathname)) {
     assert.match(html, /id="quartiers"/, `${route} : liste des quartiers`);
     assert.match(html, /href="#quartiers"/, `${route} : accès principal aux quartiers`);
-    assert.doesNotMatch(html, /role="tab(?:list|panel)?"|id="univers"|href="#univers"|class="discovery-grid"/, `${route} : aucun catalogue à l’échelle de la ville`);
+    assert.match(html, /id="univers"/, `${route} : les univers restent présents au niveau de la ville`);
   }
   if (tabRoutes.includes(pathname)) {
     const expected = new URL(route, origin).searchParams.get("onglet") ?? "tourisme";
@@ -71,11 +71,6 @@ while (queue.length > 0) {
     const url = new URL(decodeHref(rawHref), new URL(route, origin));
     if (url.origin !== origin.origin) continue;
     assert.ok(!url.pathname.includes("/explorer/"), `${route} : aucun lien interne vers une ancienne catégorie`);
-    if (districtCityRoutes.includes(url.pathname)) {
-      assert.equal(url.searchParams.has("onglet"), false, `${route} : aucun lien vers un onglet supprimé`);
-      assert.notEqual(url.hash, "#univers", `${route} : aucune ancre d’univers supprimée`);
-    }
-    if (districtCityRoutes.includes(pathname)) assert.ok(!url.pathname.startsWith("/decouvertes/"), `${route} : découvrir les contenus depuis un quartier`);
     const target = pageKey(url);
     links.push({ route, target, hash: url.hash });
     if (!queued.has(target)) { queued.add(target); queue.push(target); }
@@ -85,7 +80,7 @@ while (queue.length > 0) {
 }
 
 assert.equal(titles.size, 32, "Accueil + 11 destinations + 20 fiches, sans page de catégorie distincte");
-assert.equal(pages.size, 32 + tabRoutes.length * universes.length, "32 pages et 32 variantes d’onglets sur les 8 destinations sans subdivision");
+assert.equal(pages.size, 32 + tabRoutes.length * universes.length, "32 pages et 36 variantes d’onglets sur les 9 destinations locales");
 for (const { route, target, hash } of links) {
   assert.ok(pages.has(target), `${route} → ${target}`);
   if (hash) assert.ok(pages.get(target).includes(`id="${decodeURIComponent(hash.slice(1))}"`), `${route} → ${hash}`);
@@ -110,7 +105,7 @@ assert.ok(hasLink(pages.get("/destinations/japon/fujiyoshida?onglet=tourisme"), 
 assert.ok(!hasLink(pages.get("/destinations/japon/tokyo/asakusa?onglet=adresses"), "/decouvertes/adresses/maisen-aoyama"));
 assert.equal(countLink(pages.get("/destinations/japon/tokyo/shinjuku?onglet=gastronomie"), "/decouvertes/gastronomie/tonkatsu"), 1);
 assert.match(pages.get("/decouvertes/gastronomie/tonkatsu"), /href="\/destinations\/japon\/tokyo\/shinjuku\?onglet=gastronomie#univers"/);
-assert.match(pages.get("/decouvertes/adresses/maisen-aoyama"), /href="\/destinations\/japon\/tokyo#quartiers"/);
+assert.match(pages.get("/decouvertes/adresses/maisen-aoyama"), /href="\/destinations\/japon\/tokyo\?onglet=adresses#univers"/);
 for (const address of ["ginza-bairin", "maisen-aoyama"]) {
   assert.ok(hasLink(pages.get("/decouvertes/gastronomie/tonkatsu"), `/decouvertes/adresses/${address}`));
   assert.ok(hasLink(pages.get(`/decouvertes/adresses/${address}`), "/decouvertes/gastronomie/tonkatsu"));
@@ -120,7 +115,7 @@ assert.ok(hasLink(pages.get("/decouvertes/activites/carnet-croquis-ueno"), "/dec
 assert.ok(hasLink(pages.get("/decouvertes/tourisme/parc-ueno"), "/decouvertes/activites/carnet-croquis-ueno"));
 assert.match(pages.get("/decouvertes/adresses/maisen-aoyama"), /Photographie à venir/);
 assert.doesNotMatch(pages.get("/decouvertes/gastronomie/taiyaki"), /class="discovery-sheet-related"/, "Une fiche sans relation ne montre pas de rubrique vide.");
-assert.doesNotMatch(pages.get("/destinations/japon/tokyo"), /id="catalogue-query"/);
+assert.match(pages.get("/destinations/japon/tokyo"), /id="catalogue-query"/, "La ville garde accès à ses découvertes, même avec des quartiers.");
 assert.doesNotMatch(pages.get("/destinations/japon/fujiyoshida?onglet=tourisme"), /id="catalogue-query"/);
 
 for (const query of ["?onglet=inconnu", "?onglet=", "?onglet=gastronomie&onglet=adresses"]) {
@@ -129,16 +124,10 @@ for (const query of ["?onglet=inconnu", "?onglet=", "?onglet=gastronomie&onglet=
   assert.equal(selectedTab(await response.text()), "tourisme");
 }
 let redirects = 0;
-for (const route of districtCityRoutes) for (const query of [...universes.map((universe) => `?onglet=${universe}`), "?onglet=inconnu", "?onglet=", "?onglet=gastronomie&onglet=adresses"]) {
-  const response = await fetch(new URL(`${route}${query}`, origin), { redirect: "manual" });
-  assert.equal(response.status, 308, `${route}${query}`);
-  assert.equal(response.headers.get("location"), `${route}#quartiers`);
-  redirects++;
-}
 for (const route of geographicRoutes) for (const universe of universes) {
   const response = await fetch(new URL(`${route}/explorer/${universe}`, origin), { redirect: "manual" });
   assert.equal(response.status, 308, `${route}/explorer/${universe}`);
-  assert.equal(response.headers.get("location"), districtCityRoutes.includes(route) ? `${route}#quartiers` : `${route}?onglet=${universe}#univers`);
+  assert.equal(response.headers.get("location"), `${route}?onglet=${universe}#univers`);
   redirects++;
 }
 

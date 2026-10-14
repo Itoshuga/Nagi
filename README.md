@@ -4,7 +4,7 @@ Nagi est un carnet de découverte culturelle, entièrement en français. La land
 
 ## Lancer le projet
 
-Prérequis : Node.js **20.9 minimum**, de préférence une version LTS récente (développement vérifié sous Node.js 24), et npm.
+Prérequis : Node.js **22 minimum**, de préférence Node.js 24 LTS, et npm.
 
 ```bash
 npm ci
@@ -109,7 +109,7 @@ L’accueil conserve ses photographies asymétriques, son hero d’au moins une 
 
 `src/app/tokens.css` centralise les couleurs sémantiques, l’échelle de texte, les espacements, les rayons, les transitions et les largeurs. `.section-shell`, `.section-heading`, `.button` avec les variantes `button-primary`, `button-secondary`, `button-quiet`, et le composant `TextLink` forment les primitives partagées. Les surfaces fonctionnelles restent réservées aux filtres, onglets, états vides et repères pratiques.
 
-Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque quartier et dans les villes sans subdivision. Les fiches détaillées sont volontairement courtes : informations à gauche, une photographie à droite, sans galerie, long récit, recommandations ni pied de page en dessous. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes longs restent disponibles dans les données du catalogue.
+Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque ville et quartier, indépendamment des subdivisions. Les fiches détaillées sont volontairement courtes : informations à gauche, une photographie à droite, sans galerie, long récit, recommandations ni pied de page en dessous. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes longs restent disponibles dans les données du catalogue.
 
 La page `/destinations` adopte une composition d’atlas : une grande photographie ouvre le carnet du pays, et une liste de villes illustrées permet un accès direct à chaque escale. Tokyo annonce ses cinq quartiers. Les villes passent sous la photographie sur tablette, puis sur une seule colonne sur mobile. La page est rendue sur le serveur, sans interaction JavaScript supplémentaire ; les pays, villes et nombres de quartiers proviennent du catalogue géographique.
 
@@ -131,7 +131,7 @@ Les trois collections de `src/data/geography.ts` sont normalisées. Chaque ville
 
 `getCountryBySlug()` renvoie un `CountryWithCities`. `getCityBySlug(countryId, slug)` renvoie un `CityWithDistricts`, dont la liste peut être vide. `getDistrictBySlug(cityId, slug)` recherche exclusivement sous sa ville parente. Les fonctions `getCitiesByCountry()` et `getDistrictsByCity()` permettent aussi de consulter ces relations séparément. Les pages passent par `requireCountry`, `requireCity` et `requireDistrict` : chaque segment est validé, puis `notFound()` est appelé si la chaîne est incohérente.
 
-Les composants de présentation reçoivent des données typées ; ils ne connaissent aucune base de données. Une future intégration Firestore pourra remplacer la couche de lecture de `src/lib/destinations.ts`, rendre ses appels asynchrones et adapter la stratégie de rendu, sans réécrire les compositions visuelles. Aucun SDK ni service distant n’est installé.
+Les composants de présentation reçoivent des données typées ; ils ne connaissent aucune base de données. La lecture serveur `src/lib/geography/public.ts` sélectionne désormais les données locales ou Firestore ; les composants reçoivent toujours des données typées. Voir la procédure de bascule de l’étape 06.
 
 Les univers d’une ville sont affichés indépendamment de ses quartiers. Tokyo présente ses quartiers puis quatre onglets de contenu ; Fujiyoshida passe directement aux onglets. Les pages Quartier utilisent le même composant, avec leurs seuls contenus associés.
 
@@ -150,15 +150,15 @@ Exemples de parcours :
 - `/destinations/japon/fujiyoshida?onglet=tourisme` → Honchō-dōri, sans passer par un quartier.
 - `/destinations/japon/fujiyoshida?onglet=adresses` → état vide avec les trois autres onglets toujours accessibles.
 
-Les villes ayant des quartiers, comme Tokyo, présentent uniquement le choix des quartiers après leur introduction. Les villes sans quartier conservent leur catalogue. Une page de quartier contient seulement les associations explicites à ce quartier. La couche de lecture conserve l’agrégation des contenus par ville, sans l’afficher sur les villes subdivisées. Les établissements portent les identifiants des spécialités qu’ils proposent ; les activités portent l’identifiant de leur lieu éventuel. Les relations inverses sont calculées.
+Les villes ayant des quartiers, comme Tokyo, présentent leurs quartiers et conservent leur catalogue de découvertes. Les villes sans quartier affichent directement ce catalogue. Une page de quartier contient seulement les associations explicites à ce quartier. La couche de lecture agrège les contenus directs et ceux des quartiers au niveau de la ville. Les établissements portent les identifiants des spécialités qu’ils proposent ; les activités portent l’identifiant de leur lieu éventuel. Les relations inverses sont calculées.
 
-Les quatre onglets sont sur les pages Quartier et les pages Ville sans subdivision. `?onglet=gastronomie` sélectionne Gastronomie ; une valeur absente, invalide ou répétée sélectionne Tourisme. Un changement utilise `history.pushState` et `useSearchParams`, sans rechargement ni nouvelle page. Précédent/Suivant relisent l’URL. Les flèches gauche/droite, Début/Fin et Entrée/Espace sont pris en charge ; les onglets peuvent défiler horizontalement sur petit écran. Le contenu des panneaux inactifs n’est pas monté, et leurs images ne sont donc pas chargées.
+Les quatre onglets sont sur toutes les pages Ville et Quartier. `?onglet=gastronomie` sélectionne Gastronomie ; une valeur absente, invalide ou répétée sélectionne Tourisme. Un changement utilise `history.pushState` et `useSearchParams`, sans rechargement ni nouvelle page. Précédent/Suivant relisent l’URL. Les flèches gauche/droite, Début/Fin et Entrée/Espace sont pris en charge ; les onglets peuvent défiler horizontalement sur petit écran. Le contenu des panneaux inactifs n’est pas monté, et leurs images ne sont donc pas chargées.
 
-Les 36 anciens chemins `/explorer/[universe]` renvoient un statut 308 vers la destination avec `?onglet=…#univers`, ou vers `#quartiers` pour une ville subdivisée. Les anciennes URL `?onglet=…` de ces villes rejoignent également la liste des quartiers. Les liens du site utilisent directement la bonne destination. Les paramètres ne modifient pas la canonique de la ville ou du quartier.
+Les 36 anciens chemins `/explorer/[universe]` renvoient un statut 308 vers la destination avec `?onglet=…#univers`, y compris pour les villes avec quartiers. Les liens du site utilisent directement la bonne destination. Les paramètres ne modifient pas la canonique de la ville ou du quartier.
 
 La recherche apparaît à partir de quatre résultats dans l’onglet, avec un filtre de thème lorsque celui-ci permet de distinguer les contenus. Elle combine les mots saisis, ignore les accents et reste entièrement locale. Les petites sélections restent directement lisibles. Changer d’onglet réinitialise la recherche et le filtre de la sélection.
 
-Les fiches conservent la destination et l’univers d’origine dans les paramètres `depuis` et `univers`, y compris lors des liens entre contenus. Le lien de retour rejoint le bon onglet et l’ancre `#univers`, ou les quartiers si le contexte désigne une ville subdivisée. Sans contexte, une association permettant d’accéder au catalogue est privilégiée : par exemple Shinjuku pour le tonkatsu. Le fil d’Ariane reste présent. Leur URL canonique reste indépendante de ce contexte. Sans JavaScript, les liens canoniques, les liens d’onglets avec rechargement et le retour vers la destination principale restent disponibles.
+Les fiches conservent la destination et l’univers d’origine dans les paramètres `depuis` et `univers`, y compris lors des liens entre contenus. Le lien de retour rejoint le bon onglet et l’ancre `#univers`, y compris dans une ville avec quartiers. Sans contexte, une association permettant d’accéder au catalogue est privilégiée : par exemple Shinjuku pour le tonkatsu. Le fil d’Ariane reste présent. Leur URL canonique reste indépendante de ce contexte. Sans JavaScript, les liens canoniques, les liens d’onglets avec rechargement et le retour vers la destination principale restent disponibles.
 
 ## Direction artistique et interactions
 
@@ -194,3 +194,34 @@ Les métadonnées incluent titre, description, Open Graph et Twitter. Les pages 
 Les résultats de la livraison sont consignés dans [VALIDATION.md](VALIDATION.md).
 
 L’audit npm des dépendances de production ne signale aucune vulnérabilité au 9 octobre 2026. L’audit complet remonte une vulnérabilité transitive `braces` (épuisement de pile sur des motifs profondément imbriqués), propagée dans cinq paquets de la chaîne ESLint. Le registre ne propose pas encore de version corrigée compatible de `braces` ; la rétrogradation majeure suggérée par `npm audit fix --force` n’a pas été appliquée. ESLint 9 est conservé pour respecter les peer dependencies des plugins React. Cette limite concerne l’outillage de développement et devra être réévaluée lors de sa prochaine mise à jour.
+# Administration et Firebase — étape 05
+
+L’espace `/admin` dispose d’une connexion email / mot de passe, d’un rôle Firebase
+`admin` explicite et de sessions serveur protégées. Les pages publiques conservent
+leurs données statiques. Node.js **22 minimum** est désormais nécessaire pour
+Firebase Admin ; Node.js 24 est conseillé.
+
+La configuration locale est dans `.env`, exclu de Git. Consulter
+[la procédure Firebase](docs/FIREBASE.md) pour créer le premier administrateur,
+renseigner les variables, utiliser les émulateurs et déployer les règles, puis
+[le schéma proposé](docs/FIRESTORE-SCHEMA.md) pour les prochaines étapes.
+
+```sh
+npm run admin:role -- UID_EXISTANT grant
+```
+
+## Géographie administrable — étape 06
+
+Les pays, villes et quartiers se gèrent depuis `/admin/countries` et
+`/admin/cities` : création, édition, publication, visibilité héritée et archives
+réversibles. Les écritures sont validées avec Zod et les slugs sont réservés par
+transaction. Les villes conservent leurs quatre univers, avec ou sans quartiers.
+
+Le site reste en mode `NAGI_GEOGRAPHY_SOURCE=static` jusqu’à validation de la
+migration. Le mode `firestore` est disponible sans mélange des deux sources.
+Consulter [le guide complet de l’étape 06](docs/GEOGRAPHY.md) avant la bascule.
+
+```sh
+npm run geography:import -- --project=nagi-travelapp --dry-run
+npm run test:geography
+```
