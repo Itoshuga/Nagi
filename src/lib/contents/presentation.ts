@@ -1,3 +1,4 @@
+import { coverPhotograph } from "../photos/schema";
 import type { PublicGeography } from "../../types/destinations";
 import type { Discovery, GeographicReference } from "../../types/discoveries";
 import { contentCover } from "../../data/content-covers";
@@ -14,8 +15,7 @@ export function toPublicContent(item: ManagedContent, geography: PublicGeography
   const section = (title: string, text: string) => { if (text) sections.push({ title, text }); };
   const fact = (label: string, value: string) => { if (value) facts.push({ label, value }); };
   const photograph = contentCover(item.coverImage);
-  const base = { id: item.id, universe: item.type, slug: item.slug, title: item.title, summary: item.summary, description: item.description.split(/\n\s*\n/).filter(Boolean), photograph: photograph ? { ...photograph, ...item.coverPresentation } : undefined, photographCaption: item.photographCaption,
-    gallery: item.images.flatMap((src, index) => { const photo = contentCover(src); return photo ? [{ ...photo, caption: item.imageCaptions[index] ?? "" }] : []; }),
+  const base = { id: item.id, universe: item.type, slug: item.slug, title: item.title, summary: item.summary, description: item.description.split(/\n\s*\n/).filter(Boolean), photograph: coverPhotograph(item, photograph ? { ...photograph, ...item.coverPresentation } : null) ?? undefined, photographCaption: item.coverPhoto ? "" : item.photographCaption,
     tags: item.tags, status: preview ? "published" as const : item.status, createdAt: item.createdAt, updatedAt: item.updatedAt, verifiedAt: item.verifiedAt || undefined, sources: item.sources, sections, extraFacts: facts };
   const location = (destinations[0] ?? item.destinations[0] ?? { kind: "city", id: "preview-without-location" }) as Exclude<GeographicReference, { kind: "country" }>;
   const linked = relations.filter((edge) => edge.memberKeys.includes(contentKey(item)));

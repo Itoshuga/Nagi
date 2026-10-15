@@ -1,4 +1,5 @@
 "use client";
+import { protectedPhoto } from "@/lib/photos/urls";
 
 import type { City } from "@/types/destinations";
 
@@ -48,7 +49,7 @@ export function Hero({ destinations, countryName }: { destinations: readonly Cit
           {destinations.map((destination, index) => visited.includes(index) && (
             <Image
               key={destination.id}
-              src={destination.photograph.src}
+              unoptimized={protectedPhoto(destination.photograph.src)} src={destination.photograph.src}
               alt={destination.photograph.alt}
               fill
               sizes={destination.slug === "kyoto"
@@ -83,7 +84,7 @@ export function Hero({ destinations, countryName }: { destinations: readonly Cit
               aria-pressed={selectedIndex === index}
               aria-controls="destination-photograph"
             >
-              <Image src={destination.photograph.src} alt="" fill sizes="80px" loading="eager" style={{ objectPosition: destination.photograph.position }} />
+              <Image unoptimized={protectedPhoto(destination.photograph.src)} src={destination.photograph.src} alt="" fill sizes="80px" loading="eager" style={{ objectPosition: destination.photograph.position }} />
             </button>
           ))}
         </div>

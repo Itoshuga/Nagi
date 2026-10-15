@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { coverUploadSchema, legacyPhotosSchema } from "../photos/schema";
 
 export const destinationKinds = ["countries", "cities", "districts"] as const;
 export type DestinationKind = (typeof destinationKinds)[number];
@@ -11,7 +12,7 @@ const base = z.object({
   nativeName: z.string().trim().max(120).default(""), slug,
   summary: z.string().trim().min(1, "Ajoutez un résumé.").max(600, "Limitez le résumé à 600 caractères."),
   description: z.string().trim().min(1, "Ajoutez une présentation.").max(20_000, "Limitez la présentation à 20 000 caractères."),
-  coverImage: z.string().max(250).default(""),
+  coverImage: z.string().max(250).default(""), coverPhoto: coverUploadSchema.optional(),
   status: z.enum(["draft", "published"]), visibility: z.enum(["public", "private"]).default("public"),
   sortOrder: z.number().int("Utilisez un nombre entier.").min(0, "L’ordre doit être positif ou nul.").max(1_000_000, "L’ordre doit être inférieur ou égal à 1 000 000.").default(0),
 });
@@ -33,6 +34,8 @@ const documentBase = base.omit({ coverImage: true }).extend({
   // Un ancien brouillon peut encore attendre sa présentation. L’écriture via
   // destinationInputSchema exige toujours ces textes avant l’enregistrement.
   summary: z.string().trim().max(600), description: z.string().trim().max(20_000),
+  photos: legacyPhotosSchema.optional(),
+  photoAssetIds: z.array(z.uuid()).max(13).default([]),
   id: idSchema, schemaVersion: z.literal(1), locale: z.literal("fr"),
   coverImage: photographSchema.nullable(), editorial: editorialSchema.nullable(),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), publishedAt: z.iso.datetime().nullable(),

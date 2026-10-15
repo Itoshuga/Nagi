@@ -1,3 +1,4 @@
+import { protectedPhoto } from "@/lib/photos/urls";
 import Image from "next/image";
 import { TextLink } from "@/components/text-link";
 import type { Photograph } from "@/types/content";
@@ -30,7 +31,7 @@ export function PlaceHero({ name, eyebrow, mood, introduction, photograph, capti
       </div>
       <figure className="place-hero-figure">
         <div className="place-hero-image">
-          <Image src={photograph.src} alt={photograph.alt} fill loading="eager" fetchPriority="high" sizes="(max-width: 760px) 115vw, 75vw" style={{ objectPosition: photograph.position }} />
+          <Image unoptimized={protectedPhoto(photograph.src)} src={photograph.src} alt={photograph.alt} fill loading="eager" fetchPriority="high" sizes="(max-width: 760px) 115vw, 75vw" style={{ objectPosition: photograph.position }} />
         </div>
         <figcaption><span>{caption}</span><span>Nagi · Carnet de voyage</span></figcaption>
       </figure>

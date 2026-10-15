@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { coverUploadSchema, legacyPhotosSchema } from "../photos/schema";
 import { idSchema } from "../geography/schema";
 import { universeSlugs } from "../../types/discoveries";
 import { normalizeSearch } from "../discovery-filter";
@@ -26,9 +27,10 @@ export const detailSchemas = {
 const base = z.object({
   title: z.string().trim().min(1, "Renseignez un titre.").max(160),
   slug: z.string().min(1, "Renseignez une adresse URL.").max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Utilisez des minuscules, des chiffres et des tirets."),
-  summary: text(600), description: text(20000), coverImage: text(250), images: z.array(z.string().max(250)).max(12).default([]),
+  coverPhoto: coverUploadSchema.optional(),
+  summary: text(600), description: text(20000), coverImage: text(250),
   coverPresentation: z.object({ alt: z.string().min(1).max(400), position: z.string().max(60) }).strict().nullable().default(null),
-  photographCaption: text(600), imageCaptions: z.array(text(600)).max(12).default([]), tags: list,
+  photographCaption: text(600), tags: list,
   status: z.enum(["draft", "published"]), visibility: z.enum(["public", "private"]).default("public"),
   destinations: z.array(referenceSchema).max(30).default([]),
   sources: z.array(z.object({ label: z.string().min(1).max(200), url: url.refine(Boolean, "Renseignez une adresse.") }).strict()).max(20).default([]),
@@ -50,7 +52,7 @@ function validate(item: z.infer<typeof base> & { type: string }, context: z.Refi
 }
 export const contentInputSchema = z.discriminatedUnion("type", variants).superRefine(validate);
 export type ContentInput = z.infer<typeof contentInputSchema>;
-const metadata = { id: idSchema, schemaVersion: z.literal(1), locale: z.literal("fr"), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), publishedAt: z.iso.datetime().nullable(), archivedAt: z.iso.datetime().nullable(), revision: z.number().int().positive(), searchTitle: z.string().max(200), geographyKeys: z.array(z.string().max(150)).max(90), isArchived: z.boolean() };
+const metadata = { images: z.array(z.string().max(250)).max(12).default([]), imageCaptions: z.array(z.string().max(600)).max(12).default([]), photos: legacyPhotosSchema.optional(), photoAssetIds: z.array(z.uuid()).max(13).default([]), id: idSchema, schemaVersion: z.literal(1), locale: z.literal("fr"), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), publishedAt: z.iso.datetime().nullable(), archivedAt: z.iso.datetime().nullable(), revision: z.number().int().positive(), searchTitle: z.string().max(200), geographyKeys: z.array(z.string().max(150)).max(90), isArchived: z.boolean() };
 export const contentDocumentSchema = z.discriminatedUnion("type", [variants[0].extend(metadata), variants[1].extend(metadata), variants[2].extend(metadata), variants[3].extend(metadata)]).superRefine((item, context) => {
   validate(item, context);
   if (item.isArchived !== Boolean(item.archivedAt) || item.archivedAt && item.status !== "draft") context.addIssue({ code: "custom", message: "Archive incohérente." });

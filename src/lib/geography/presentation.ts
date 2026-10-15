@@ -1,9 +1,10 @@
+import { coverPhotograph } from "../photos/schema";
 import type { PublicGeography } from "../../types/destinations";
 import { visibilityReason, type ManagedDestination, type ManagedGeography } from "./schema";
 
 function place(item: ManagedDestination) {
   return { id: item.id, name: item.name, slug: item.slug, description: item.summary, introduction: item.description,
-    mood: item.editorial?.mood ?? "", photograph: item.coverImage ?? { src: "/images/destination-placeholder.svg", alt: `Illustration Nagi — ${item.name} ne possède pas encore de photographie`, position: "50% 50%" } };
+    mood: item.editorial?.mood ?? "", photograph: coverPhotograph(item, item.coverImage) ?? { src: "/images/destination-placeholder.svg", alt: `Illustration Nagi — ${item.name} ne possède pas encore de photographie`, position: "50% 50%" } };
 }
 export function publicGeographyFromDocuments(data: ManagedGeography): PublicGeography {
   return {

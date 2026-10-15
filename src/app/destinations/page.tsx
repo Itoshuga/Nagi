@@ -1,3 +1,4 @@
+import { protectedPhoto } from "@/lib/photos/urls";
 import { getPublicGeography } from "@/lib/geography/public";
 import Image from "next/image";
 import Link from "next/link";
@@ -24,7 +25,7 @@ export default async function DestinationsPage() {
           return (
             <section className="destination-atlas" key={country.id} aria-labelledby={`country-${country.id}`}>
               <Link href={countryPath(country)} className="atlas-country" aria-label={`Explorer le carnet : ${country.name}`}>
-                <Image src={country.photograph.src} alt={country.photograph.alt} fill loading={index === 0 ? "eager" : "lazy"} fetchPriority={index === 0 ? "high" : "auto"} sizes="(max-width: 960px) 92vw, (max-width: 1575px) 50vw, 810px" style={{ objectPosition: country.photograph.position }} />
+                <Image unoptimized={protectedPhoto(country.photograph.src)} src={country.photograph.src} alt={country.photograph.alt} fill loading={index === 0 ? "eager" : "lazy"} fetchPriority={index === 0 ? "high" : "auto"} sizes="(max-width: 960px) 92vw, (max-width: 1575px) 50vw, 810px" style={{ objectPosition: country.photograph.position }} />
                 <div className="atlas-country-copy">
                   <p className="atlas-country-region">{country.region}</p>
                   <h2 id={`country-${country.id}`}>{country.name}</h2>
@@ -42,7 +43,7 @@ export default async function DestinationsPage() {
                     const districtCount = getDistrictsByCity(city.id, geography).length;
                     return <li key={city.id}>
                       <Link href={cityPath(country, city)} className="atlas-city" aria-label={`Découvrir ${city.name}${districtCount > 0 ? ` et ses ${districtCount} quartiers` : ""}`}>
-                        <span className="atlas-city-photo"><Image src={photograph.src} alt="" fill sizes="(max-width: 600px) 72px, 96px" style={{ objectPosition: photograph.position }} /></span>
+                        <span className="atlas-city-photo"><Image unoptimized={protectedPhoto(photograph.src)} src={photograph.src} alt="" fill sizes="(max-width: 600px) 72px, 96px" style={{ objectPosition: photograph.position }} /></span>
                         <span className="atlas-city-copy">
                           <span className="atlas-city-name">{city.name}</span>
                           <span className="atlas-city-mood">{city.mood}</span>

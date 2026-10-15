@@ -1,4 +1,5 @@
 import "server-only";
+import { PhotoError } from "../photos/processing";
 import { z } from "zod";
 import type { NextRequest } from "next/server";
 import { getAdminSession } from "../auth/session";
@@ -20,7 +21,8 @@ async function body(request: NextRequest) {
   try { return JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new ContentError("La demande est invalide."); }
 }
 function failure(error: unknown) {
-  if (error instanceof ContentError) return authJson({ error: error.message, fields: error.fields }, error.status);
+  if (error instanceof PhotoError) return authJson({ error: error.message }, error.status);
+    if (error instanceof ContentError) return authJson({ error: error.message, fields: error.fields }, error.status);
   if (error instanceof z.ZodError) return authJson({ error: "La demande est invalide. Rechargez le formulaire." }, 422);
   return authJson({ error: "Les découvertes sont momentanément indisponibles. Vérifiez la configuration du projet avant de réessayer." }, 503);
 }
@@ -35,7 +37,7 @@ export async function contentMutation(request: NextRequest, id?: string) {
     const result = id && request.method === "POST" ? await (async () => { const input = archiveSchema.parse(payload); return archiveContent(db, id, input.operation === "archive", input.expectedRevision); })() : await (async () => {
       const input = saveSchema.parse(payload);
       if (Boolean(id) !== Boolean(input.expectedRevision)) throw new ContentError("Version de fiche invalide.");
-      return saveContent(db, id ?? null, input.data, input.expectedRevision, input.relations);
+      return saveContent(db, id ?? null, input.data, input.expectedRevision, input.relations, session.user.uid);
     })();
     // La sauvegarde reste réussie même si une invalidation secondaire échoue.
     try { await invalidateContent(result.document, result.previous); } catch { /* Lectures sans cache persistant. */ }

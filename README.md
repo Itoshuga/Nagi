@@ -247,3 +247,11 @@ Consulter [CONTENTS.md](docs/CONTENTS.md) pour le schéma, les limites de recher
 les index, la migration non destructive et les étapes d’activation. La simulation
 réelle signale encore des destinations à rapprocher ou compléter ; aucune
 importation ni activation réelle n’a été effectuée.
+
+## Une photo de couverture par fiche
+
+Un composant commun propose « Upload une photo » dans les sept éditeurs.
+La sélection affiche un aperçu local ; l’image est envoyée dans Firebase Storage
+uniquement lors de l’enregistrement. JPEG, PNG et WebP, 5 Mo maximum par défaut.
+Les couvertures existantes sont conservées. Voir [PHOTOS.md](docs/PHOTOS.md)
+pour la configuration et les tests.

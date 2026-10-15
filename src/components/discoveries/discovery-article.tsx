@@ -91,7 +91,6 @@ export async function DiscoveryArticle({ item: initial, preview }: { item: Disco
       {bookingUrl && bookingUrl !== externalUrl && <p><a href={bookingUrl}>Consulter les modalités de réservation</a></p>}
       {!!item.sources.length && <section><h2>Pour aller plus loin</h2><ul>{item.sources.map((source) => <li key={`${source.label}-${source.url}`}><a href={source.url}>{source.label}</a></li>)}</ul>{item.verifiedAt && <p>Informations vérifiées le {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(item.verifiedAt))}.</p>}</section>}
       </div>
-      {!!item.gallery?.length && <div className="discovery-story-gallery">{item.gallery.map((photo, index) => <figure key={`${photo.src}-${index}`}><DiscoveryImage photograph={photo} title={photo.alt} sizes="(max-width: 760px) 92vw, 40vw" />{photo.caption && <figcaption>{photo.caption}</figcaption>}<PhotoCredit src={photo.src} /></figure>)}</div>}
     </section>
     </>
   );

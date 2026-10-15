@@ -18,7 +18,7 @@ test("les quatre types migrent sans perdre titres, textes, images ou association
     assert.equal(input.description, original.description.join("\n\n")); assert.equal(input.coverImage, original.photograph?.src ?? "");
     assert.deepEqual(input.sources, original.sources);
     assert.deepEqual(input.destinations, original.universe === "gastronomie" ? original.destinations : [original.location]);
-    for (const image of [input.coverImage, ...input.images].filter(Boolean)) assert.ok(contentCovers.some((photo) => photo.src === image));
+    for (const image of [input.coverImage].filter(Boolean)) assert.ok(contentCovers.some((photo) => photo.src === image));
   }
 });
 test("la projection publique conserve les photographies et retire toutes les métadonnées de gestion", () => {

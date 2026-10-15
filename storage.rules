@@ -1,7 +1,8 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // La médiathèque n’est pas encore développée : aucun accès, même admin.
+    // Les sessions serveur autorisent les imports signés et les lectures proxy.
+    // Aucun jeton de téléchargement persistant ni accès SDK navigateur.
     match /{path=**} {
       allow read, write: if false;
     }

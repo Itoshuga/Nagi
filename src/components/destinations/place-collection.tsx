@@ -1,3 +1,4 @@
+import { protectedPhoto } from "@/lib/photos/urls";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
@@ -35,7 +36,7 @@ export function PlaceCollection({ id, eyebrow, title, introduction, items }: Pla
             <article className="place-card" key={item.id}>
               <Link href={item.href} aria-label={`Découvrir ${item.name}`}>
                 <figure className="place-card-image">
-                  <Image src={item.photograph.src} alt={item.photograph.alt} fill sizes="(max-width: 760px) 110vw, 60vw" style={{ objectPosition: item.photograph.position }} />
+                  <Image unoptimized={protectedPhoto(item.photograph.src)} src={item.photograph.src} alt={item.photograph.alt} fill sizes="(max-width: 760px) 110vw, 60vw" style={{ objectPosition: item.photograph.position }} />
                   <figcaption>{item.label}</figcaption>
                 </figure>
                 <div className="place-card-copy">

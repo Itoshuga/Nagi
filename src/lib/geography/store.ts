@@ -1,4 +1,6 @@
 import "server-only";
+import { coverAssetIds, coverReference } from "../photos/schema";
+import { bindCover } from "../photos/assets";
 import { randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 import { geographicCover } from "../../data/geographic-covers";
@@ -28,7 +30,7 @@ export async function readManagedGeography(db: Firestore, publicOnly = false): P
 
 // Module interne serveur : seules l’API autorisée et la migration de confiance
 // appellent les transactions. Aucun appel direct depuis un composant client.
-export async function saveManagedDestination(db: Firestore, kind: DestinationKind, id: string | null, raw: unknown, expectedRevision: number | null) {
+export async function saveManagedDestination(db: Firestore, kind: DestinationKind, id: string | null, raw: unknown, expectedRevision: number | null, actor?: string) {
   const parsed = destinationInputSchema.safeParse(raw);
   if (!parsed.success) {
     const fields: Record<string, string> = {};
@@ -64,13 +66,15 @@ export async function saveManagedDestination(db: Firestore, kind: DestinationKin
     const oldReserved = oldReservation ? await transaction.get(oldReservation) : null;
     const now = new Date().toISOString();
     const editorial = previous?.editorial ? { ...previous.editorial } : null;
-    if (editorial && previous && input.coverImage !== (previous.coverImage?.src ?? "")) {
+    if (editorial && previous && (input.coverImage !== (previous.coverImage?.src ?? "") || input.coverPhoto && input.coverPhoto.id !== previous?.coverPhoto?.id)) {
       delete editorial.featurePhotograph; delete editorial.discoveryPhotograph;
     }
     if (editorial && previous && input.name !== previous.name) editorial.caption = input.name;
-    const document = destinationDocumentSchema.parse({ ...input, id: reference.id, schemaVersion: 1, locale: "fr", coverImage: geographicCover(input.coverImage), editorial,
+    const coverPhoto = input.coverPhoto ?? previous?.coverPhoto;
+    const document = destinationDocumentSchema.parse({ ...input, ...(previous?.photos ? { photos: previous.photos } : {}), ...(coverPhoto ? { coverPhoto } : {}), id: reference.id, photoAssetIds: coverAssetIds({ coverPhoto, photos: previous?.photos }), schemaVersion: 1, locale: "fr", coverImage: geographicCover(input.coverImage), editorial,
       createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, revision: (previous?.revision ?? 0) + 1,
     });
+    if (input.coverPhoto) await bindCover(db, transaction, kind, reference.id, input.coverPhoto, coverReference(previous), actor);
     transaction.set(reference, document);
     transaction.set(reservation, { destinationId: document.id, kind, parentId, slug: document.slug });
     if (oldReservation && oldReserved?.data()?.destinationId === reference.id) transaction.delete(oldReservation);

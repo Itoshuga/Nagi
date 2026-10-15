@@ -1,12 +1,13 @@
 "use client";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getCsrfToken } from "@/lib/auth/browser";
 import { classifications, contentInputSchema, detailSchemas, type ContentInput, type ContentType, type ManagedContent } from "@/lib/contents/schema";
 import { proposedSlug } from "@/lib/geography/schema";
-import { contentCovers } from "@/data/content-covers";
+import { contentCover } from "@/data/content-covers";
+import { coverPhotograph } from "@/lib/photos/schema";
+import { CoverUpload, type CoverUploadHandle } from "../photos/cover-upload";
 import { universeDetails } from "@/data/universes";
 import { GeographyPicker, type GeographyOptions } from "./geography-picker";
 import { RelationPicker, type RelationOption } from "./relation-picker";
@@ -18,8 +19,8 @@ export function emptyContent(type: ContentType): ContentInput {
   return { ...initial, title: "", slug: "" };
 }
 export function contentInput(document: ManagedContent): ContentInput {
-  const { id: _id, schemaVersion: _schema, locale: _locale, createdAt: _created, updatedAt: _updated, publishedAt: _published, archivedAt: _archived, revision: _revision, searchTitle: _search, geographyKeys: _keys, isArchived: _isArchived, ...input } = document;
-  void [_id, _schema, _locale, _created, _updated, _published, _archived, _revision, _search, _keys, _isArchived]; return input;
+  const { images: _legacyImages, imageCaptions: _legacyCaptions, photos: _legacyPhotos, photoAssetIds: _photos, id: _id, schemaVersion: _schema, locale: _locale, createdAt: _created, updatedAt: _updated, publishedAt: _published, archivedAt: _archived, revision: _revision, searchTitle: _search, geographyKeys: _keys, isArchived: _isArchived, ...input } = document;
+  void [_legacyImages, _legacyCaptions, _legacyPhotos, _photos, _id, _schema, _locale, _created, _updated, _published, _archived, _revision, _search, _keys, _isArchived]; return input;
 }
 type Field = { key: string; label: string; kind?: "long" | "list" | "url"; hint?: string };
 const fields: Record<ContentType, Field[]> = {
@@ -28,8 +29,13 @@ const fields: Record<ContentType, Field[]> = {
   gastronomie: [{ key: "originalName", label: "Nom dans la langue locale" }, { key: "transliteration", label: "Translittération" }, { key: "origins", label: "Origine" }, { key: "history", label: "Origine et histoire", kind: "long" }, { key: "ingredients", label: "Ingrédients caractéristiques", kind: "list", hint: "Un ingrédient par ligne." }, { key: "preparation", label: "Préparation traditionnelle", kind: "long" }, { key: "variants", label: "Variantes", kind: "list", hint: "Une variante par ligne." }, { key: "culturalNotes", label: "Particularités culturelles", kind: "long" }],
   adresses: [{ key: "mainSpecialty", label: "Spécialité principale" }, { key: "postalAddress", label: "Adresse postale" }, { key: "openingHours", label: "Horaires", kind: "long" }, { key: "closedDays", label: "Jours de fermeture" }, { key: "budget", label: "Fourchette de prix" }, { key: "waitingTime", label: "Attente indicative" }, { key: "website", label: "Site officiel", kind: "url" }, { key: "bookingUrl", label: "Lien externe de réservation", kind: "url" }, { key: "tips", label: "Conseils et informations complémentaires", kind: "long" }],
 };
-export function ContentEditor({ type, initial, geography, initialRelations }: { type: ContentType; initial?: ManagedContent; geography: GeographyOptions; initialRelations: RelationOption[] }) {
+export function ContentEditor({ type, initial, geography, initialRelations, maxPhotoBytes }: { type: ContentType; initial?: ManagedContent; geography: GeographyOptions; initialRelations: RelationOption[]; maxPhotoBytes: number }) {
   const [data, setData] = useState<ContentInput>(() => initial ? contentInput(initial) : emptyContent(type));
+  const photoUpload = useRef<CoverUploadHandle>(null);
+  const [photoSelected, setPhotoSelected] = useState(false);
+  const [draftId] = useState(() => crypto.randomUUID());
+  const legacyCover = contentCover(data.coverImage);
+  const photograph = coverPhotograph(initial, legacyCover ? { ...legacyCover, ...data.coverPresentation } : null);
   const [tagsText, setTagsText] = useState(data.tags.join(", "));
   const [relations, setRelations] = useState(initialRelations); const [pending, setPending] = useState(false); const [failure, setFailure] = useState(""); const [errors, setErrors] = useState<Record<string, string>>({});
   const initialCoords = initial && (initial.type === "tourisme" || initial.type === "adresses") ? initial.details.coordinates : null;
@@ -37,7 +43,7 @@ export function ContentEditor({ type, initial, geography, initialRelations }: { 
   const form = useRef<HTMLFormElement>(null); const submitting = useRef(false); const leaving = useRef(false); const editedSlug = useRef(Boolean(initial)); const router = useRouter();
   const leaveDialog = useRef<HTMLDialogElement>(null); const destination = useRef("");
   const [original] = useState(() => JSON.stringify({ data, relations, gps, tagsText }));
-  const dirty = JSON.stringify({ data, relations, gps, tagsText }) !== original;
+  const dirty = photoSelected || JSON.stringify({ data, relations, gps, tagsText }) !== original;
   useEffect(() => {
     function unload(event: BeforeUnloadEvent) { if (dirty && !leaving.current) { event.preventDefault(); event.returnValue = ""; } }
     function navigate(event: MouseEvent) {
@@ -63,12 +69,14 @@ export function ContentEditor({ type, initial, geography, initialRelations }: { 
     if (!parsed.success) { const next: Record<string, string> = {}; for (const issue of parsed.error.issues) next[issue.path.slice(0, typeof issue.path[2] === "number" ? 2 : undefined).join(".")] ??= issue.message; setErrors(next); setFailure("Quelques informations restent à vérifier."); focusErrors(next); return; }
     submitting.current = true; setPending(true); setErrors({}); setFailure("");
     try {
-      const csrf = await getCsrfToken(); const response = await fetch(`/api/admin/contents${initial ? `/${initial.id}` : ""}`, { method: initial ? "PUT" : "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ data: parsed.data, expectedRevision: initial?.revision ?? null, relations: relations.map(({ id, type }) => ({ id, type })) }) });
+      const csrf = await getCsrfToken();
+      const uploaded = await photoUpload.current?.upload({ kind: "contents", id: initial?.id ?? null, draftId }, csrf, parsed.data.title);
+      const savedData = uploaded ? { ...parsed.data, coverPhoto: uploaded } : parsed.data;
+      const response = await fetch(`/api/admin/contents${initial ? `/${initial.id}` : ""}`, { method: initial ? "PUT" : "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ data: savedData, expectedRevision: initial?.revision ?? null, relations: relations.map(({ id, type }) => ({ id, type })) }) });
       const body = await response.json(); if (!response.ok) { setErrors(body.fields ?? {}); focusErrors(body.fields ?? {}); throw new Error(body.error); }
       leaving.current = true; router.push(`/admin/contents/${body.content.id}?saved=1`); router.refresh();
     } catch (error) { setFailure(error instanceof Error ? error.message : "Enregistrement impossible."); submitting.current = false; setPending(false); }
   }
-  const photo = contentCovers.find((photo) => photo.src === data.coverImage);
   return <form className="content-editor" ref={form} onSubmit={submit} noValidate aria-busy={pending}>
     <dialog ref={leaveDialog} className="geo-confirm-dialog" aria-labelledby="content-leave-title"><h2 id="content-leave-title">Conserver vos modifications ?</h2><p className="geo-publication-note">Cette fiche contient des modifications non enregistrées. Restez sur cette page pour les sauvegarder avant de poursuivre.</p><div className="geo-confirm-actions"><button className="admin-button admin-button-primary" type="button" onClick={() => leaveDialog.current?.close()}>Rester sur la fiche</button><button className="admin-button admin-button-quiet" type="button" onClick={() => { leaving.current = true; leaveDialog.current?.close(); const url = new URL(destination.current); if (url.origin === window.location.origin) router.push(url.pathname + url.search + url.hash); else window.location.assign(url.href); }}>Quitter sans enregistrer</button></div></dialog>
     {failure && <div className="content-wide"><AdminNotice>{failure}</AdminNotice></div>}
@@ -87,9 +95,8 @@ export function ContentEditor({ type, initial, geography, initialRelations }: { 
     </fieldset>
     <fieldset className="geo-fieldset" disabled={pending}><legend>{type === "adresses" ? "Spécialités proposées & activités" : "Les fiches associées"}</legend><RelationPicker type={type} selfId={initial?.id} value={relations} onChange={setRelations} error={errors.relations} /></fieldset>
     {!!data.sources.length && <fieldset className="geo-fieldset" disabled={pending}><legend>Sources conservées</legend>{data.sources.map((source, index) => <div className="content-source" key={index}><div className="admin-field"><label htmlFor={`source-label-${index}`}>Nom de la source</label><input id={`source-label-${index}`} value={source.label} onChange={(event) => update("sources", data.sources.map((value, i) => i === index ? { ...value, label: event.target.value } : value))} /></div><div className="admin-field"><label htmlFor={`source-url-${index}`}>Adresse de la source</label><input id={`source-url-${index}`} type="url" value={source.url} onChange={(event) => update("sources", data.sources.map((value, i) => i === index ? { ...value, url: event.target.value } : value))} /></div></div>)}</fieldset>}
-    </div><aside className="content-editor-side"><fieldset className="geo-fieldset" disabled={pending}><legend>Publication</legend><div className="admin-field"><label htmlFor="status">Statut</label><select id="status" value={data.status} onChange={(event) => update("status", event.target.value)}><option value="draft">Brouillon</option><option value="published">Publié</option></select></div><div className="admin-field"><label htmlFor="visibility">Visibilité</label><select id="visibility" value={data.visibility} onChange={(event) => update("visibility", event.target.value)}><option value="public">Public après publication</option><option value="private">Privé</option></select></div><p className="geo-field-hint">Une destination parente masquée garde aussi cette fiche à l’écart du site. Les brouillons associés restent privés.</p><button className="admin-button admin-button-primary content-save" type="submit" disabled={pending}>{pending ? <AdminSpinner label="Enregistrement…" /> : "Enregistrer la découverte"}</button><p className="content-save-state" role="status">{dirty ? "Modifications non enregistrées" : initial ? "Toutes les modifications sont enregistrées" : "Votre nouveau carnet"}</p>{initial && <Link className="admin-back-link" href={`/admin/contents/${initial.id}/preview`} target="_blank" rel="noopener">Prévisualiser la version enregistrée ↗</Link>}</fieldset>
+    <CoverUpload ref={photoUpload} initial={photograph} disabled={pending} maxBytes={maxPhotoBytes} onSelectionChange={setPhotoSelected} /></div><aside className="content-editor-side"><fieldset className="geo-fieldset" disabled={pending}><legend>Publication</legend><div className="admin-field"><label htmlFor="status">Statut</label><select id="status" value={data.status} onChange={(event) => update("status", event.target.value)}><option value="draft">Brouillon</option><option value="published">Publié</option></select></div><div className="admin-field"><label htmlFor="visibility">Visibilité</label><select id="visibility" value={data.visibility} onChange={(event) => update("visibility", event.target.value)}><option value="public">Public après publication</option><option value="private">Privé</option></select></div><p className="geo-field-hint">Une destination parente masquée garde aussi cette fiche à l’écart du site. Les brouillons associés restent privés.</p><button className="admin-button admin-button-primary content-save" type="submit" disabled={pending}>{pending ? <AdminSpinner label="Enregistrement…" /> : "Enregistrer la découverte"}</button><p className="content-save-state" role="status">{dirty ? "Modifications non enregistrées" : initial ? "Toutes les modifications sont enregistrées" : "Votre nouveau carnet"}</p>{initial && <Link className="admin-back-link" href={`/admin/contents/${initial.id}/preview`} target="_blank" rel="noopener">Prévisualiser la version enregistrée ↗</Link>}</fieldset>
     <fieldset className="geo-fieldset" disabled={pending}><legend>{type === "gastronomie" ? "Destinations associées" : "Destination"}</legend><GeographyPicker data={geography} value={data.destinations} multiple={type === "gastronomie"} onChange={(value) => update("destinations", value)} error={errors.destinations} /></fieldset>
-    <fieldset className="geo-fieldset" disabled={pending}><legend>Photographies</legend><div className="admin-field"><label htmlFor="coverImage">Image principale</label><select id="coverImage" name="coverImage" value={data.coverImage} onChange={(event) => { update("coverImage", event.target.value); update("coverPresentation", null); }}><option value="">Sans photographie</option>{contentCovers.map((photo) => <option key={photo.src} value={photo.src}>{photo.alt}</option>)}</select>{error("coverImage")}</div>{photo && <div className="content-cover"><Image src={photo.src} alt={photo.alt} fill sizes="(max-width: 900px) 90vw, 320px" style={{ objectPosition: photo.position }} /></div>}<div className="admin-field"><label htmlFor="photographCaption">Légende</label><textarea id="photographCaption" rows={2} value={data.photographCaption} onChange={(event) => update("photographCaption", event.target.value)} /></div><div className="admin-field"><label htmlFor="gallery-select">Ajouter à la galerie</label><select id="gallery-select" value="" disabled={data.images.length >= 12} onChange={(event) => { if (event.target.value && !data.images.includes(event.target.value)) update("images", [...data.images, event.target.value]); }}><option value="">Choisir une photographie</option>{contentCovers.map((photo) => <option key={photo.src} value={photo.src}>{photo.alt}</option>)}</select></div><ul className="content-gallery-selection">{data.images.map((src, index) => <li key={src}><span>{contentCovers.find((photo) => photo.src === src)?.alt}</span><button className="admin-button admin-button-quiet" type="button" onClick={() => { update("images", data.images.filter((_, i) => i !== index)); update("imageCaptions", data.imageCaptions.filter((_, i) => i !== index)); }} aria-label={`Retirer la photographie ${index + 1}`}>Retirer</button></li>)}</ul><p className="geo-field-hint">Ressources du carnet existant. L’importation de nouvelles images viendra avec la médiathèque.</p></fieldset>
     <Link className="admin-back-link" href="/admin/contents">← Toutes les découvertes</Link></aside>
   </form>;
 }

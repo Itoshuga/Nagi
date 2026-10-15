@@ -1,4 +1,5 @@
 "use client";
+import { protectedPhoto } from "@/lib/photos/urls";
 
 import Image from "next/image";
 import { useState } from "react";
@@ -9,7 +10,7 @@ export function DiscoveryImage({ photograph, title, priority = false, sizes = "(
   const [failed, setFailed] = useState(false);
   return (
     <div className="discovery-image">
-      {photograph && !failed ? <Image src={photograph.src} alt={photograph.alt} fill sizes={sizes} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} style={{ objectPosition: photograph.position }} onError={() => setFailed(true)} /> :
+      {photograph && !failed ? <Image unoptimized={protectedPhoto(photograph.src)} src={photograph.src} alt={photograph.alt} fill sizes={sizes} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} style={{ objectPosition: photograph.position }} onError={() => setFailed(true)} /> :
         <div className="photograph-placeholder" role="img" aria-label={`${title} — photographie non disponible`}><Aperture size={35} strokeWidth={.7} aria-hidden="true" /><span>Le regard se prépare</span><small>Photographie à venir</small></div>}
     </div>
   );

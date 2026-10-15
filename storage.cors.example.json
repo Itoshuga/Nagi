@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://nagi.example", "http://localhost:3000"],
+    "method": ["POST"],
+    "responseHeader": ["Content-Type", "ETag"],
+    "maxAgeSeconds": 600
+  }
+]

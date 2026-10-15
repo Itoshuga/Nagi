@@ -1,4 +1,6 @@
 import "server-only";
+import { coverAssetIds, coverReference } from "../photos/schema";
+import { bindCover } from "../photos/assets";
 import { randomUUID } from "node:crypto";
 import { FieldPath, type Firestore, type Query, type Transaction } from "firebase-admin/firestore";
 import { contentCover } from "../../data/content-covers";
@@ -78,9 +80,9 @@ export async function validatedGeographyKeys(db: Firestore, transaction: Transac
 }
 export function makeContent(input: ContentInput, id: string, geographyKeys: string[], previous?: ManagedContent | null): ManagedContent {
   const now = new Date().toISOString();
-  return contentDocumentSchema.parse({ ...input, id, schemaVersion: 1, locale: "fr", geographyKeys, searchTitle: normalizeSearch(input.title), createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, isArchived: false, revision: (previous?.revision ?? 0) + 1 });
+  return contentDocumentSchema.parse({ ...input, images: previous?.images ?? [], imageCaptions: previous?.imageCaptions ?? [], ...(previous?.photos ? { photos: previous.photos } : {}), photoAssetIds: coverAssetIds({ coverPhoto: input.coverPhoto, photos: previous?.photos }), id, schemaVersion: 1, locale: "fr", geographyKeys, searchTitle: normalizeSearch(input.title), createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, isArchived: false, revision: (previous?.revision ?? 0) + 1 });
 }
-export async function saveContent(db: Firestore, id: string | null, raw: unknown, expectedRevision: number | null, selections: ContentReference[]) {
+export async function saveContent(db: Firestore, id: string | null, raw: unknown, expectedRevision: number | null, selections: ContentReference[], actor?: string) {
   const parsed = contentInputSchema.safeParse(raw);
   if (!parsed.success) {
     const fields: Record<string, string> = {};
@@ -88,7 +90,7 @@ export async function saveContent(db: Firestore, id: string | null, raw: unknown
     throw new ContentError("Vérifiez les champs indiqués.", 422, fields);
   }
   const input = parsed.data;
-  for (const image of [input.coverImage, ...input.images].filter(Boolean)) if (!contentCover(image)) throw new ContentError("Choisissez une image de la bibliothèque existante.", 422, { coverImage: "Cette image n’est pas disponible." });
+  for (const image of [input.coverImage].filter(Boolean)) if (!contentCover(image)) throw new ContentError("Choisissez une image de la bibliothèque existante.", 422, { coverImage: "Cette image n’est pas disponible." });
   const reference = db.collection("contents").doc(id ?? randomUUID());
   const self = { id: reference.id, type: input.type };
   const desired = selections.map((target) => relationBetween(self, target));
@@ -131,7 +133,9 @@ export async function saveContent(db: Firestore, id: string | null, raw: unknown
       }
       if (selected.length !== oldEdges.filter((edge) => edge.memberKeys.includes(contentKey(neighbor))).length) changedNeighbors.push(targetData);
     }
-    const document = makeContent(input, reference.id, geographyKeys, previous);
+    const coverPhoto = input.coverPhoto ?? previous?.coverPhoto;
+    const document = makeContent({ ...input, ...(coverPhoto ? { coverPhoto } : {}) }, reference.id, geographyKeys, previous);
+    if (input.coverPhoto) await bindCover(db, transaction, "contents", reference.id, input.coverPhoto, coverReference(previous), actor);
     transaction.set(reference, document);
     transaction.set(reservation, { contentId: document.id, type: document.type, slug: document.slug });
     if (oldReservation && oldReserved?.data()?.contentId === document.id) transaction.delete(oldReservation);

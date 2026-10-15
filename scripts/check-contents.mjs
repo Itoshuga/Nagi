@@ -93,7 +93,7 @@ const { makeContent, listContents } = await import('../src/lib/contents/store.ts
 const { demonstrationContents } = await import('../src/lib/contents/demo.ts');
 const draft = (type, title, slug, destinations = [], details = {}) => contentInputSchema.parse({ type, title, slug, summary: `Le carnet de ${title}.`, description: `Une présentation attentive de ${title}.`, status: 'draft', destinations, details: { category: type === 'gastronomie' ? 'Plat' : 'Autre', ...details } });
 const ref = item => ({ id: item.id, type: item.type });
-function input(item) { return contentInputSchema.parse(Object.fromEntries(Object.entries(item).filter(([key]) => !['id','schemaVersion','locale','createdAt','updatedAt','publishedAt','archivedAt','revision','searchTitle','geographyKeys','isArchived'].includes(key)))); }
+function input(item) { return contentInputSchema.parse(Object.fromEntries(Object.entries(item).filter(([key]) => !['id','schemaVersion','locale','createdAt','updatedAt','publishedAt','archivedAt','revision','searchTitle','geographyKeys','isArchived','photoAssetIds','photos','images','imageCaptions'].includes(key)))); }
 async function contentSave(data, previous, relations = []) { return mutation(previous ? 'PUT' : 'POST', previous?.id ?? '', { data, expectedRevision: previous?.revision ?? null, relations }); }
 async function latest(id) { return (await db.collection('contents').doc(id).get()).data(); }
 async function contentUpdate(item, patch, relations = []) { const result = await contentSave({ ...input(item), ...patch }, item, relations); assert.equal(result.status, 200, JSON.stringify(result.body)); return result.body.content; }

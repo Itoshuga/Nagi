@@ -1,3 +1,4 @@
+import { protectedPhoto } from "@/lib/photos/urls";
 import { getPublicGeography } from "@/lib/geography/public";
 import Image from "next/image";
 import Link from "next/link";
@@ -26,7 +27,7 @@ export async function Discover() {
           <article className={`destination-story destination-story-${destination.slug}`} key={destination.id}>
             <Link href={cityPath(country, destination)} className="destination-story-link" aria-label={`Découvrir ${destination.name}`}>
             <figure className="destination-image">
-              <Image src={photograph.src} alt={photograph.alt} fill sizes={destination.discoveryPhotograph ? "(max-width: 699px) 145vw, 65vw" : "(max-width: 699px) 82vw, 32vw"} style={{ objectPosition: photograph.position }} />
+              <Image unoptimized={protectedPhoto(photograph.src)} src={photograph.src} alt={photograph.alt} fill sizes={destination.discoveryPhotograph ? "(max-width: 699px) 145vw, 65vw" : "(max-width: 699px) 82vw, 32vw"} style={{ objectPosition: photograph.position }} />
               <figcaption className="image-note">{destination.region}</figcaption>
             </figure>
             <div className="destination-title"><h3>{destination.name}</h3><span>{formatIndex(index)}</span></div>

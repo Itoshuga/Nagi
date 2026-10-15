@@ -2,6 +2,8 @@ export interface Photograph {
   src: string;
   alt: string;
   position: string;
+  width?: number;
+  height?: number;
 }
 
 export interface Universe {

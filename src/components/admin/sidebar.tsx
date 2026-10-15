@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef } from "react";
-import { ArrowUpRight, Coffee, CookingPot, Earth, Images, Landmark, LayoutDashboard, MapPin, Menu, Settings, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, Coffee, CookingPot, Earth, Landmark, LayoutDashboard, MapPin, Menu, Settings, Sparkles, X } from "lucide-react";
 
 const items = [
   { label: "Vue d’ensemble", icon: LayoutDashboard, href: "/admin" },
@@ -14,7 +14,6 @@ const items = [
   { label: "Activités", icon: Sparkles, href: "/admin/contents?type=activites" },
   { label: "Gastronomie", icon: CookingPot, href: "/admin/contents?type=gastronomie" },
   { label: "Adresses", icon: Coffee, href: "/admin/contents?type=adresses" },
-  { label: "Médiathèque", icon: Images },
   { label: "Paramètres", icon: Settings, href: "/admin/settings" },
 ];
 
