@@ -1,3 +1,4 @@
+import { photoCreditSchema } from "../photos/legacy";
 import { z } from "zod";
 import { coverUploadSchema, legacyPhotosSchema } from "../photos/schema";
 
@@ -24,7 +25,7 @@ export const destinationInputSchema = z.discriminatedUnion("kind", [
 ]);
 export type DestinationInput = z.infer<typeof destinationInputSchema>;
 
-export const photographSchema = z.object({ src: z.string().regex(/^\/images\/[a-z0-9-]+\.(jpg|png|webp)$/), alt: z.string().min(1).max(400), position: z.string().max(60), id: z.string().max(120).optional(), author: z.string().max(200).optional(), sourceUrl: z.url().max(1000).optional(), width: z.number().int().positive().optional(), height: z.number().int().positive().optional() }).strict();
+export const photographSchema = z.object({ credit: photoCreditSchema.optional(), src: z.string().regex(/^\/images\/[a-z0-9-]+\.(jpg|png|webp)$/), alt: z.string().min(1).max(400), position: z.string().max(60), id: z.string().max(120).optional(), author: z.string().max(200).optional(), sourceUrl: z.url().max(1000).optional(), width: z.number().int().positive().optional(), height: z.number().int().positive().optional() }).strict();
 const editorialSchema = z.object({
   mood: z.string().max(300).optional(), region: z.string().max(200).optional(), caption: z.string().max(400).optional(),
   presentation: z.array(z.object({ label: z.string(), value: z.string() }).strict()).max(12).optional(),

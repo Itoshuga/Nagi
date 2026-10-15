@@ -1,4 +1,4 @@
-import type { Photograph } from "../types/content";
+import type { Photograph } from "../../src/types/content";
 
 export interface DiscoveryPhotograph extends Photograph {
   creditTitle?: string;

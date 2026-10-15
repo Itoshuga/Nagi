@@ -1,4 +1,4 @@
-import type { ActivityDiscovery } from "../../types/discoveries";
+import type { ActivityDiscovery } from "../../../src/types/discoveries";
 import { discoveryPhotographs as photos } from "../discovery-photographs";
 import { publication } from "./common";
 

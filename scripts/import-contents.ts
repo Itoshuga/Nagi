@@ -9,7 +9,7 @@ async function main() {
   loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
   if (project !== process.env.FIREBASE_ADMIN_PROJECT_ID || project !== process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) throw new Error("Le projet demandé ne correspond pas à la configuration. Aucune opération effectuée.");
   const { getAdminFirestore } = await import("../src/lib/firebase/admin");
-  const { importDemonstrationContents } = await import("../src/lib/contents/import");
+  const { importDemonstrationContents } = await import("./migrations/contents");
   const result = await importDemonstrationContents(getAdminFirestore(), apply);
   console.info(`${apply ? "IMPORT" : "SIMULATION SANS ÉCRITURE"} — projet ${project}`);
   for (const item of result.contents) console.info(`${item.action === "create" ? "Créer" : "Conserver"} ${item.type}/${item.id} · ${item.title}`);

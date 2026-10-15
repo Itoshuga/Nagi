@@ -1,4 +1,4 @@
-import type { Photograph } from "../types/content";
+import type { Photograph } from "../../src/types/content";
 
 interface DestinationPhotograph extends Photograph {
   id: string;

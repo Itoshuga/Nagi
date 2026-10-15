@@ -1,6 +1,6 @@
 # nagi.
 
-Nagi est un carnet de découverte culturelle, entièrement en français. La landing page se prolonge par une exploration géographique : le Japon, quatre villes et cinq quartiers de Tokyo. Quatre univers donnent accès à vingt fiches reliées entre elles : Tourisme, Activités, Gastronomie et Adresses.
+Nagi est un carnet de découverte culturelle, entièrement en français. La landing page se prolonge par les pays, villes et quartiers publiés dans Firestore. Quatre univers donnent accès aux fiches administrées et à leurs relations : Tourisme, Activités, Gastronomie et Adresses.
 
 ## Lancer le projet
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Ouvrir [http://localhost:3000](http://localhost:3000). Aucune variable d’environnement, clé API ou configuration de service externe n’est nécessaire.
+Ouvrir [http://localhost:3000](http://localhost:3000). Configurer Firebase dans `.env` à partir de `.env.example` ; voir [FIREBASE.md](docs/FIREBASE.md). Le site ne possède aucun catalogue local de secours.
 
 Pour préparer une publication, définir `NEXT_PUBLIC_SITE_URL` avec l’origine réelle du site avant le build, comme indiqué dans `.env.example`. Cette variable sert aux URL canoniques ; sa valeur locale par défaut est `http://localhost:3000`.
 
@@ -30,10 +30,10 @@ Une fois le serveur démarré, `npm run test:routes` vérifie les réponses HTTP
 
 - Next.js **16.4.0**, version stable du canal npm `latest` vérifiée à l’initialisation, avec App Router ; React **19.3.0**.
 - TypeScript strict et Tailwind CSS **4.3.3**, via PostCSS. Les tokens sont exposés dans `@theme inline` ; les compositions éditoriales sont décrites dans la feuille globale.
-- Pages et sections éditoriales en Server Components. Les onglets, le menu, la galerie d’accueil, la recherche locale, le fallback d’image et la conservation du contexte de navigation utilisent des Client Components ciblés.
+- Pages et sections éditoriales en Server Components. Les onglets, le menu, la galerie d’accueil, la recherche de titres et les filtres de page, le fallback d’image et la conservation du contexte de navigation utilisent des Client Components ciblés.
 - Lucide React pour les quelques icônes. Aucun kit de composants supplémentaire.
 - Cormorant Garamond et Manrope, hébergées localement en WOFF2 et gérées par `next/font/local`. Le build n’a pas besoin de télécharger de polices.
-- Photographies locales, optimisées par `next/image`. Le premier visuel est chargé immédiatement avec priorité haute ; les autres grands visuels de la galerie ne sont montés qu’à leur première sélection. La transition attend le chargement de la photo.
+- Couvertures référencées dans Firestore et stockées dans Firebase Storage, affichées par `next/image`, avec compatibilité des anciens chemins locaux. Le premier visuel est chargé immédiatement avec priorité haute ; les autres grands visuels de la galerie ne sont montés qu’à leur première sélection. La transition attend le chargement de la photo.
 - Versions exactes et `package-lock.json` pour des installations reproductibles.
 
 ## Organisation
@@ -73,12 +73,7 @@ src/
     site-footer.tsx          Navigation, crédits dépliables, retour en haut
     text-link.tsx            Lien discret partagé
     universe-grid.tsx        Présentation commune des quatre univers
-  data/fr.ts                 Textes partagés et sélection de l’accueil
-  data/geography.ts          Pays, villes et quartiers, reliés par identifiants
-  data/destination-photographs.ts  Photos des nouvelles destinations et crédits
-  data/catalogue/            Lieux, expériences, spécialités et établissements
-  data/discoveries.ts        Collection typée réunissant les quatre univers
-  data/discovery-photographs.ts  Photographies et licences du catalogue
+  data/fr.ts                 Textes éditoriaux et libellés
   data/universes.ts          Présentation et états vides des quatre univers
   lib/destinations.ts        Recherches, relations, chemins et paramètres statiques
   lib/destination-pages.ts   Résolution des routes et notFound()
@@ -109,7 +104,7 @@ L’accueil conserve ses photographies asymétriques, son hero d’au moins une 
 
 `src/app/tokens.css` centralise les couleurs sémantiques, l’échelle de texte, les espacements, les rayons, les transitions et les largeurs. `.section-shell`, `.section-heading`, `.button` avec les variantes `button-primary`, `button-secondary`, `button-quiet`, et le composant `TextLink` forment les primitives partagées. Les surfaces fonctionnelles restent réservées aux filtres, onglets, états vides et repères pratiques.
 
-Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque ville et quartier, indépendamment des subdivisions. Les fiches détaillées conservent une ouverture avec informations à gauche et photographie à droite, puis présentent le récit, les sections spécifiques, les informations pratiques et la galerie facultative. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes détaillés apparaissent dans la suite du carnet.
+Les villes subdivisées présentent leurs quartiers, avec un accès direct depuis l’introduction. Les quatre onglets apparaissent dans chaque ville et quartier, indépendamment des subdivisions. Les fiches détaillées conservent une ouverture avec informations à gauche et photographie à droite, puis présentent le récit, les sections spécifiques, les informations pratiques et leur unique photographie de couverture. Le cadre photographique suit la hauteur disponible de l’écran. Sur mobile, les deux colonnes s’empilent. La fiche conserve le retour à la sélection, un résumé, trois repères au maximum, les relations utiles sous forme de liens et un lien vers la source. Les textes détaillés apparaissent dans la suite du carnet.
 
 La page `/destinations` adopte une composition d’atlas : une grande photographie ouvre le carnet du pays, et une liste de villes illustrées permet un accès direct à chaque escale. Tokyo annonce ses cinq quartiers. Les villes passent sous la photographie sur tablette, puis sur une seule colonne sur mobile. La page est rendue sur le serveur, sans interaction JavaScript supplémentaire ; les pays, villes et nombres de quartiers proviennent du catalogue géographique.
 
@@ -127,23 +122,25 @@ Voir [l’audit et les conventions du design system](docs/DESIGN-SYSTEM.md) et [
 | `/destinations/japon/fujiyoshida` | Fujiyoshida et ses univers, sans section quartiers |
 | `/destinations/japon/tokyo/[district]` | `shinjuku`, `ueno`, `asakusa`, `shibuya`, `ginza` |
 
-Les trois collections de `src/data/geography.ts` sont normalisées. Chaque ville référence son pays par `countryId` ; chaque quartier référence sa ville par `cityId`. Les identifiants sont indépendants des slugs et les slugs sont uniques au sein de leur parent. Les listes de villes et de quartiers sont dérivées, sans tableaux inverses à maintenir.
+Les trois collections Firestore `countries`, `cities` et `districts` sont normalisées. Chaque ville référence son pays par `countryId` ; chaque quartier référence sa ville par `cityId`. Les identifiants sont indépendants des slugs et les slugs sont uniques au sein de leur parent. Les listes de villes et de quartiers sont dérivées, sans tableaux inverses à maintenir.
 
 `getCountryBySlug()` renvoie un `CountryWithCities`. `getCityBySlug(countryId, slug)` renvoie un `CityWithDistricts`, dont la liste peut être vide. `getDistrictBySlug(cityId, slug)` recherche exclusivement sous sa ville parente. Les fonctions `getCitiesByCountry()` et `getDistrictsByCity()` permettent aussi de consulter ces relations séparément. Les pages passent par `requireCountry`, `requireCity` et `requireDistrict` : chaque segment est validé, puis `notFound()` est appelé si la chaîne est incohérente.
 
-Les composants de présentation reçoivent des données typées ; ils ne connaissent aucune base de données. La lecture serveur `src/lib/geography/public.ts` sélectionne désormais les données locales ou Firestore ; les composants reçoivent toujours des données typées. Voir la procédure de bascule de l’étape 06.
+Les composants de présentation reçoivent des données typées ; ils ne connaissent aucune base de données. La lecture serveur `src/lib/geography/public.ts` interroge exclusivement Firestore ; voir [PUBLIC_DATA.md](docs/PUBLIC_DATA.md).
 
 Les univers d’une ville sont affichés indépendamment de ses quartiers. Tokyo présente ses quartiers puis quatre onglets de contenu ; Fujiyoshida passe directement aux onglets. Les pages Quartier utilisent le même composant, avec leurs seuls contenus associés.
 
-L’accueil, les pays et les fiches détaillées restent prérendus. Les pages Ville et Quartier sont rendues à la requête pour afficher dès le HTML initial l’onglet demandé dans l’URL. Chaque page à paramètres fournit ses métadonnées avec `generateMetadata`. Les anciens chemins de catégories sont des redirections permanentes prégénérées ; ils ne contiennent plus de catalogue distinct.
+L’accueil, les pays et les fiches détaillées sont rendus à la requête. Les pages Ville et Quartier sont rendues à la requête pour afficher dès le HTML initial l’onglet demandé dans l’URL. Chaque page à paramètres fournit ses métadonnées avec `generateMetadata`. Les anciens chemins de catégories sont des redirections permanentes ; ils ne contiennent plus de catalogue distinct.
 
 `src/proxy.ts` valide les chemins Ville/Quartier et les anciennes catégories avec les mêmes données géographiques. Les chemins invalides servent la page 404 statique existante avec un statut 404 et sans changer l’URL, pour éviter le document d’erreur sans contenu HTML observé sur ces routes dynamiques avec Next.js 16.4.
 
+Les routes ci-dessus sont des exemples du jeu d’import ; seuls les documents publiés dans Firestore créent des pages.
+
 ## Catalogue et relations
 
-Le catalogue compte **6 lieux, 4 idées d’expériences, 6 spécialités et 4 établissements réels**. Ses types, règles de filtrage et conventions sont détaillés dans [docs/CATALOGUE.md](docs/CATALOGUE.md).
+Les fixtures isolées contiennent **6 lieux, 4 idées d’expériences, 6 spécialités et 4 établissements**, importables uniquement de manière volontaire. Ses types, règles de filtrage et conventions sont détaillés dans [docs/CATALOGUE.md](docs/CATALOGUE.md).
 
-Exemples de parcours :
+Exemples de parcours après un import volontaire des fixtures :
 
 - `/destinations/japon/tokyo/asakusa?onglet=tourisme` → `/decouvertes/tourisme/senso-ji`.
 - `/destinations/japon/tokyo/shinjuku?onglet=gastronomie` → `/decouvertes/gastronomie/tonkatsu` → Ginza Bairin ou Maisen Aoyama → retour au tonkatsu.
@@ -179,13 +176,13 @@ La palette associe l’ivoire vert `#DFE1DA`, le papier `#F5F4EF`, le charbon `#
 
 Les onze photographies des destinations proviennent d’Unsplash ; leurs crédits figurent dans [public/images/CREDITS.md](public/images/CREDITS.md). Le catalogue ajoute douze JPEG locaux, documentés dans [public/images/discoveries/CREDITS.md](public/images/discoveries/CREDITS.md), et réutilise certains visuels lorsque le sujet correspond exactement. Dix nouveaux clichés sont sous licence Unsplash ; deux sont sous licences CC BY 3.0 et CC BY-SA 4.0. Auteur, source, licence et transformations sont indiqués dans les crédits accessibles et sur les fiches.
 
-Les photos d’activités illustrent une pratique ; elles ne représentent pas un atelier commercial disponible. Les visuels d’ambiance de Ginza et Dōtonbori sont identifiés comme des vues de quartier. Maisen et Kamiya ont un fallback graphique explicite, sans fausse photographie d’établissement. Ce fallback s’affiche aussi lorsqu’une image échoue à se charger. Les photos principales des fiches sont prioritaires ; les cartes, galeries secondaires et contenus associés sont chargés progressivement via `next/image`.
+Les photos d’activités illustrent une pratique ; elles ne représentent pas un atelier commercial disponible. Les visuels d’ambiance de Ginza et Dōtonbori sont identifiés comme des vues de quartier. Maisen et Kamiya ont un fallback graphique explicite, sans fausse photographie d’établissement. Ce fallback s’affiche aussi lorsqu’une image échoue à se charger. Les photos principales des fiches sont prioritaires ; les cartes et contenus associés sont chargés progressivement via `next/image`.
 
 Les licences des typographies figurent dans [src/app/fonts](src/app/fonts).
 
 ## Périmètre
 
-Le jeu de démonstration comprend l’accueil, onze pages de destinations et vingt fiches détaillées. Firebase fournit une administration sécurisée, la géographie et les quatre univers administrables. Les sources publiques restent explicitement statiques ou Firestore, sans fusion. Carte interactive, réservation en temps réel, comptes publics, favoris, itinéraires et fonctions communautaires ne font pas partie de cette étape.
+Le jeu de démonstration comprend l’accueil, onze pages de destinations et vingt fiches détaillées. Firebase fournit une administration sécurisée, la géographie et les quatre univers administrables. Firestore est l’unique source publique. Carte interactive, réservation en temps réel, comptes publics, favoris, itinéraires et fonctions communautaires ne font pas partie de cette étape.
 
 Les métadonnées incluent titre, description, Open Graph et Twitter. Les pages Ville/Quartier et les fiches possèdent une URL canonique indépendante des paramètres d’onglet et de contexte. Le domaine public doit être configuré avant un déploiement ; aucune image sociale spécifique n’est encore générée.
 
@@ -197,8 +194,7 @@ L’audit npm des dépendances de production ne signale aucune vulnérabilité a
 # Administration et Firebase — étape 05
 
 L’espace `/admin` dispose d’une connexion email / mot de passe, d’un rôle Firebase
-`admin` explicite et de sessions serveur protégées. Les pages publiques conservent
-leurs données statiques. Node.js **22 minimum** est désormais nécessaire pour
+`admin` explicite et de sessions serveur protégées. Les pages publiques utilisent exclusivement Firestore (étape 09). Node.js **22 minimum** est désormais nécessaire pour
 Firebase Admin ; Node.js 24 est conseillé.
 
 La configuration locale est dans `.env`, exclu de Git. Consulter
@@ -217,9 +213,7 @@ Les pays, villes et quartiers se gèrent depuis `/admin/countries` et
 réversibles. Les écritures sont validées avec Zod et les slugs sont réservés par
 transaction. Les villes conservent leurs quatre univers, avec ou sans quartiers.
 
-Le site reste en mode `NAGI_GEOGRAPHY_SOURCE=static` jusqu’à validation de la
-migration. Le mode `firestore` est disponible sans mélange des deux sources.
-Consulter [le guide complet de l’étape 06](docs/GEOGRAPHY.md) avant la bascule.
+Le site public utilise les destinations Firestore. Voir [PUBLIC_DATA.md](docs/PUBLIC_DATA.md) pour les requêtes, la visibilité et les index nécessaires.
 
 ```sh
 npm run geography:import -- --project=nagi-travelapp --dry-run
@@ -235,8 +229,6 @@ les brouillons, publications et archives. La prévisualisation reste privée.
 
 Les nouvelles collections sont `contents`, `contentRelations` et `contentSlugs`.
 Le public conserve les onglets Ville / Quartier et les routes canoniques existantes.
-`NAGI_CONTENT_SOURCE=static` conserve le catalogue actuel jusqu’à validation de
-la migration ; `firestore` exige également la géographie Firestore.
 
 ```sh
 npm run contents:import -- --project=nagi-travelapp --dry-run
@@ -244,9 +236,7 @@ npm run test:contents
 ```
 
 Consulter [CONTENTS.md](docs/CONTENTS.md) pour le schéma, les limites de recherche,
-les index, la migration non destructive et les étapes d’activation. La simulation
-réelle signale encore des destinations à rapprocher ou compléter ; aucune
-importation ni activation réelle n’a été effectuée.
+les index, la migration non destructive et les imports volontaires. La simulation réelle signale des destinations à rapprocher ou compléter ; aucune importation réelle n’a été effectuée.
 
 ## Une photo de couverture par fiche
 
@@ -255,3 +245,15 @@ La sélection affiche un aperçu local ; l’image est envoyée dans Firebase St
 uniquement lors de l’enregistrement. JPEG, PNG et WebP, 5 Mo maximum par défaut.
 Les couvertures existantes sont conservées. Voir [PHOTOS.md](docs/PHOTOS.md)
 pour la configuration et les tests.
+
+## Données publiques exclusivement Firestore — étape 09
+
+L’accueil, la navigation géographique, les quatre onglets, les fiches, leurs
+relations et couvertures lisent uniquement les documents publiés et visibles.
+Les exemples sont isolés dans `fixtures/catalogue` pour les tests et les imports
+volontaires. Aucun fallback local et aucune variable de bascule ne subsistent.
+
+Les listes sont paginées, les ascendances sont lues par lots et les compteurs
+portent sur les résultats affichés. Les mises à jour sont lues à chaque requête.
+Consulter [PUBLIC_DATA.md](docs/PUBLIC_DATA.md) pour l’audit, l’architecture, les
+limites de recherche, les index à déployer et les simulations réelles sans écriture.

@@ -57,9 +57,9 @@ Le panneau garde une hauteur minimale pour limiter les sauts entre une grille et
 
 ## Organisation et évolution
 
-Les contenus sont répartis dans `src/data/catalogue/` par univers, puis réunis dans `src/data/discoveries.ts`. Les valeurs communes de publication ne sont déclarées qu’une fois. Les ressources photographiques et leurs crédits vivent dans leur registre, distinct des textes éditoriaux.
+Les contenus sont répartis dans `fixtures/catalogue/catalogue/` par univers, puis réunis dans `fixtures/catalogue/discoveries.ts`. Les valeurs communes de publication ne sont déclarées qu’une fois. Les ressources photographiques et leurs crédits vivent dans leur registre, distinct des textes éditoriaux.
 
-Les pages restent des Server Components. Le mode statique fournit les quatre sélections locales ; le mode Firestore fournit uniquement les cartes paginées de l’onglet actif. La recherche locale porte sur la sélection affichée. Les petites zones qui conservent le contexte des fiches utilisent `useSearchParams` sous `Suspense`, avec des liens de repli rendus côté serveur. Les fiches utilisent `NAGI_CONTENT_SOURCE=static|firestore`, sans mélange ni SDK Firebase client. Le mode Firestore exige la géographie Firestore. Leurs liens utilisent les associations géographiques effectivement publiques. Aucun téléchargement de police n’est nécessaire au build.
+Les pages publiques sont des Server Components et utilisent exclusivement Firestore. Les exemples ci-dessus ne sont plus une source du site ; ils restent disponibles uniquement pour un import volontaire ou les tests. Les onglets chargent leur page de résultats côté serveur et conservent leur URL. Voir [PUBLIC_DATA.md](PUBLIC_DATA.md) pour la recherche, la pagination et la confidentialité.
 
 Pour ajouter une fiche : créer un identifiant, choisir un slug libre dans son univers, renseigner le parent ou les destinations, puis ajouter uniquement les relations de référence. Ajouter les sources et les crédits de toute photo. Lancer `npm test`, `npm run lint`, `npm run typecheck` et `npm run build`, puis vérifier le serveur avec `npm run test:routes`. Le nombre attendu dans ce dernier script est celui du jeu de démonstration actuel et doit évoluer lorsque des pages sont ajoutées.
 

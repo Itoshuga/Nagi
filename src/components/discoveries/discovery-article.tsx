@@ -1,4 +1,3 @@
-import { getPublicGeography } from "@/lib/geography/public";
 import { getPublicContentBundle } from "@/lib/contents/public";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
@@ -17,9 +16,9 @@ import { RelatedDiscoveries } from "./related-discoveries";
 import { ContextReturn } from "./context-return";
 
 export async function DiscoveryArticle({ item: initial, preview }: { item: Discovery; preview?: { geography: PublicGeography; catalogue: Discovery[] } }) {
-  const geography = preview?.geography ?? await getPublicGeography();
-  const bundle = preview ? { item: initial, catalogue: preview.catalogue } : await getPublicContentBundle(initial.universe, initial.slug);
+  const bundle = preview ? { item: initial, catalogue: preview.catalogue, geography: preview.geography } : await getPublicContentBundle(initial.universe, initial.slug);
   if (!bundle.item) notFound();
+  const geography = bundle.geography;
   const item = bundle.item; const catalogue = bundle.catalogue;
   const universe = universeDetails[item.universe];
   const geographies = getDiscoveryGeography(item).flatMap((reference) => {
@@ -78,7 +77,7 @@ export async function DiscoveryArticle({ item: initial, preview }: { item: Disco
         <DiscoveryImage photograph={item.photograph} title={item.title} priority sizes="(max-width: 760px) 92vw, 55vw" />
         {item.photograph && <figcaption className="discovery-sheet-caption">
           {item.photographCaption && <span>{item.photographCaption}</span>}
-          <PhotoCredit src={item.photograph.src} />
+          <PhotoCredit photograph={item.photograph} />
         </figcaption>}
       </figure>
     </article>

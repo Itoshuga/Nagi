@@ -1,11 +1,12 @@
+import { importedPhotoCredit } from "../../fixtures/catalogue/photo-credit";
 import "server-only";
 import type { Firestore } from "firebase-admin/firestore";
-import { remapDemonstrationDestination } from "./migration-geography";
-import { demonstrationContents, demonstrationRelations } from "./demo";
-import { readManagedGeography } from "../geography/store";
-import { ContentError, makeContent, parseContent, validatedGeographyKeys } from "./store";
-import { contentDocumentSchema, relationBetween, type ManagedContent } from "./schema";
-import type { GeographicReference } from "../../types/discoveries";
+import { remapDemonstrationDestination } from "../../fixtures/catalogue/helpers/contents-migration-geography";
+import { demonstrationContents, demonstrationRelations } from "../../fixtures/catalogue/helpers/contents-demo";
+import { readManagedGeography } from "../../src/lib/geography/store";
+import { ContentError, makeContent, parseContent, validatedGeographyKeys } from "../../src/lib/contents/store";
+import { contentDocumentSchema, relationBetween, type ManagedContent } from "../../src/lib/contents/schema";
+import type { GeographicReference } from "../../src/types/discoveries";
 
 export async function importDemonstrationContents(db: Firestore, apply = false) {
   const geography = await readManagedGeography(db);
@@ -32,7 +33,7 @@ export async function importDemonstrationContents(db: Firestore, apply = false) 
       const matching = await transaction.get(db.collection("contents").where("type", "==", input.type).where("slug", "==", current?.slug ?? input.slug).limit(2));
       if (matching.size > 1 || snapshot.exists && matching.docs.some((doc) => doc.id !== snapshot.id)) throw new ContentError(`Adresse ambiguë pour ${original.title}. Aucun document modifié.`, 409);
       const existing = snapshot.exists ? snapshot : matching.docs[0];
-      const document = existing?.exists ? parseContent(existing.id, existing.data()) : contentDocumentSchema.parse({ ...makeContent(input, original.id, await validatedGeographyKeys(db, transaction, input.destinations)), createdAt: new Date(original.createdAt).toISOString(), updatedAt: new Date(original.updatedAt).toISOString(), publishedAt: original.status === "published" ? new Date(original.createdAt).toISOString() : null });
+      const document = existing?.exists ? parseContent(existing.id, existing.data()) : contentDocumentSchema.parse({ ...makeContent(input, original.id, await validatedGeographyKeys(db, transaction, input.destinations)), coverCredit: importedPhotoCredit(input.coverImage), createdAt: new Date(original.createdAt).toISOString(), updatedAt: new Date(original.updatedAt).toISOString(), publishedAt: original.status === "published" ? new Date(original.createdAt).toISOString() : null });
       const reservation = await transaction.get(db.collection("contentSlugs").doc(`${document.type}:${document.slug}`));
       if (reservation.exists && reservation.data()?.contentId !== document.id) throw new ContentError(`Adresse réservée pour ${original.title}. Aucun document modifié.`, 409);
       plan.push({ document, create: !existing?.exists, reserve: !reservation.exists }); mapping.set(original.id, document);

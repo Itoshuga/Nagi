@@ -90,10 +90,10 @@ function runImport(args) {
 }
 const { contentInputSchema, contentDocumentSchema, relationSchema } = await import('../src/lib/contents/schema.ts');
 const { makeContent, listContents } = await import('../src/lib/contents/store.ts');
-const { demonstrationContents } = await import('../src/lib/contents/demo.ts');
+const { demonstrationContents } = await import('../fixtures/catalogue/helpers/contents-demo.ts');
 const draft = (type, title, slug, destinations = [], details = {}) => contentInputSchema.parse({ type, title, slug, summary: `Le carnet de ${title}.`, description: `Une présentation attentive de ${title}.`, status: 'draft', destinations, details: { category: type === 'gastronomie' ? 'Plat' : 'Autre', ...details } });
 const ref = item => ({ id: item.id, type: item.type });
-function input(item) { return contentInputSchema.parse(Object.fromEntries(Object.entries(item).filter(([key]) => !['id','schemaVersion','locale','createdAt','updatedAt','publishedAt','archivedAt','revision','searchTitle','geographyKeys','isArchived','photoAssetIds','photos','images','imageCaptions'].includes(key)))); }
+function input(item) { return contentInputSchema.parse(Object.fromEntries(Object.entries(item).filter(([key]) => !['coverCredit','id','schemaVersion','locale','createdAt','updatedAt','publishedAt','archivedAt','revision','searchTitle','geographyKeys','isArchived','photoAssetIds','photos','images','imageCaptions'].includes(key)))); }
 async function contentSave(data, previous, relations = []) { return mutation(previous ? 'PUT' : 'POST', previous?.id ?? '', { data, expectedRevision: previous?.revision ?? null, relations }); }
 async function latest(id) { return (await db.collection('contents').doc(id).get()).data(); }
 async function contentUpdate(item, patch, relations = []) { const result = await contentSave({ ...input(item), ...patch }, item, relations); assert.equal(result.status, 200, JSON.stringify(result.body)); return result.body.content; }
@@ -102,6 +102,17 @@ const ueno = { kind: 'district', id: 'district-tokyo-ueno' };
 const tokyo = { kind: 'city', id: 'city-jp-tokyo' };
 try {
   await waitForServer();
+  const emptyHome = await page('/');
+  assert.doesNotMatch(emptyHome, /href="\/destinations\/japon/);
+  assert.match(await page('/destinations'), /Notre carnet prépare ses premières escales/);
+  const { demonstrationDestinations } = await import('../fixtures/catalogue/helpers/geography-demo.ts');
+  const featuredCountry = { ...demonstrationDestinations()[0], id:'country-empty-test', slug:'pays-seul', name:'Pays seul publié', summary:'Le résumé du pays seul.', description:'Une présentation réelle sans ville.', editorial:null };
+  await db.collection('countries').doc(featuredCountry.id).set(featuredCountry);
+  const featuredHome = await page('/');
+  assert.match(featuredHome, /Pays seul publié/); assert.match(featuredHome, /href="\/destinations\/pays-seul"/);
+  assert.match(await page('/destinations/pays-seul'), /Une présentation réelle sans ville/);
+  await db.collection('countries').doc(featuredCountry.id).delete();
+  console.info('Source unique : base vide sans démos et accueil avec un seul pays sans ville vérifiés.');
   runImport(['--project=demo-nagi','--apply','--confirm-project=demo-nagi']);
   assert.equal((await db.collection('contents').get()).size, 0);
   await page('/decouvertes/tourisme/senso-ji',404);
@@ -211,8 +222,34 @@ try {
   assert.equal((await protectedPage(ordinarySession,'/api/admin/contents/search')).status,403);
   const filtered = await protectedPage(adminSession,`/admin/contents?type=tourisme&status=published&geo=city:city-jp-tokyo&q=jardin`); assert.match(await filtered.text(),/Jardin de la revue/);
   console.info('Sécurité et volume : sessions, rôle, CSRF, origines, validations, concurrence, références, filtres et pagination 24 + 6 fiches sans doublon vérifiés.');
+
+  const publicBatch = db.batch();
+  for (let i=0;i<30;i++) {
+    const doc = makeContent({ ...draft('adresses', `Restaurant Sakura ${String(i).padStart(2,'0')}`, `sakura-${i}`, [ueno]), status:'published' }, `sakura-${i}`, ['country:country-jp','city:city-jp-tokyo',`district:${ueno.id}`]);
+    publicBatch.set(db.collection('contents').doc(doc.id),doc);
+  }
+  await publicBatch.commit();
+  const pageOne = await page('/destinations/japon/tokyo?onglet=adresses&q=restaurant');
+  assert.equal((pageOne.match(/class="discovery-card"/g)??[]).length,24);
+  assert.match(pageOne.replace(/<!--.*?-->/g,''),/24 découvertes affichées/);
+  const nextHref = pageOne.match(/href="([^"]+)">Découvertes suivantes/)?.[1].replaceAll('&amp;','&');
+  assert.ok(nextHref); assert.match(nextHref,/q=restaurant/);
+  const pageTwo = await page(`/destinations/japon/tokyo${nextHref}`);
+  assert.equal((pageTwo.match(/class="discovery-card"/g)??[]).length,6);
+  assert.doesNotMatch(pageTwo,/sakura-0\?/);
+  assert.match(await page('/destinations/japon/tokyo/ueno?onglet=adresses&q=restaurant'),/Restaurant Sakura 00/);
+  await hiddenDistrict.update({status:'draft'});
+  assert.doesNotMatch(await page('/destinations/japon/tokyo?onglet=adresses&q=restaurant'),/class="discovery-card"/);
+  await hiddenDistrict.set(originalDistrict);
+  assert.match(await page('/destinations/japon/tokyo?onglet=adresses&apres=invalid'),/Cette page a expiré/);
+  // Un format de document invalide est une indisponibilité, jamais une 404 ou un repli local.
+  await db.collection('contents').doc('unavailable-test').set({type:'tourisme',slug:'base-indisponible',status:'published',visibility:'public',isArchived:false});
+  const failed = await page('/decouvertes/tourisme/base-indisponible',503);
+  assert.match(failed,/momentanément indisponibles/); assert.doesNotMatch(failed,/service_account|PRIVATE KEY|firebase-adminsdk/);
+  await db.collection('contents').doc('unavailable-test').delete();
+  console.info('Public Firestore : recherche par titre, 24 + 6 résultats, agrégation Sakura, parent masqué, curseur invalide et erreur 503 sans repli vérifiés.');
   await stopServer(); server = startServer({...emulatorEnv,NAGI_CONTENT_SOURCE:'static'}); await waitForServer();
-  assert.doesNotMatch(await page('/destinations/japon/tokyo/ueno'),/Jardin de la revue/); await page('/decouvertes/tourisme/senso-ji'); await page('/decouvertes/tourisme/jardin-revue',404);
-  console.info('Transition : sources exclusives, aucun repli sur les démos en mode Firestore et aucune fusion en mode statique.');
+  assert.match(await page('/destinations/japon/tokyo/ueno'),/Jardin de la revue/); await page('/decouvertes/tourisme/senso-ji'); await page('/decouvertes/tourisme/jardin-revue');
+  console.info('Source unique : la variable historique static est ignorée ; seules les fiches Firestore sont affichées.');
 } catch(error) { console.error(output); throw error; }
 finally { for(const uid of users) await auth.deleteUser(uid).catch(()=>undefined); await db.terminate(); await deleteApp(app); await stopServer(); rmSync(fixture,{recursive:true,force:true}); }

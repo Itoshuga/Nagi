@@ -3,7 +3,7 @@ import { coverAssetIds, coverReference } from "../photos/schema";
 import { bindCover } from "../photos/assets";
 import { randomUUID } from "node:crypto";
 import { FieldPath, type Firestore, type Query, type Transaction } from "firebase-admin/firestore";
-import { contentCover } from "../../data/content-covers";
+import { legacyPhotograph } from "../photos/legacy";
 import { normalizeSearch } from "../discovery-filter";
 import { parseDestination } from "../geography/store";
 import { contentDocumentSchema, contentInputSchema, contentKey, relationBetween, relationSchema, type ContentInput, type ContentReference, type ContentRelation, type ContentType, type ManagedContent } from "./schema";
@@ -38,7 +38,8 @@ export async function readRelatedContents(db: Firestore, item: ContentReference)
 
 export interface ContentFilters { type?: ContentType; status?: "draft" | "published"; archived?: boolean; q?: string; geo?: string; cursor?: string }
 function fingerprint(filters: ContentFilters) { return JSON.stringify([filters.type ?? "", filters.status ?? "", Boolean(filters.archived), normalizeSearch(filters.q ?? "").slice(0, 120), filters.geo ?? ""]); }
-export async function listContents(db: Firestore, filters: ContentFilters, publicOnly = false) {
+export async function listContents(db: Firestore, filters: ContentFilters, publicOnly = false, pageSize = PAGE_SIZE) {
+  const size = Math.max(1, Math.min(PAGE_SIZE, pageSize));
   let query: Query = db.collection("contents").where("isArchived", "==", Boolean(filters.archived));
   if (filters.type) query = query.where("type", "==", filters.type);
   if (filters.status || publicOnly) query = query.where("status", "==", publicOnly ? "published" : filters.status);
@@ -55,10 +56,10 @@ export async function listContents(db: Firestore, filters: ContentFilters, publi
       query = query.startAfter(cursor.title, cursor.id);
     } catch { throw new ContentError("Cette page de résultats a expiré. Réinitialisez les filtres."); }
   }
-  const snapshot = await query.limit(PAGE_SIZE + 1).get();
-  const documents = snapshot.docs.slice(0, PAGE_SIZE).map((doc) => parseContent(doc.id, doc.data()));
+  const snapshot = await query.limit(size + 1).get();
+  const documents = snapshot.docs.slice(0, size).map((doc) => parseContent(doc.id, doc.data()));
   const last = documents.at(-1);
-  return { documents, nextCursor: snapshot.size > PAGE_SIZE && last ? Buffer.from(JSON.stringify({ f: fingerprint(filters), title: last.searchTitle, id: last.id })).toString("base64url") : null };
+  return { documents, nextCursor: snapshot.size > size && last ? Buffer.from(JSON.stringify({ f: fingerprint(filters), title: last.searchTitle, id: last.id })).toString("base64url") : null };
 }
 
 // Les clés d’agrégation proviennent exclusivement des parents validés, jamais du navigateur.
@@ -80,7 +81,7 @@ export async function validatedGeographyKeys(db: Firestore, transaction: Transac
 }
 export function makeContent(input: ContentInput, id: string, geographyKeys: string[], previous?: ManagedContent | null): ManagedContent {
   const now = new Date().toISOString();
-  return contentDocumentSchema.parse({ ...input, images: previous?.images ?? [], imageCaptions: previous?.imageCaptions ?? [], ...(previous?.photos ? { photos: previous.photos } : {}), photoAssetIds: coverAssetIds({ coverPhoto: input.coverPhoto, photos: previous?.photos }), id, schemaVersion: 1, locale: "fr", geographyKeys, searchTitle: normalizeSearch(input.title), createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, isArchived: false, revision: (previous?.revision ?? 0) + 1 });
+  return contentDocumentSchema.parse({ ...input, ...(previous?.coverImage === input.coverImage && previous.coverCredit ? { coverCredit: previous.coverCredit } : {}), images: previous?.images ?? [], imageCaptions: previous?.imageCaptions ?? [], ...(previous?.photos ? { photos: previous.photos } : {}), photoAssetIds: coverAssetIds({ coverPhoto: input.coverPhoto, photos: previous?.photos }), id, schemaVersion: 1, locale: "fr", geographyKeys, searchTitle: normalizeSearch(input.title), createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, isArchived: false, revision: (previous?.revision ?? 0) + 1 });
 }
 export async function saveContent(db: Firestore, id: string | null, raw: unknown, expectedRevision: number | null, selections: ContentReference[], actor?: string) {
   const parsed = contentInputSchema.safeParse(raw);
@@ -90,7 +91,7 @@ export async function saveContent(db: Firestore, id: string | null, raw: unknown
     throw new ContentError("Vérifiez les champs indiqués.", 422, fields);
   }
   const input = parsed.data;
-  for (const image of [input.coverImage].filter(Boolean)) if (!contentCover(image)) throw new ContentError("Choisissez une image de la bibliothèque existante.", 422, { coverImage: "Cette image n’est pas disponible." });
+  for (const image of [input.coverImage].filter(Boolean)) if (!legacyPhotograph(image, input.title)) throw new ContentError("Cette référence de couverture est invalide.", 422, { coverImage: "Cette image n’est pas disponible." });
   const reference = db.collection("contents").doc(id ?? randomUUID());
   const self = { id: reference.id, type: input.type };
   const desired = selections.map((target) => relationBetween(self, target));

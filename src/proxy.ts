@@ -1,25 +1,30 @@
 import { loadPublicContent } from "./lib/contents/public";
 import { NextResponse, type NextRequest } from "next/server";
-import { loadPublicGeography } from "./lib/geography/public";
+import { getAdminFirestore } from "./lib/firebase/admin";
+import { routeDocuments } from "./lib/geography/repository";
+import { publicGeographyFromDocuments } from "./lib/geography/presentation";
 import { isKnownGeographicRoute } from "./lib/geographic-routing";
+import { unavailableResponse } from "./lib/public-data/unavailable-response";
+import { publicRead } from "./lib/public-data/errors";
 
 export async function proxy(request: NextRequest) {
+  let parts: string[];
+  try { parts = request.nextUrl.pathname.split("/").filter(Boolean).map(decodeURIComponent); }
+  catch { return NextResponse.rewrite(new URL("/404", request.url), { status: 404 }); }
+  // Le répertoire n’a pas d’identité à résoudre : sa page gère vide/indisponible.
+  if (parts.length === 1 && parts[0] === "destinations") return NextResponse.next();
   let known: boolean;
   try {
-    const geography = await loadPublicGeography();
-    if (request.nextUrl.pathname.startsWith("/decouvertes")) {
-      const parts = request.nextUrl.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-      known = parts.length === 3 && Boolean(await loadPublicContent(parts[1], parts[2], geography));
-    } else known = isKnownGeographicRoute(request.nextUrl.pathname, geography);
+    if (parts[0] === "decouvertes") known = parts.length === 3 && Boolean(await loadPublicContent(parts[1], parts[2]));
+    else known = await publicRead("geography.route-status", async () => {
+      const data = await routeDocuments(getAdminFirestore(), parts[1] ?? "", parts[2], parts[3] === "explorer" ? undefined : parts[3]);
+      return isKnownGeographicRoute(request.nextUrl.pathname, publicGeographyFromDocuments(data));
+    });
+  } catch {
+    return unavailableResponse();
   }
-  catch { return new NextResponse("Le carnet est momentanément indisponible. Réessayez dans un instant.", { status: 503, headers: { "Cache-Control": "no-store" } }); }
-  if (!known) {
-    // Les routes géographiques sont rendues à la requête pour les onglets.
-    // Servir la 404 statique évite le document d’erreur vide de Next 16.4
-    // lors d’un notFound() sur ces routes, tout en conservant l’URL demandée.
-    return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
-  }
+  // Garantir le statut HTTP même avec le rendu streaming de Next 16.4.
+  if (!known) return NextResponse.rewrite(new URL("/404", request.url), { status: 404, headers: { "Cache-Control": "no-store" } });
   return NextResponse.next();
 }
-
 export const config = { matcher: ["/destinations/:path*", "/decouvertes/:path*"] };

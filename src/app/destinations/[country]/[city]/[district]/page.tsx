@@ -1,4 +1,4 @@
-import { getPublicGeography } from "@/lib/geography/public";
+import { getRouteGeography } from "@/lib/geography/public";
 import { Breadcrumbs } from "@/components/destinations/breadcrumbs";
 import { PlaceHero } from "@/components/destinations/place-hero";
 import { PlaceUniverses } from "@/components/destinations/place-universes";
@@ -10,7 +10,7 @@ import { connection } from "next/server";
 
 export async function generateMetadata({ params }: PageProps<"/destinations/[country]/[city]/[district]">) {
   const values = await params;
-  const geography = await getPublicGeography();
+  const geography = await getRouteGeography(values.country, values.city, values.district);
   const country = getCountryBySlug(values.country, geography);
   const city = country && getCityBySlug(country.id, values.city, geography);
   const district = city && getDistrictBySlug(city.id, values.district, geography);

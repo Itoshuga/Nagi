@@ -1,4 +1,4 @@
-import type { Discovery } from "../types/discoveries";
+import type { Discovery } from "../../src/types/discoveries";
 import { tourism } from "./catalogue/tourism";
 import { activities } from "./catalogue/activities";
 import { food } from "./catalogue/food";

@@ -1,4 +1,4 @@
-import type { AddressDiscovery } from "../../types/discoveries";
+import type { AddressDiscovery } from "../../../src/types/discoveries";
 import { destinationPhotographs } from "../destination-photographs";
 import { publication, verificationDate } from "./common";
 

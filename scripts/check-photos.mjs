@@ -169,6 +169,14 @@ try {
   // Anciennes couvertures, locales ou stockées par l’ancienne version.
   runImport(['--project=demo-nagi','--apply','--confirm-project=demo-nagi']);assert.match(await page('/destinations/japon/tokyo'),/shinjuku.jpg/);
   const legacy=await destination('countries',{slug:'legacy-cover',name:'Ancien pays',coverImage:'/images/kyoto-hero.jpg'});
+  const { backfillPhotoCredits } = await import('../scripts/migrations/photo-credits.ts');
+  assert.equal((await db.collection('countries').doc(legacy.id).get()).data().coverImage.credit,undefined);
+  assert.ok((await backfillPhotoCredits(db)).some(item=>item.path===`countries/${legacy.id}`&&item.action==='add-credit'));
+  assert.equal((await db.collection('countries').doc(legacy.id).get()).data().coverImage.credit,undefined,'La simulation n’écrit aucun crédit.');
+  await backfillPhotoCredits(db,true);
+  const credited=(await db.collection('countries').doc(legacy.id).get()).data();
+  assert.equal(credited.coverImage.src,legacy.coverImage.src); assert.equal(credited.coverImage.credit.author,'PJH');
+  assert.equal((await backfillPhotoCredits(db,true)).filter(item=>item.action==='add-credit').length,0,'Le complément de crédits est idempotent.');
   const historical=await upload(scope('countries',legacy.id));assert.equal(historical.result.status,200);const oldCover={...historical.result.body.photo,focal:{x:22,y:74}};
   await db.collection('countries').doc(legacy.id).update({photos:{cover:oldCover,gallery:[]},photoAssetIds:[oldCover.id]});await db.collection('photoAssets').doc(oldCover.id).update({state:'attached',references:[`countries/${legacy.id}`]});
   assert.match(await page('/destinations/legacy-cover'),/22% 74%/);await imageStatus(oldCover,200);

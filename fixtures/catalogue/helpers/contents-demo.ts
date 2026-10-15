@@ -1,6 +1,6 @@
-import { discoveries } from "../../data/discoveries";
-import { contentInputSchema, relationBetween, type ContentInput, type ContentRelation } from "./schema";
-import type { Discovery } from "../../types/discoveries";
+import { discoveries } from "../discoveries";
+import { contentInputSchema, relationBetween, type ContentInput, type ContentRelation } from "../../../src/lib/contents/schema";
+import type { Discovery } from "../../../src/types/discoveries";
 
 export function demonstrationContentInput(item: Discovery): ContentInput {
   let details;

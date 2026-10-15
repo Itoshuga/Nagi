@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { geographicCover } from "../../data/geographic-covers";
+import { legacyPhotograph } from "../photos/legacy";
 import { destinationDocumentSchema, destinationInputSchema, idSchema, type DestinationKind, type ManagedDestination } from "./schema";
 
 // Format historique : collection comme type, image sous forme de chemin et
@@ -23,7 +23,7 @@ export function decodeDestinationDocument(kind: DestinationKind, id: string, raw
   const legacy = legacySchemas[kind].safeParse(raw);
   if (!legacy.success || legacy.data.id !== id) return null;
   const { isoCode, continent, ...data } = legacy.data;
-  const coverImage = data.coverImage ? geographicCover(data.coverImage) : null;
+  const coverImage = data.coverImage ? legacyPhotograph(data.coverImage, data.name) : null;
   if (data.coverImage && !coverImage) return null;
   const normalized = destinationDocumentSchema.safeParse({
     ...data, ...(kind === "countries" ? { isoCode, continent } : {}), kind,

@@ -45,16 +45,16 @@ export const copy = {
     description: "Un regard curieux et sensible sur le monde. Explorez le Japon à travers ses lieux, ses savoir-faire, sa gastronomie et ses adresses, avec Nagi.",
   },
   hero: {
-    eyebrow: "Un premier horizon · Japon",
-    title: "Le Japon,",
+    eyebrow: "Un premier horizon",
+    title: "Le monde,",
     titleAccent: "à pas feutrés.",
-    introduction: "Il est des voyages qui commencent par un regard. Le nôtre se pose sur le Japon, entre présence et silence.",
+    introduction: "Il est des voyages qui commencent par un regard. Prendre le temps de voir, entre présence et silence.",
     cta: "Explorer les destinations",
   },
   discover: {
     eyebrow: "01 / Les destinations",
     title: "Un pays, mille nuances.",
-    introduction: "Trois escales japonaises, trois sensibilités. Et autant de façons de se laisser surprendre.",
+    introduction: "Des escales, des sensibilités. Et autant de façons de se laisser surprendre.",
   },
   universes: {
     eyebrow: "02 / Les univers de Nagi",

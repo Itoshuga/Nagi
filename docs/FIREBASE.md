@@ -9,10 +9,10 @@ Tailwind 4.3. Les guides livrés dans `node_modules/next/dist/docs/` ont été
 consultés pour les Route Handlers, les cookies asynchrones, l’authentification,
 les variables d’environnement et les frontières client / serveur.
 
-Les pages publiques utilisent toujours `src/data/geography.ts`,
-`src/data/catalogue/*` et leurs fonctions dans `src/lib/`. Les identifiants,
-slugs, relations et styles publics sont conservés. Le proxy existant continue
-à traiter uniquement les URL géographiques. La géographie peut être importée et administrée selon la procédure de l’étape 06 ; sa source publique reste explicitement sélectionnée. Les quatre univers restent locaux.
+Les pages publiques utilisent exclusivement Firestore depuis l’étape 09. Les
+exemples locaux sont isolés hors de `src`. Le proxy résout uniquement la route
+demandée et les pages appliquent les contrôles de visibilité côté serveur.
+Voir [PUBLIC_DATA.md](PUBLIC_DATA.md) pour les index et la migration volontaire.
 
 Les SDK ajoutés sont Firebase Web (Auth, Firestore, Storage) et Firebase Admin.
 Le SDK Admin actuel nécessite **Node.js 22 ou plus** ; Node.js 24 LTS est

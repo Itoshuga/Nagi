@@ -1,4 +1,5 @@
-import { getPublicGeography } from "@/lib/geography/public";
+import Link from "next/link";
+import { getRouteGeography } from "@/lib/geography/public";
 import { Breadcrumbs } from "@/components/destinations/breadcrumbs";
 import { PlaceHero } from "@/components/destinations/place-hero";
 import { PlaceCollection } from "@/components/destinations/place-collection";
@@ -11,7 +12,7 @@ import { connection } from "next/server";
 
 export async function generateMetadata({ params }: PageProps<"/destinations/[country]/[city]">) {
   const values = await params;
-  const geography = await getPublicGeography();
+  const geography = await getRouteGeography(values.country, values.city);
   const country = getCountryBySlug(values.country, geography);
   const city = country && getCityBySlug(country.id, values.city, geography);
   // La page déclenche notFound() dans sa frontière ; ne pas interrompre
@@ -22,7 +23,8 @@ export async function generateMetadata({ params }: PageProps<"/destinations/[cou
 
 export default async function CityPage({ params, searchParams }: PageProps<"/destinations/[country]/[city]">) {
   await connection();
-  const { country, city } = await requireCity(await params);
+  const query = await searchParams;
+  const { country, city, nextCursor, invalidCursor } = await requireCity(await params, typeof query.quartiers === "string" ? query.quartiers : undefined);
   const hasDistricts = city.districts.length > 0;
   return (
     <>
@@ -32,7 +34,9 @@ export default async function CityPage({ params, searchParams }: PageProps<"/des
         id: district.id, name: district.name, label: `${city.name}, ${country.name}`, mood: district.mood, description: district.description,
         photograph: district.photograph, href: districtPath(country, city, district),
       }))} /> : null}
-      <PlaceUniverses name={city.name} scope={{ kind: "city", id: city.id }} query={await searchParams} />
+      {invalidCursor && <p className="collection-empty">Cette page a expiré. <Link href={cityPath(country, city)}>Revenir à la ville</Link>.</p>}
+      {nextCursor && <Link className="return-link" href={`?${new URLSearchParams({ quartiers: nextCursor, ...(typeof query.onglet === "string" ? { onglet: query.onglet } : {}), ...(typeof query.q === "string" ? { q: query.q } : {}) })}#quartiers`}>Quartiers suivants →</Link>}
+      <PlaceUniverses name={city.name} scope={{ kind: "city", id: city.id }} query={query} />
       <ReturnLink href={countryPath(country)}>Toutes les villes · {country.name}</ReturnLink>
     </>
   );

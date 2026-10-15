@@ -14,7 +14,7 @@ export function Spirit() {
         <h2 id="spirit-title">{copy.spirit.title}<br /><em>{copy.spirit.titleAccent}</em></h2>
         {copy.spirit.paragraphs.map((paragraph) => <p className="spirit-paragraph" key={paragraph}>{paragraph}</p>)}
         <p className="spirit-closing">{copy.spirit.closing}</p>
-        <TextLink href="/destinations/japon">Ouvrir le carnet japonais</TextLink>
+        <TextLink href="/destinations">Ouvrir le carnet</TextLink>
       </div>
     </section>
   );

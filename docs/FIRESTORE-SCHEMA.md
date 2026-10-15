@@ -30,9 +30,8 @@ avant projection. Les règles n’autorisent aucune lecture publique directe des
 fiches complètes. Toute écriture passe par un contrôleur autorisé, protégé contre
 les requêtes intersites et validant les données côté serveur.
 
-Les sources publiques sont explicites et exclusives : `NAGI_GEOGRAPHY_SOURCE` et
-`NAGI_CONTENT_SOURCE`, initialement `static`. Imports et déploiements nécessitent
-une action volontaire.
+Firestore est la seule source publique depuis l’étape 09. Imports et déploiements
+restent des actions volontaires ; voir [PUBLIC_DATA.md](PUBLIC_DATA.md).
 
 Voir [la géographie](GEOGRAPHY.md) et [les quatre univers](CONTENTS.md) pour les
 champs, invariants, index, limites et procédures de migration et de bascule.

@@ -15,7 +15,6 @@ export async function canReadPublicPhoto(db: Firestore, asset: PhotoAsset) {
   for (const key of asset.references) {
     const [kind, id] = key.split("/");
     if (!["countries", "cities", "districts", "contents"].includes(kind) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(id ?? "")) continue;
-    if (process.env.NAGI_GEOGRAPHY_SOURCE !== "firestore" || kind === "contents" && process.env.NAGI_CONTENT_SOURCE !== "firestore") continue;
     const snapshot = await db.collection(kind).doc(id).get(); const item = snapshot.data();
     const cover = photoReferenceSchema.safeParse(coverReference(item));
     if (!item || !cover.success || cover.data.kind !== "storage" || cover.data.id !== asset.id) continue;

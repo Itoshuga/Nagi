@@ -3,7 +3,7 @@ import { coverAssetIds, coverReference } from "../photos/schema";
 import { bindCover } from "../photos/assets";
 import { randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
-import { geographicCover } from "../../data/geographic-covers";
+import { legacyPhotograph } from "../photos/legacy";
 import { decodeDestinationDocument } from "./documents";
 import { destinationDocumentSchema, destinationInputSchema, destinationParentId, slugReservationId, type DestinationKind, type ManagedDestination, type ManagedGeography } from "./schema";
 
@@ -39,7 +39,7 @@ export async function saveManagedDestination(db: Firestore, kind: DestinationKin
   }
   const input = parsed.data;
   if (input.kind !== kind) throw new GeographyError("Type de destination invalide.");
-  if (input.coverImage && !geographicCover(input.coverImage)) throw new GeographyError("Choisissez une photographie de la bibliothèque existante.", 422, { coverImage: "Cette photographie n’est pas disponible." });
+  if (input.coverImage && !legacyPhotograph(input.coverImage, input.name)) throw new GeographyError("Cette référence de couverture est invalide.", 422, { coverImage: "Cette photographie n’est pas disponible." });
   const reference = db.collection(kind).doc(id ?? randomUUID());
   return db.runTransaction(async (transaction) => {
     const existing = await transaction.get(reference);
@@ -71,7 +71,7 @@ export async function saveManagedDestination(db: Firestore, kind: DestinationKin
     }
     if (editorial && previous && input.name !== previous.name) editorial.caption = input.name;
     const coverPhoto = input.coverPhoto ?? previous?.coverPhoto;
-    const document = destinationDocumentSchema.parse({ ...input, ...(previous?.photos ? { photos: previous.photos } : {}), ...(coverPhoto ? { coverPhoto } : {}), id: reference.id, photoAssetIds: coverAssetIds({ coverPhoto, photos: previous?.photos }), schemaVersion: 1, locale: "fr", coverImage: geographicCover(input.coverImage), editorial,
+    const document = destinationDocumentSchema.parse({ ...input, ...(previous?.photos ? { photos: previous.photos } : {}), ...(coverPhoto ? { coverPhoto } : {}), id: reference.id, photoAssetIds: coverAssetIds({ coverPhoto, photos: previous?.photos }), schemaVersion: 1, locale: "fr", coverImage: previous?.coverImage?.src === input.coverImage ? previous.coverImage : legacyPhotograph(input.coverImage, input.name), editorial,
       createdAt: previous?.createdAt ?? now, updatedAt: now, publishedAt: previous?.publishedAt ?? (input.status === "published" ? now : null), archivedAt: null, revision: (previous?.revision ?? 0) + 1,
     });
     if (input.coverPhoto) await bindCover(db, transaction, kind, reference.id, input.coverPhoto, coverReference(previous), actor);

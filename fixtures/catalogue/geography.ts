@@ -1,4 +1,4 @@
-import type { City, Country, District } from "../types/destinations";
+import type { City, Country, District } from "../../src/types/destinations";
 import { destinationPhotographs } from "./destination-photographs";
 
 export const countries: readonly Country[] = [

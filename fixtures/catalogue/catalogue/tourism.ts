@@ -1,4 +1,4 @@
-import type { TourismDiscovery } from "../../types/discoveries";
+import type { TourismDiscovery } from "../../../src/types/discoveries";
 import { discoveryPhotographs as photos } from "../discovery-photographs";
 import { publication, verificationDate } from "./common";
 

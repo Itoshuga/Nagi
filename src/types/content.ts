@@ -1,4 +1,7 @@
 export interface Photograph {
+  credit?: { author: string; sourceUrl: string; license?: string; licenseUrl?: string; title?: string };
+  author?: string;
+  sourceUrl?: string;
   src: string;
   alt: string;
   position: string;

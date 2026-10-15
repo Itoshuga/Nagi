@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { demonstrationDestinations } from "../src/lib/geography/demo";
+import { demonstrationDestinations } from "../fixtures/catalogue/helpers/geography-demo";
 import { destinationInputSchema, proposedSlug, slugReservationId, visibilityReason, type ManagedGeography } from "../src/lib/geography/schema";
 import { publicGeographyFromDocuments } from "../src/lib/geography/presentation";
 import { decodeDestinationDocument } from "../src/lib/geography/documents";
-import { cities, countries, districts } from "../src/data/geography";
-import { geographicCover } from "../src/data/geographic-covers";
+import { cities, countries, districts } from "../fixtures/catalogue/geography";
 
 function demonstration(): ManagedGeography {
   const items = demonstrationDestinations("2026-10-14T10:00:00.000Z");
@@ -22,7 +21,9 @@ test("la migration conserve les textes, les IDs, les parents et les images du ca
     assert.equal(migrated.name, original.name);
     assert.equal(migrated.summary, original.description);
     assert.equal(migrated.description, original.introduction);
-    assert.deepEqual(migrated.coverImage, original.photograph);
+    assert.equal(migrated.coverImage?.src, original.photograph.src);
+    assert.equal(migrated.coverImage?.alt, original.photograph.alt);
+    assert.equal(migrated.coverImage?.position, original.photograph.position);
     if (migrated.kind === "cities" && "countryId" in original) assert.equal(migrated.countryId, original.countryId);
     if (migrated.kind === "districts" && "cityId" in original) assert.equal(migrated.cityId, original.cityId);
   }
@@ -90,7 +91,7 @@ test("les anciens documents deviennent lisibles sans changer leurs données ni l
     assert.equal(decoded.summary, original.summary);
     assert.equal(decoded.publishedAt, original.publishedAt);
     assert.equal(decoded.revision, 1);
-    assert.deepEqual(decoded.coverImage, geographicCover(raw.coverImage));
+    assert.deepEqual(decoded.coverImage, raw.coverImage ? { src: raw.coverImage, alt: raw.name, position: "50% 50%" } : null);
     if (decoded.kind === "cities" && original.kind === "cities") assert.equal(decoded.countryId, original.countryId);
     if (decoded.kind === "districts" && original.kind === "districts") assert.equal(decoded.cityId, original.cityId);
     assert.deepEqual(raw, before);

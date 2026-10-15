@@ -201,7 +201,8 @@ try {
   const tokyo = await page("/destinations/japon/tokyo?onglet=adresses");
   assert.match(tokyo, /Le quartier des jardins/);
   assert.match(tokyo, /id="tab-adresses"/);
-  assert.match(tokyo, /Maisen Aoyama/);
+  assert.doesNotMatch(tokyo, /Maisen Aoyama/);
+  assert.match(tokyo, /Une page encore à écrire/);
   assert.equal((await save(base("districts", "Conflit", "jardins-carnet", { cityId: "city-jp-tokyo" }))).status, 409);
   assert.equal((await save(base("districts", "Autre contexte", "jardins-carnet", { cityId: city.id }))).status, 201);
   assert.equal((await save(base("districts", "Chemin réservé", "explorer", { cityId: city.id }))).status, 422);
@@ -246,9 +247,9 @@ try {
   server = startServer({ ...emulatorEnv, NAGI_GEOGRAPHY_SOURCE: "static" });
   await waitForServer();
   const staticDirectory = await page("/destinations");
-  assert.doesNotMatch(staticDirectory, /Carnet des ateliers|Carnet concurrent|Nara du carnet|Jardins renommés/);
+  assert.ok(staticDirectory.includes(country.name), "La liste conserve le nom de l’édition concurrente réellement enregistrée.");
   assert.match(staticDirectory, /Tokyo/);
-  console.info("Transition : le mode statique reste séparé du catalogue administré ; aucune fusion ni repli silencieux.");
+  console.info("Source unique : une ancienne variable static ne réactive aucune donnée locale.");
 } catch (error) {
   console.error(output); throw error;
 } finally {

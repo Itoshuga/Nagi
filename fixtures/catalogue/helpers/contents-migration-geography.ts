@@ -1,6 +1,6 @@
-import { countries, cities, districts } from "../../data/geography";
-import type { GeographicReference } from "../../types/discoveries";
-import type { ManagedGeography } from "../geography/schema";
+import { countries, cities, districts } from "../geography";
+import type { GeographicReference } from "../../../src/types/discoveries";
+import type { ManagedGeography } from "../../../src/lib/geography/schema";
 
 function unique<T extends { id: string; slug: string }>(items: T[], id: string | undefined, slug: string | undefined) {
   const exact = items.find((item) => item.id === id); if (exact) return exact;

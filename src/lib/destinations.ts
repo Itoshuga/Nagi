@@ -1,31 +1,28 @@
-import { cities, countries, districts } from "../data/geography";
 import type { City, CityWithDistricts, Country, CountryWithCities, District, PublicGeography } from "../types/destinations";
 
-export const staticGeography: PublicGeography = { countries, cities, districts };
-
-export function getCountries(geography: PublicGeography = staticGeography): readonly Country[] {
+export function getCountries(geography: PublicGeography): readonly Country[] {
   return geography.countries;
 }
 
-export function getCitiesByCountry(countryId: Country["id"], geography: PublicGeography = staticGeography): readonly City[] {
+export function getCitiesByCountry(countryId: Country["id"], geography: PublicGeography): readonly City[] {
   return geography.cities.filter((city) => city.countryId === countryId);
 }
 
-export function getDistrictsByCity(cityId: City["id"], geography: PublicGeography = staticGeography): readonly District[] {
+export function getDistrictsByCity(cityId: City["id"], geography: PublicGeography): readonly District[] {
   return geography.districts.filter((district) => district.cityId === cityId);
 }
 
-export function getCountryBySlug(slug: string, geography: PublicGeography = staticGeography): CountryWithCities | undefined {
+export function getCountryBySlug(slug: string, geography: PublicGeography): CountryWithCities | undefined {
   const country = geography.countries.find((entry) => entry.slug === slug);
   return country ? { ...country, cities: getCitiesByCountry(country.id, geography) } : undefined;
 }
 
-export function getCityBySlug(countryId: Country["id"], slug: string, geography: PublicGeography = staticGeography): CityWithDistricts | undefined {
+export function getCityBySlug(countryId: Country["id"], slug: string, geography: PublicGeography): CityWithDistricts | undefined {
   const city = geography.cities.find((entry) => entry.countryId === countryId && entry.slug === slug);
   return city ? { ...city, districts: getDistrictsByCity(city.id, geography) } : undefined;
 }
 
-export function getDistrictBySlug(cityId: City["id"], slug: string, geography: PublicGeography = staticGeography): District | undefined {
+export function getDistrictBySlug(cityId: City["id"], slug: string, geography: PublicGeography): District | undefined {
   return geography.districts.find((entry) => entry.cityId === cityId && entry.slug === slug);
 }
 
@@ -41,15 +38,15 @@ export function districtPath(country: Pick<Country, "slug">, city: Pick<City, "s
   return `${cityPath(country, city)}/${encodeURIComponent(district.slug)}`;
 }
 
-export function getCountryParams() {
-  return countries.map((country) => ({ country: country.slug }));
+export function getCountryParams(geography: PublicGeography) {
+  return geography.countries.map((country) => ({ country: country.slug }));
 }
 
-export function getCityParams() {
-  return countries.flatMap((country) => getCitiesByCountry(country.id).map((city) => ({ country: country.slug, city: city.slug })));
+export function getCityParams(geography: PublicGeography) {
+  return geography.countries.flatMap((country) => getCitiesByCountry(country.id, geography).map((city) => ({ country: country.slug, city: city.slug })));
 }
 
-export function getDistrictParams() {
-  return countries.flatMap((country) => getCitiesByCountry(country.id).flatMap((city) =>
-    getDistrictsByCity(city.id).map((district) => ({ country: country.slug, city: city.slug, district: district.slug }))));
+export function getDistrictParams(geography: PublicGeography) {
+  return geography.countries.flatMap((country) => getCitiesByCountry(country.id, geography).flatMap((city) =>
+    getDistrictsByCity(city.id, geography).map((district) => ({ country: country.slug, city: city.slug, district: district.slug }))));
 }

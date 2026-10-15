@@ -1,3 +1,69 @@
+# Étape 09 — Firestore comme unique source publique (15 octobre 2026)
+
+L’accueil, le répertoire, les pages Pays / Ville / Quartier, les quatre onglets,
+les fiches, leurs relations et couvertures sont raccordés exclusivement à Firestore.
+Aucun module de production ne dépend des anciens jeux métier. Les exemples et
+convertisseurs sont isolés dans `fixtures/catalogue`, les imports dans
+`scripts/migrations`. Les variables de bascule sont retirées et ignorées.
+
+Fichiers structurants : `src/lib/geography/repository.ts`, `geography/public.ts`,
+`contents/public.ts`, `contents/invalidation.ts`, `destination-pages.ts`, les pages
+publiques et composants de l’accueil, `PlaceUniverses`, `DestinationTabs`,
+`CatalogueBrowser`, `DiscoveryArticle`, les frontières d’erreur et `src/proxy.ts`.
+La compatibilité des couvertures est centralisée dans `photos/legacy.ts` ; les
+schémas et formulaires préservent leurs métadonnées en base. Les index, guides et
+scripts de vérification sont adaptés. L’audit détaillé, les collections, requêtes,
+limites et opérations de déploiement figurent dans [PUBLIC_DATA.md](docs/PUBLIC_DATA.md).
+
+Vérifications exécutées :
+
+- `npm test` : **50 tests** (44 modèles/navigation + 6 repositories/isolation).
+- `npm run typecheck`, `npm run lint`, `npm run build` : réussis.
+- `npm run test:contrast` : 26 contrastes, texte ≥ 4,68:1.
+- `npm run test:geography` : création des trois niveaux, parent exact, héritage,
+  archives, versions, compatibilité historique, import idempotent et absence de repli.
+- `npm run test:contents` : quatre types, champs facultatifs, associations multiples,
+  relations bidirectionnelles, publication, retrait, sécurité, recherche et curseurs.
+  Ajouts : accueil/base vide, pays sans ville, 30 restaurants Sakura (24 + 6),
+  agrégation, parent masqué, curseur invalide et document incompatible en HTTP 503.
+- `npm run test:photos` : sept types, couvertures publiques, remplacement,
+  confidentialité, formats, limites, erreurs, anciens chemins et crédits complétés
+  en simulation puis appliqués de manière idempotente sur l’émulateur uniquement.
+- `npm run test:firebase-rules` : 5 tests réussis.
+- `npm run test:admin-auth` : rôle, révocation, sessions, origine/CSRF et déconnexion ;
+  absence de configuration donnant une indisponibilité publique (500/503), sans démo.
+- Parcours HTTP sur copie d’émulation : **123 pages et variantes, 2 245 liens internes,
+  23 images**, métadonnées, liens, onglets, redirections et 404 vérifiés.
+- Navigateur : répertoire, ville, changement d’onglet avec URL, recherche de titre,
+  retour arrière, fiche Adresse → Gastronomie → Adresse et contexte de retour.
+  Rendu éditorial et couverture vérifiés visuellement.
+
+Les suites Firebase ont utilisé seulement `demo-nagi`, Java 21 et des copies
+Next.js temporaires. Les serveurs et comptes de test ont été arrêtés/nettoyés.
+La panne réseau du projet de production n’a pas été provoquée ; les chemins
+d’erreur sont couverts par SDK simulé indisponible (code 14), configuration absente
+et document incompatible. Le build réussit avec l’avertissement préexistant sur
+un fichier pnpm-lock situé hors du dépôt.
+
+Audit réel **en lecture seule** : 1 pays et 1 ville publiés, 0 quartier. La simulation
+géographique refuse un conflit de slug Japon sous un autre ID ; l’import de fiches
+signale des destinations absentes. Le nouvel index de liste publique manquait alors
+(code 9). Le complément de crédits propose 0 modification.
+
+**Correction du code 9 le 15 octobre 2026 :** déploiement des 7 nouveaux index depuis
+`firestore.indexes.json` sur `nagi-travelapp`, sans suppression d’index. Les 19 index
+sont désormais `READY`. Les requêtes réelles Pays (1), Villes (1), Quartiers (0),
+résolution par slugs et quatre onglets (0 fiche actuellement) réussissent.
+Vérification du serveur local réel : accueil, Destinations, Japon, Tokyo et ses
+quatre onglets en **HTTP 200**, sans état d’indisponibilité. Aucun document
+touristique ni aucune règle de sécurité n’a été modifié. Les identifiants
+temporaires utilisés pour le CLI ont été supprimés après le déploiement.
+Les imports de démonstration restent facultatifs et volontaires ; rapprocher les
+conflits signalés avant toute application. L’application peut rester vide ou limitée
+aux destinations réellement administrées. Aucun import n’est nécessaire au démarrage.
+
+---
+
 # Vérification de livraison — 9 octobre 2026
 
 ## Étape 01 — Commandes réellement exécutées

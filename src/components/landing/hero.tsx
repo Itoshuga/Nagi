@@ -1,4 +1,5 @@
 "use client";
+import { PhotoCredit } from "../discoveries/photo-credit";
 import { protectedPhoto } from "@/lib/photos/urls";
 
 import type { City } from "@/types/destinations";
@@ -10,7 +11,7 @@ import { copy } from "@/data/fr";
 import { formatIndex } from "@/lib/format";
 import { TextLink } from "@/components/text-link";
 
-export function Hero({ destinations, countryName }: { destinations: readonly City[]; countryName: string }) {
+export function Hero({ destinations, countryName }: { destinations: readonly Pick<City, "id" | "name" | "caption" | "mood" | "photograph">[]; countryName: string }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [visited, setVisited] = useState<readonly number[]>([0]);
   const loadedImages = useRef(new Set<number>());
@@ -40,7 +41,7 @@ export function Hero({ destinations, countryName }: { destinations: readonly Cit
           </div>
           <p className="sidebar-footnote">Un pays.<br />D’infinies façons de le voir.</p>
         </div>
-        <a className="scroll-note" href="#decouvrir"><ArrowDown size={16} strokeWidth={1.25} aria-hidden="true" /><span>Au fil du voyage</span></a>
+        <a className="scroll-note" href={destinations.length ? "#decouvrir" : "#univers"}><ArrowDown size={16} strokeWidth={1.25} aria-hidden="true" /><span>Au fil du voyage</span></a>
       </div>
 
       <figure className="hero-figure">
@@ -52,9 +53,7 @@ export function Hero({ destinations, countryName }: { destinations: readonly Cit
               unoptimized={protectedPhoto(destination.photograph.src)} src={destination.photograph.src}
               alt={destination.photograph.alt}
               fill
-              sizes={destination.slug === "kyoto"
-                ? "(max-width: 699px) min(210vw, 945px), 130vh"
-                : "(max-width: 699px) 92vw, (max-width: 1023px) 53vw, 40vw"}
+              sizes="(max-width: 699px) 92vw, (max-width: 1023px) 53vw, 40vw"
               loading="eager"
               fetchPriority={index === 0 ? "high" : "auto"}
               onLoad={() => {
@@ -67,12 +66,12 @@ export function Hero({ destinations, countryName }: { destinations: readonly Cit
             />
           ))}
         </div>
-        <figcaption><span>{selected?.caption ?? "De nouveaux horizons se préparent"}</span>{selected && <span>{formatIndex(selectedIndex)} / {String(destinations.length).padStart(2, "0")}</span>}</figcaption>
+        <figcaption><span>{selected?.caption ?? "De nouveaux horizons se préparent"}</span>{selected && <span>{formatIndex(selectedIndex)} / {String(destinations.length).padStart(2, "0")}</span>}{selected && <PhotoCredit photograph={selected.photograph} />}</figcaption>
       </figure>
 
       <div className="hero-editorial">
-        <p className="eyebrow hero-eyebrow"><span className="small-sun" aria-hidden="true" />{copy.hero.eyebrow}</p>
-        <h1 id="hero-title">{copy.hero.title}<br /><em>{copy.hero.titleAccent}</em></h1>
+        <p className="eyebrow hero-eyebrow"><span className="small-sun" aria-hidden="true" />{copy.hero.eyebrow}{countryName ? ` · ${countryName}` : ""}</p>
+        <h1 id="hero-title">{countryName ? `${countryName},` : copy.hero.title}<br /><em>{copy.hero.titleAccent}</em></h1>
         <p className="hero-introduction">{copy.hero.introduction}</p>
         <div className="photo-gallery" role="group" aria-label="Choisir une photographie">
           {destinations.map((destination, index) => (

@@ -1,8 +1,8 @@
 import "server-only";
 import type { Firestore } from "firebase-admin/firestore";
-import { demonstrationDestinations } from "./demo";
-import { destinationParentId, slugReservationId } from "./schema";
-import { GeographyError, parseDestination } from "./store";
+import { demonstrationDestinations } from "../../fixtures/catalogue/helpers/geography-demo";
+import { destinationParentId, slugReservationId } from "../../src/lib/geography/schema";
+import { GeographyError, parseDestination } from "../../src/lib/geography/store";
 
 export async function importDemonstrationGeography(db: Firestore, apply = false) {
   const source = demonstrationDestinations();

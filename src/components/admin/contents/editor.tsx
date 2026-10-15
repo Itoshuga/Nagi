@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getCsrfToken } from "@/lib/auth/browser";
 import { classifications, contentInputSchema, detailSchemas, type ContentInput, type ContentType, type ManagedContent } from "@/lib/contents/schema";
 import { proposedSlug } from "@/lib/geography/schema";
-import { contentCover } from "@/data/content-covers";
+import { legacyPhotograph } from "@/lib/photos/legacy";
 import { coverPhotograph } from "@/lib/photos/schema";
 import { CoverUpload, type CoverUploadHandle } from "../photos/cover-upload";
 import { universeDetails } from "@/data/universes";
@@ -19,8 +19,8 @@ export function emptyContent(type: ContentType): ContentInput {
   return { ...initial, title: "", slug: "" };
 }
 export function contentInput(document: ManagedContent): ContentInput {
-  const { images: _legacyImages, imageCaptions: _legacyCaptions, photos: _legacyPhotos, photoAssetIds: _photos, id: _id, schemaVersion: _schema, locale: _locale, createdAt: _created, updatedAt: _updated, publishedAt: _published, archivedAt: _archived, revision: _revision, searchTitle: _search, geographyKeys: _keys, isArchived: _isArchived, ...input } = document;
-  void [_legacyImages, _legacyCaptions, _legacyPhotos, _photos, _id, _schema, _locale, _created, _updated, _published, _archived, _revision, _search, _keys, _isArchived]; return input;
+  const { coverCredit: _credit, images: _legacyImages, imageCaptions: _legacyCaptions, photos: _legacyPhotos, photoAssetIds: _photos, id: _id, schemaVersion: _schema, locale: _locale, createdAt: _created, updatedAt: _updated, publishedAt: _published, archivedAt: _archived, revision: _revision, searchTitle: _search, geographyKeys: _keys, isArchived: _isArchived, ...input } = document;
+  void [_credit, _legacyImages, _legacyCaptions, _legacyPhotos, _photos, _id, _schema, _locale, _created, _updated, _published, _archived, _revision, _search, _keys, _isArchived]; return input;
 }
 type Field = { key: string; label: string; kind?: "long" | "list" | "url"; hint?: string };
 const fields: Record<ContentType, Field[]> = {
@@ -34,7 +34,7 @@ export function ContentEditor({ type, initial, geography, initialRelations, maxP
   const photoUpload = useRef<CoverUploadHandle>(null);
   const [photoSelected, setPhotoSelected] = useState(false);
   const [draftId] = useState(() => crypto.randomUUID());
-  const legacyCover = contentCover(data.coverImage);
+  const legacyCover = legacyPhotograph(data.coverImage, data.coverPresentation?.alt ?? data.title, data.coverPresentation?.position);
   const photograph = coverPhotograph(initial, legacyCover ? { ...legacyCover, ...data.coverPresentation } : null);
   const [tagsText, setTagsText] = useState(data.tags.join(", "));
   const [relations, setRelations] = useState(initialRelations); const [pending, setPending] = useState(false); const [failure, setFailure] = useState(""); const [errors, setErrors] = useState<Record<string, string>>({});

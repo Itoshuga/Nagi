@@ -7,7 +7,7 @@ import { universeSlugs, type DiscoveryCardData, type UniverseSlug } from "@/type
 import { changedTabPath, destinationTabPath, keyboardUniverse, selectedUniverse } from "@/lib/universe-navigation";
 import { CatalogueBrowser } from "./catalogue-browser";
 
-export function DestinationTabs({ name, selection, managed = false }: { name: string; selection: Record<UniverseSlug, readonly DiscoveryCardData[]>; managed?: boolean }) {
+export function DestinationTabs({ name, selection, q, hasMore }: { name: string; selection: Record<UniverseSlug, readonly DiscoveryCardData[]>; q: string; hasMore: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const pathname = usePathname();
@@ -17,13 +17,8 @@ export function DestinationTabs({ name, selection, managed = false }: { name: st
 
   function selectTab(universe: UniverseSlug) {
     if (selected === universe) return;
-    if (managed) {
-      const query = new URLSearchParams(params.toString()); query.delete("apres");
-      startTransition(() => router.push(changedTabPath(pathname, query.toString(), universe, "#univers"), { scroll: false })); return;
-    }
-    // Next synchronise useSearchParams avec l’historique natif, sans requête
-    // de navigation ni défilement vers l’ancre lors du changement d’onglet.
-    window.history.pushState(null, "", changedTabPath(pathname, window.location.search, universe, window.location.hash));
+    const query = new URLSearchParams(params.toString()); query.delete("apres");
+    startTransition(() => router.push(changedTabPath(pathname, query.toString(), universe, "#univers"), { scroll: false }));
   }
 
   return <div className="destination-tabs" aria-busy={pending}>
@@ -50,12 +45,12 @@ export function DestinationTabs({ name, selection, managed = false }: { name: st
             selectTab(slug);
           }
         }}
-      ><span>{universeDetails[slug].name}</span>{(!managed || selected === slug) && <span className="tab-count" aria-hidden="true">{selection[slug].length}</span>}</a>)}
+      ><span>{universeDetails[slug].name}</span></a>)}
     </div>
     {universeSlugs.map((slug) => <div key={slug} role="tabpanel" id={`panel-${slug}`} aria-labelledby={`tab-${slug}`} tabIndex={0} hidden={selected !== slug} className="destination-tabpanel">
       {selected === slug && <>
         <div className="tab-introduction"><p className="tab-lead">{universeDetails[slug].lead}</p><p>{universeDetails[slug].description}</p></div>
-        {selection[slug].length > 0 ? <CatalogueBrowser key={slug} items={selection[slug]} name={name} /> : <div className="catalogue-empty"><p className="eyebrow">{name} · {universeDetails[slug].name}</p><h3>Une page encore à écrire.</h3><p>{universeDetails[slug].empty}</p></div>}
+        <CatalogueBrowser key={`${slug}:${q}`} items={selection[slug]} name={name} query={q} hasMore={hasMore} empty={universeDetails[slug].empty} />
       </>}
     </div>)}
   </div>;

@@ -1,29 +1,35 @@
 import "server-only";
 import { cache } from "react";
 import { connection } from "next/server";
-import { cities, countries, districts } from "../../data/geography";
-import type { PublicGeography } from "../../types/destinations";
 import { getAdminFirestore } from "../firebase/admin";
-import { readManagedGeography } from "./store";
+import { publicRead } from "../public-data/errors";
+import { listPublishedPlaces, readGeographyReferences, routeDocuments } from "./repository";
 import { publicGeographyFromDocuments } from "./presentation";
+import type { GeographicReference } from "../../types/discoveries";
 
-export function geographySource() {
-  const source = process.env.NAGI_GEOGRAPHY_SOURCE ?? "static";
-  if (source !== "static" && source !== "firestore") throw new Error("NAGI_GEOGRAPHY_SOURCE doit valoir static ou firestore.");
-  return source;
-}
-function ordered<T extends { sortOrder: number; name: string; id: string }>(items: T[]) {
-  return items.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "fr") || a.id.localeCompare(b.id));
-}
-// Cache React limité à la requête. Aucun cache persistant ne conserve un brouillon
-// dépublié ou une ancienne visibilité parentale entre deux requêtes.
-export async function loadPublicGeography(): Promise<PublicGeography> {
-  if (geographySource() === "static") return { countries, cities, districts };
-  const data = await readManagedGeography(getAdminFirestore(), true);
-  return publicGeographyFromDocuments({ countries: ordered(data.countries), cities: ordered(data.cities), districts: ordered(data.districts) });
-}
-
-export const getPublicGeography = cache(async () => {
+export const getRouteGeography = cache(async (country: string, city?: string, district?: string) => {
   await connection();
-  return loadPublicGeography();
+  return publicRead("geography.route", async () => publicGeographyFromDocuments(await routeDocuments(getAdminFirestore(), country, city, district)));
+});
+export const getPlaceChildren = cache(async (kind: "countries" | "cities" | "districts", parentId?: string, cursor?: string, size?: number) => {
+  await connection();
+  return publicRead("geography.list", async () => {
+    const db = getAdminFirestore(); const page = await listPublishedPlaces(db, kind, parentId, cursor, size);
+    // Les documents de la liste sont déjà connus : seules leurs ascendances sont lues.
+    const parents: GeographicReference[] = page.documents.flatMap<GeographicReference>((item) => item.kind === "countries" ? [] : item.kind === "cities" ? [{ kind: "country" as const, id: item.countryId }] : [{ kind: "city" as const, id: item.cityId }]);
+    const ancestorData = await readGeographyReferences(db, parents);
+    for (const item of page.documents) {
+      if (item.kind === "countries") ancestorData.countries.push(item);
+      else if (item.kind === "cities") ancestorData.cities.push(item);
+      else ancestorData.districts.push(item);
+    }
+    return { geography: publicGeographyFromDocuments(ancestorData), nextCursor: page.nextCursor, invalidCursor: page.invalidCursor };
+  });
+});
+export const getFeaturedGeography = cache(async () => {
+  const countries = await getPlaceChildren("countries", undefined, undefined, 1);
+  const country = countries.geography.countries[0];
+  if (!country) return countries.geography;
+  const cities = (await getPlaceChildren("cities", country.id, undefined, 3)).geography;
+  return { ...cities, countries: countries.geography.countries };
 });

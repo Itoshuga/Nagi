@@ -14,12 +14,12 @@ async function main() {
   loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
   if (project !== process.env.FIREBASE_ADMIN_PROJECT_ID || project !== process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) throw new Error("Le projet demandé ne correspond pas à la configuration Firebase. Aucune opération effectuée.");
   const { getAdminFirestore } = await import("../src/lib/firebase/admin");
-  const { importDemonstrationGeography } = await import("../src/lib/geography/import");
+  const { importDemonstrationGeography } = await import("./migrations/geography");
   const plan = await importDemonstrationGeography(getAdminFirestore(), apply);
   console.info(`${apply ? "IMPORT" : "SIMULATION SANS ÉCRITURE"} — projet ${project}`);
   for (const item of plan) console.info(`${item.action === "create" ? "Créer" : "Conserver"} ${item.collection}/${item.id} · ${item.name} · réservation : ${item.reservation === "create" ? "créer" : "conserver"}`);
   console.info(`${plan.filter((item) => item.action === "create").length} destination(s) ${apply ? "créée(s)" : "à créer"}. Les documents existants sont conservés sans modification.`);
-  console.info("La source publique n’a pas été changée. Validez le catalogue, puis activez NAGI_GEOGRAPHY_SOURCE=firestore.");
+  console.info("Le site utilise exclusivement Firestore. Aucun import n’est effectué au démarrage.");
 }
 main().catch((error: unknown) => {
   const code = (error as { code?: string }).code;

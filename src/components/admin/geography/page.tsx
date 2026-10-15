@@ -6,7 +6,6 @@ import { notFound } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Earth, MapPin, Pencil, Plus, Search } from "lucide-react";
 import { getAdminGeography } from "@/lib/geography/admin";
 import { GeographyError } from "@/lib/geography/store";
-import { geographySource } from "@/lib/geography/public";
 import { visibilityReason, type DestinationKind, type ManagedDestination, type ManagedGeography } from "@/lib/geography/schema";
 import { AdminNotice, AdminPageTitle } from "../ui";
 import { DestinationForm } from "./form";
@@ -45,9 +44,6 @@ function Status({ item, data }: { item: ManagedDestination; data: ManagedGeograp
   const reason = visibilityReason(item, data);
   return <div className="geo-status"><span className={`admin-badge ${!reason ? "geo-badge-published" : ""}`}>{item.archivedAt ? "Archivé" : item.status === "published" ? "Publié" : "Brouillon"}</span>{reason && item.status === "published" && !item.archivedAt && <span className="geo-visibility-reason">{reason}</span>}</div>;
 }
-function SourceNotice() {
-  return geographySource() === "static" ? <AdminNotice kind="info">Le site présente encore le carnet de démonstration. La mise en ligne de votre catalogue reste à activer par la personne responsable du projet.</AdminNotice> : null;
-}
 function DestinationList({ kind, items, data, query, basePath, createPath }: { kind: DestinationKind; items: ManagedDestination[]; data: ManagedGeography; query: Query; basePath: string; createPath: string | null }) {
   const q = single(query, "q").slice(0, 120); const view = single(query, "view") === "archived" ? "archived" : "active";
   const sort = single(query, "sort") || "order";
@@ -83,7 +79,7 @@ export async function GeographyPage({ kind, path, query }: { kind: DestinationKi
     const initialParentId = initial?.kind === "cities" ? initial.countryId : initial?.kind === "districts" ? initial.cityId : parentId;
     const parents = kind === "cities" ? data.countries.filter((parent) => !parent.archivedAt || parent.id === initialParentId).map((parent) => ({ id: parent.id, name: parent.name })) : data.cities.filter((parent) => !parent.archivedAt || parent.id === initialParentId).map((parent) => ({ id: parent.id, name: parent.name, context: data.countries.find((country) => country.id === parent.countryId)?.name }));
     if (kind !== "countries" && parents.length === 0) return <><AdminPageTitle eyebrow="Destinations" title="Une première destination parente">Ajoutez {kind === "cities" ? "un pays" : "une ville"} avant de poursuivre.</AdminPageTitle><Link className="admin-button admin-button-primary" href={kind === "cities" ? "/admin/countries/new" : "/admin/cities/new"}>Ajouter {kind === "cities" ? "un pays" : "une ville"}</Link></>;
-    return <><GeographyBreadcrumbs items={[...breadcrumbsFor(context, data), { label: initial ? "Modifier" : `Ajouter ${kind === "countries" ? "un pays" : kind === "cities" ? "une ville" : "un quartier"}` }]} /><AdminPageTitle eyebrow="Votre carnet géographique" title={initial ? `Modifier ${initial.name}` : `Ajouter ${kind === "countries" ? "un pays" : kind === "cities" ? "une ville" : "un quartier"}`}>Prenez le temps de présenter cette destination. Vous pourrez la publier lorsque vous serez prêt.</AdminPageTitle><SourceNotice /><DestinationForm maxPhotoBytes={photoByteLimit()} kind={kind} initial={initial} parents={parents} parentId={parentId || undefined} returnPath={returnPath} /></>;
+    return <><GeographyBreadcrumbs items={[...breadcrumbsFor(context, data), { label: initial ? "Modifier" : `Ajouter ${kind === "countries" ? "un pays" : kind === "cities" ? "une ville" : "un quartier"}` }]} /><AdminPageTitle eyebrow="Votre carnet géographique" title={initial ? `Modifier ${initial.name}` : `Ajouter ${kind === "countries" ? "un pays" : kind === "cities" ? "une ville" : "un quartier"}`}>Prenez le temps de présenter cette destination. Vous pourrez la publier lorsque vous serez prêt.</AdminPageTitle><DestinationForm maxPhotoBytes={photoByteLimit()} kind={kind} initial={initial} parents={parents} parentId={parentId || undefined} returnPath={returnPath} /></>;
   }
   const listedKind: DestinationKind = initial?.kind === "countries" ? "cities" : initial?.kind === "cities" ? "districts" : kind;
   const items: ManagedDestination[] = initial?.kind === "countries" ? data.cities.filter((city) => city.countryId === initial.id) : initial?.kind === "cities" ? data.districts.filter((district) => district.cityId === initial.id) : data[kind];
@@ -91,10 +87,10 @@ export async function GeographyPage({ kind, path, query }: { kind: DestinationKi
   const createPath = `/admin/${listedKind}/new${initial ? `?${initial.kind === "countries" ? "country" : "city"}=${initial.id}` : ""}`;
   const pageTitle = initial ? initial.name : kind === "countries" ? "Vos pays, premiers horizons." : kind === "cities" ? "Villes & quartiers." : "Vos quartiers.";
   const detailPhoto = initial ? coverPhotograph(initial, initial.coverImage) : null;
-  const url = initial && !visibilityReason(initial, data) && geographySource() === "firestore" ? publicPath(initial, data) : null;
+  const url = initial && !visibilityReason(initial, data) ? publicPath(initial, data) : null;
   return <><GeographyBreadcrumbs items={initial ? breadcrumbsFor(initial, data).map((item, index, all) => index === all.length - 1 ? { label: item.label } : item) : [{ label: kind === "countries" ? "Pays" : kind === "cities" ? "Villes & Quartiers" : "Quartiers" }]} />
     <div className="geo-page-heading"><AdminPageTitle eyebrow={initial ? "Votre carnet géographique" : "Les destinations"} title={pageTitle}>{initial ? initial.summary : kind === "countries" ? "Ouvrez un carnet, puis enrichissez-le de villes et de quartiers, à votre rythme." : "Retrouvez vos villes et ouvrez chacune d’elles pour gérer ses quartiers."}</AdminPageTitle>{!initial?.archivedAt && <Link className="admin-button admin-button-primary" href={createPath}><Plus size={17} aria-hidden="true" />Ajouter {listedKind === "countries" ? "un pays" : listedKind === "cities" ? "une ville" : "un quartier"}</Link>}</div>
-    {single(query, "saved") === "1" && <AdminNotice kind="success">La destination a bien été enregistrée.</AdminNotice>}<SourceNotice />
+    {single(query, "saved") === "1" && <AdminNotice kind="success">La destination a bien été enregistrée.</AdminNotice>}
     {initial && <section className="geo-detail-card">{detailPhoto && <div className="geo-detail-cover"><Image unoptimized={protectedPhoto(detailPhoto.src)} src={detailPhoto.src} alt={detailPhoto.alt} fill sizes="220px" style={{ objectPosition: detailPhoto.position }} /></div>}<div className="geo-detail-copy"><Status item={initial} data={data} /><p>{initial.description}</p><div className="geo-detail-actions">{!initial.archivedAt && <Link className="admin-button admin-button-quiet" href={`${geographyAdminPath(initial)}/edit`}><Pencil size={15} aria-hidden="true" />Modifier {initial.kind === "countries" ? "le pays" : initial.kind === "cities" ? "la ville" : "le quartier"}</Link>}{url && <Link className="admin-button admin-button-quiet" href={url}>Voir sur le site<ArrowUpRight size={15} aria-hidden="true" /></Link>}<ArchiveDestinationButton kind={initial.kind} id={initial.id} name={initial.name} revision={initial.revision} archived={Boolean(initial.archivedAt)} childrenCount={descendantCount(initial, data)} /></div></div></section>}
     {initial && <div className="geo-child-heading"><h2>{listedKind === "cities" ? "Les villes de ce pays" : "Les quartiers de cette ville"}</h2><p>{listedKind === "districts" ? "Les quartiers sont facultatifs. Les découvertes peuvent aussi être rattachées directement à la ville." : "Chaque ville possède son propre carnet, avec ou sans quartiers."}</p></div>}
     <DestinationList kind={listedKind} items={items} data={data} query={query} basePath={basePath} createPath={initial?.archivedAt ? null : createPath} />

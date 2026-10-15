@@ -1,9 +1,8 @@
 import type { PublicGeography } from "../types/destinations";
-import { staticGeography } from "./destinations";
 import { getCountryBySlug, getCityBySlug, getDistrictBySlug } from "./destinations";
 import { universeSlugs } from "../types/discoveries";
 
-export function isKnownGeographicRoute(pathname: string, geography: PublicGeography = staticGeography): boolean {
+export function isKnownGeographicRoute(pathname: string, geography: PublicGeography): boolean {
   let segments: string[];
   try { segments = pathname.split("/").filter(Boolean).map(decodeURIComponent); }
   catch { return false; }

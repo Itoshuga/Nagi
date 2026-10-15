@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "tsc --project tsconfig.tests.json && node --test .qa/tests/tests/*.test.js",
+    "test": "tsc --project tsconfig.tests.json && node --test .qa/tests/tests/*.test.js && node --conditions=react-server --import tsx --test tests/public-repositories.test.mjs",
     "test:routes": "node scripts/check-routes.mjs",
     "test:contrast": "node scripts/check-contrast.mjs",
     "admin:role": "node --conditions=react-server --import tsx scripts/admin-role.ts",
@@ -20,7 +20,8 @@
     "contents:import": "node --conditions=react-server --import tsx scripts/import-contents.ts",
     "test:contents": "firebase emulators:exec --project demo-nagi --only auth,firestore \"node --conditions=react-server --import tsx scripts/check-contents.mjs\"",
     "photos:cleanup": "node --conditions=react-server --import tsx scripts/cleanup-photos.ts",
-    "test:photos": "firebase emulators:exec --project demo-nagi --only auth,firestore,storage \"node --conditions=react-server --import tsx scripts/check-photos.mjs\""
+    "test:photos": "firebase emulators:exec --project demo-nagi --only auth,firestore,storage \"node --conditions=react-server --import tsx scripts/check-photos.mjs\"",
+    "photos:credits": "node --conditions=react-server --import tsx scripts/backfill-photo-credits.ts"
   },
   "engines": {
     "node": ">=22.0.0"

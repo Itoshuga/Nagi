@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { demonstrationContents, demonstrationRelations } from "../src/lib/contents/demo";
+import { demonstrationContents, demonstrationRelations } from "../fixtures/catalogue/helpers/contents-demo";
 import { contentDocumentSchema, contentInputSchema, contentKey, relationBetween, relationSchema, type ManagedContent } from "../src/lib/contents/schema";
 import { toPublicContent, visibleContent } from "../src/lib/contents/presentation";
 import { normalizeSearch } from "../src/lib/discovery-filter";
-import { staticGeography } from "../src/lib/destinations";
-import { contentCovers } from "../src/data/content-covers";
-import { remapDemonstrationDestination } from "../src/lib/contents/migration-geography";
-import { demonstrationDestinations } from "../src/lib/geography/demo";
+import { staticGeography } from "../fixtures/catalogue/context";
+import { contentCovers } from "../fixtures/catalogue/content-covers";
+import { remapDemonstrationDestination } from "../fixtures/catalogue/helpers/contents-migration-geography";
+import { demonstrationDestinations } from "../fixtures/catalogue/helpers/geography-demo";
 
 function documents(): ManagedContent[] {
   return demonstrationContents().map(({ original, input }) => contentDocumentSchema.parse({ ...input, id: original.id, schemaVersion: 1, locale: "fr", searchTitle: normalizeSearch(input.title), geographyKeys: [], isArchived: false, archivedAt: null, createdAt: new Date(original.createdAt).toISOString(), updatedAt: new Date(original.updatedAt).toISOString(), publishedAt: new Date(original.createdAt).toISOString(), revision: 1 }));

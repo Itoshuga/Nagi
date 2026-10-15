@@ -1,3 +1,4 @@
+import { photoCreditSchema } from "../photos/legacy";
 import { z } from "zod";
 import { coverUploadSchema, legacyPhotosSchema } from "../photos/schema";
 import { idSchema } from "../geography/schema";
@@ -52,7 +53,7 @@ function validate(item: z.infer<typeof base> & { type: string }, context: z.Refi
 }
 export const contentInputSchema = z.discriminatedUnion("type", variants).superRefine(validate);
 export type ContentInput = z.infer<typeof contentInputSchema>;
-const metadata = { images: z.array(z.string().max(250)).max(12).default([]), imageCaptions: z.array(z.string().max(600)).max(12).default([]), photos: legacyPhotosSchema.optional(), photoAssetIds: z.array(z.uuid()).max(13).default([]), id: idSchema, schemaVersion: z.literal(1), locale: z.literal("fr"), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), publishedAt: z.iso.datetime().nullable(), archivedAt: z.iso.datetime().nullable(), revision: z.number().int().positive(), searchTitle: z.string().max(200), geographyKeys: z.array(z.string().max(150)).max(90), isArchived: z.boolean() };
+const metadata = { coverCredit: photoCreditSchema.nullable().optional(), images: z.array(z.string().max(250)).max(12).default([]), imageCaptions: z.array(z.string().max(600)).max(12).default([]), photos: legacyPhotosSchema.optional(), photoAssetIds: z.array(z.uuid()).max(13).default([]), id: idSchema, schemaVersion: z.literal(1), locale: z.literal("fr"), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), publishedAt: z.iso.datetime().nullable(), archivedAt: z.iso.datetime().nullable(), revision: z.number().int().positive(), searchTitle: z.string().max(200), geographyKeys: z.array(z.string().max(150)).max(90), isArchived: z.boolean() };
 export const contentDocumentSchema = z.discriminatedUnion("type", [variants[0].extend(metadata), variants[1].extend(metadata), variants[2].extend(metadata), variants[3].extend(metadata)]).superRefine((item, context) => {
   validate(item, context);
   if (item.isArchived !== Boolean(item.archivedAt) || item.archivedAt && item.status !== "draft") context.addIssue({ code: "custom", message: "Archive incohérente." });

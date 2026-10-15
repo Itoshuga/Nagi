@@ -73,9 +73,8 @@ Avant un déploiement réel :
 - Conserver la configuration existante du nettoyage quotidien Vercel et son
   `CRON_SECRET` serveur. Le CLI `photos:cleanup` propose toujours une simulation
   par défaut, avec `--apply --confirm-project=...` pour effectuer un nettoyage.
-- Activer `NAGI_GEOGRAPHY_SOURCE=firestore` et `NAGI_CONTENT_SOURCE=firestore`
+- Firestore est l’unique source publique depuis l’étape 09 ; déployer les index de listes
   après validation des imports pour que le site présente les fiches administrées.
-  En mode `static`, le carnet public de démonstration reste affiché.
 
 Aucun réglage distant ni déploiement Firebase n’est effectué par les tests.
 

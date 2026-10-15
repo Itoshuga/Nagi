@@ -102,12 +102,12 @@ img { display: block; }
 .section-heading h2 { font-size: clamp(38px, 3.5vw, 56px); line-height: 1.12; letter-spacing: -.035em; }
 .section-introduction { max-width: 400px; margin-top: 18px; color: var(--muted); font-size: var(--text-body); line-height: var(--leading-body); }
 .destination-spread { display: grid; grid-template-columns: 1fr 1.17fr .9fr; gap: 5.5%; margin-top: 68px; }
-.destination-story-tokyo { padding-top: 64px; }
-.destination-story-fujiyoshida { padding-top: 138px; }
+.destination-story-1 { padding-top: 64px; }
+.destination-story-3 { padding-top: 138px; }
 .destination-story-link { display: block; }
 .destination-image { position: relative; aspect-ratio: 3 / 4; overflow: hidden; }
-.destination-story-kyoto .destination-image { aspect-ratio: 3 / 4.1; }
-.destination-story-fujiyoshida .destination-image { aspect-ratio: 3 / 3.7; }
+.destination-story-2 .destination-image { aspect-ratio: 3 / 4.1; }
+.destination-story-3 .destination-image { aspect-ratio: 3 / 3.7; }
 .destination-image > img { object-fit: cover; transition: transform 800ms ease; }
 @media (hover: hover) { .destination-story:hover .destination-image > img { transform: scale(1.025); } }
 .image-note { position: absolute; bottom: 15px; left: 16px; background: var(--paper); padding: 7px 10px; font-size: var(--text-small); letter-spacing: .055em; }
@@ -173,8 +173,8 @@ img { display: block; }
   .hero-introduction { font-size: var(--text-body); }
   .hero-edition { bottom: 30px; }
   .destination-spread { gap: 4%; }
-  .destination-story-fujiyoshida { padding-top: 85px; }
-  .destination-story-tokyo { padding-top: 38px; }
+  .destination-story-3 { padding-top: 85px; }
+  .destination-story-1 { padding-top: 38px; }
   .destination-title h3 { font-size: 30px; }
   .destination-description { font-size: var(--text-body); }
   .universe-grid { grid-template-columns: repeat(2, 1fr); gap: 45px 0; }
@@ -215,9 +215,9 @@ img { display: block; }
   .section-introduction { margin-top: 15px; font-size: var(--text-body); max-width: 360px; }
   .destination-spread { display: flex; flex-direction: column; gap: 44px; margin-top: 37px; }
   .destination-story { padding-top: 0; width: 89%; }
-  .destination-story-kyoto { align-self: flex-end; }
-  .destination-story-fujiyoshida { width: 89%; }
-  .destination-image, .destination-story-kyoto .destination-image, .destination-story-fujiyoshida .destination-image { aspect-ratio: 4 / 4.6; }
+  .destination-story-2 { align-self: flex-end; }
+  .destination-story-3 { width: 89%; }
+  .destination-image, .destination-story-2 .destination-image, .destination-story-3 .destination-image { aspect-ratio: 4 / 4.6; }
   .destination-title { margin-top: 17px; }
   .destination-title h3 { font-size: 35px; }
   .destination-description { font-size: var(--text-body); }

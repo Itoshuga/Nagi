@@ -1,7 +1,7 @@
 import { coverPhotograph } from "../photos/schema";
 import type { PublicGeography } from "../../types/destinations";
 import type { Discovery, GeographicReference } from "../../types/discoveries";
-import { contentCover } from "../../data/content-covers";
+import { legacyPhotograph } from "../photos/legacy";
 import { resolveGeography } from "../discovery-geography";
 import { contentKey, type ContentRelation, type ManagedContent } from "./schema";
 
@@ -14,7 +14,7 @@ export function toPublicContent(item: ManagedContent, geography: PublicGeography
   const facts: { label: string; value: string }[] = [];
   const section = (title: string, text: string) => { if (text) sections.push({ title, text }); };
   const fact = (label: string, value: string) => { if (value) facts.push({ label, value }); };
-  const photograph = contentCover(item.coverImage);
+  const photograph = legacyPhotograph(item.coverImage, item.coverPresentation?.alt ?? item.title, item.coverPresentation?.position, item.coverCredit);
   const base = { id: item.id, universe: item.type, slug: item.slug, title: item.title, summary: item.summary, description: item.description.split(/\n\s*\n/).filter(Boolean), photograph: coverPhotograph(item, photograph ? { ...photograph, ...item.coverPresentation } : null) ?? undefined, photographCaption: item.coverPhoto ? "" : item.photographCaption,
     tags: item.tags, status: preview ? "published" as const : item.status, createdAt: item.createdAt, updatedAt: item.updatedAt, verifiedAt: item.verifiedAt || undefined, sources: item.sources, sections, extraFacts: facts };
   const location = (destinations[0] ?? item.destinations[0] ?? { kind: "city", id: "preview-without-location" }) as Exclude<GeographicReference, { kind: "country" }>;

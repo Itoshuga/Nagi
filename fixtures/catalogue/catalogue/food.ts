@@ -1,4 +1,4 @@
-import type { FoodDiscovery } from "../../types/discoveries";
+import type { FoodDiscovery } from "../../../src/types/discoveries";
 import { discoveryPhotographs as photos } from "../discovery-photographs";
 import { publication, verificationDate } from "./common";
 

@@ -16,7 +16,7 @@ se trouvent dans la colonne principale. Publication, destination et photographie
 occupent la seconde colonne, puis s’empilent sur mobile. Les brouillons peuvent
 être incomplets ; titre, slug et catégorie restent nécessaires. Publier exige en
 plus résumé, présentation et destination. La fiche publique présente le récit,
-les sections spécifiques, tous les renseignements pratiques et la galerie facultative.
+les sections spécifiques, les renseignements pratiques renseignés et son unique couverture.
 
 Les sélecteurs utilisent les destinations Firestore. Changer de pays réinitialise
 ville et quartier ; le quartier reste facultatif. La gastronomie permet plusieurs
@@ -55,10 +55,9 @@ Les informations spécifiques vivent dans `details`, avec un schéma propre à l
 
 Champs communs : `id`, `type`, `title`, `slug`, `summary`, `description`, `tags`,
 `coverImage`, `coverPresentation`, `images`, `imageCaptions`, `photographCaption`,
-`destinations`, `status`, `visibility`, `sources`, `verifiedAt`. Les références
-photographiques sont des chemins locaux du registre commun, sans téléversement.
+`destinations`, `status`, `visibility`, `sources`, `verifiedAt`. Les nouvelles couvertures sont référencées par `coverPhoto` dans Firebase Storage ; voir [PHOTOS.md](PHOTOS.md).
 `coverPresentation` conserve le texte alternatif et le cadrage historiques.
-Le registre et les crédits existants restent la source des photographies.
+Les chemins et crédits historiques enregistrés en base restent compatibles.
 
 Métadonnées serveur : `schemaVersion: 1`, `locale: fr`, `createdAt`, `updatedAt`,
 `publishedAt`, `archivedAt`, `isArchived`, `revision`, `searchTitle`, `geographyKeys`.
@@ -143,13 +142,11 @@ le SDK client, même administrateur. Les lectures directes de `contents` et
 `contentRelations` sont réservées aux administrateurs ; le public passe par les
 projections serveur. Les anciennes collections restent en lecture administrateur
 seulement. Le SDK Admin contourne les règles : contrôles serveur obligatoires.
-Aucun upload Storage n’est ajouté.
+L’upload partagé de l’étape 08 est conservé.
 
 ## Migration et activation
 
-Le `.env` conserve `NAGI_CONTENT_SOURCE=static`. Le mode `firestore` exige également
-`NAGI_GEOGRAPHY_SOURCE=firestore`. Les sources ne sont jamais fusionnées et une panne
-ne republie pas les démonstrations comme repli.
+Firestore est l’unique source publique depuis l’étape 09. Voir [PUBLIC_DATA.md](PUBLIC_DATA.md) pour les lectures, filtres, compteurs et index.
 
 Le script reprend les **20 fiches existantes**, leurs ID, textes, sources, références
 photographiques et relations. Il ne crée aucune destination. Les références sont
@@ -186,8 +183,7 @@ Avant activation :
    ```
 
 4. Vérifier fiches, associations et images dans l’administration.
-5. Activer `NAGI_GEOGRAPHY_SOURCE=firestore` et `NAGI_CONTENT_SOURCE=firestore`
-   dans un environnement de validation, puis sur le site, et redémarrer.
+5. Déployer cette version après disponibilité des index ; aucune variable de bascule n’est nécessaire.
 6. Vérifier onglets, routes, relations et dépublications.
 
 La simulation sur le projet réel le 14 octobre 2026 a signalé des destinations

@@ -1,5 +1,5 @@
 import { countries, cities, districts } from "./geography";
-import type { Photograph } from "../types/content";
+import type { Photograph } from "../../src/types/content";
 
 // Références déjà présentes dans Nagi ; aucun téléversement ni URL distante.
 const photos = [...countries, ...cities, ...districts].flatMap((place) => [place.photograph,

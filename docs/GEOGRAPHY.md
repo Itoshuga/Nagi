@@ -22,8 +22,7 @@ complète et possède toujours ses quatre onglets. Une ville avec quartiers gard
 la ville, sans descendre arbitrairement dans les autres quartiers.
 
 Les formulaires dédiés regroupent informations, présentation, image et publication.
-Les images sont choisies parmi les ressources locales existantes, sans importation
-Storage. L’absence d’image donne lieu à une illustration neutre sur le site public.
+Un unique bouton « Upload une photo » définit la couverture dans Firebase Storage ; voir [PHOTOS.md](PHOTOS.md). L’absence d’image donne lieu à une illustration neutre sur le site public.
 Les formulaires affichent les erreurs près des champs et bloquent les soumissions
 multiples. Les listes sont adaptées au mobile et les actions d’archivage sont
 confirmées dans un dialogue utilisable au clavier.
@@ -72,7 +71,7 @@ publiés : Firestore expose le document entier lorsque sa lecture est autorisée
 Les premiers documents Firestore n’avaient ni `kind`, ni version de schéma,
 ni révision ; leur `coverImage` était un chemin. Le lecteur reconnaît ce format
 précis et construit en mémoire le modèle courant à partir de la collection et
-de la bibliothèque d’images. Les champs `isoCode` et `continent` vides des anciens
+du chemin enregistré et du nom du document. Les champs `isoCode` et `continent` vides des anciens
 enfants sont retirés. Un ancien brouillon peut avoir un résumé et une description
 vides : il reste consultable et éditable, mais le formulaire exige de les compléter
 avant l’enregistrement. Aucun texte de démonstration n’est injecté.
@@ -152,24 +151,18 @@ et secrets ne sont jamais renvoyés au navigateur.
 contrôleur autorisé et par l’import de confiance. Les composants n’appellent pas
 le SDK Admin. Les lectures publiques utilisent une projection explicite du modèle,
 sans métadonnées d’administration, et filtrent les parents avant toute génération
-de page, lien ou métadonnée SEO. Le catalogue des quatre univers reste local, mais
-ses associations et liens sont résolus contre la géographie publique active : les
-fiches sans destination visible ne sont pas exposées et les liens privés sont retirés.
+de page, lien ou métadonnée SEO. Le catalogue des quatre univers est également lu dans Firestore ; les fiches sans destination visible ne sont pas exposées.
 
 Les règles Firebase interdisent **toute écriture géographique depuis le SDK client,
 même pour un administrateur** : on ne peut pas contourner les réservations de
 slugs et validations. Les réservations ne sont jamais lisibles depuis un client.
 Les lectures publiques de destinations contrôlent la publication de leurs parents.
-Storage reste fermé. Les règles des quatre autres univers ne constituent pas
-encore leurs validations métier ; leur administration n’est pas développée ici.
+Les règles et les accès serveur des quatre univers et des couvertures sont documentés dans CONTENTS.md et PHOTOS.md.
 
 ## Migration et bascule contrôlée
 
-Le fichier local `.env` conserve `NAGI_GEOGRAPHY_SOURCE=static`. Tant que la
-migration n’a pas été validée, le site conserve exclusivement les données locales.
-L’administration explique que la mise en ligne du catalogue reste à activer.
-Elle enregistre ses destinations dans Firestore, jamais dans les fichiers du projet.
-Aucune importation de production ni bascule du projet réel n’est automatique.
+Firestore est la seule source publique depuis l’étape 09 ; l’administration enregistre
+ses destinations en base. Aucun import de démonstration n’est automatique.
 
 Depuis un poste de confiance correctement configuré, simuler l’import :
 
@@ -210,44 +203,13 @@ Après import :
 
 Les règles Storage restent restrictives et peuvent être déployées séparément si le bucket est provisionné.
 
-3. Dans un environnement de validation, définir `NAGI_GEOGRAPHY_SOURCE=firestore`
-   puis redémarrer le serveur ; vérifier la navigation et les quatre univers.
-4. Activer cette même valeur sur le serveur destiné au public après validation.
-   Une modification des variables Web `NEXT_PUBLIC_*` exige en plus un nouveau build.
+3. Déployer les index puis vérifier les pages publiques. Firestore est la seule source ; aucune activation par variable ni retour statique n’existe.
 
-Les sources sont exclusives. Le mode Firestore ne complète jamais un résultat
-vide par les données de démonstration et ne s’y replie pas en cas de panne. Un
-catalogue vide reste vide ; une panne produit une indisponibilité, sans republier
-accidentellement des destinations dépubliées. Un rollback volontaire peut réactiver
-`static`, mais republiera alors le carnet de démonstration tel qu’il est versionné :
-ce changement doit être choisi et validé par la personne responsable du déploiement.
-Les quatre univers restent dans leurs fichiers actuels et utilisent les IDs conservés.
+## Lectures publiques, cache et index
 
-## Cache et rendu
-
-Les routes publiques concernées et leurs métadonnées sont rendues côté serveur à
-la requête. Le SDK Web Firebase n’est pas importé pour leurs lectures. Le cache
-React déduplique les trois collections au sein d’un rendu ; il n’existe pas de cache
-persistant susceptible de maintenir la visibilité d’un parent dépublié.
-
-Après une mutation, `revalidatePath` vise le répertoire des destinations, l’accueil
-et les pages du périmètre concerné (parents, destination et descendants lorsque
-nécessaire), ainsi que les fiches locales associées. Le contrôleur n’invalide pas
-systématiquement tout le site. Les formulaires actualisent également la navigation
-administrative. L’échec d’une invalidation après une transaction réussie ne transforme
-pas la sauvegarde en échec : la prochaine lecture publique est déjà fraîche.
-
-Le proxy consulte la même source pour produire les 404 complètes attendues par
-Next.js 16.4 ; les pages revérifient leurs données elles-mêmes. Ne pas configurer
-un cache CDN HTML qui ignorerait les en-têtes dynamiques. Cette stratégie privilégie
-la correction de publication pour ce premier catalogue ; une pagination et des
-caches par périmètre pourront être ajoutés lorsque son volume le justifiera.
-
-Les requêtes actuelles utilisent des égalités et un tri en mémoire. Aucun index
-composite personnalisé n’est nécessaire ; conserver les index simples Firestore
-par défaut (`slug`, `countryId`, `cityId`, `status`, `visibility`, `archivedAt`). Le
-fichier d’index reste explicite et vide. Ne pas désactiver ces index sans adapter
-les requêtes et les tests.
+Voir [PUBLIC_DATA.md](PUBLIC_DATA.md), référence de l’étape 09 : requêtes ciblées,
+listes paginées, visibilité parentale, cache limité à la requête et nouveaux index.
+Les données d’exemple et l’implémentation d’import sont isolées hors de `src`.
 
 ## Émulateurs et vérifications
 
@@ -255,8 +217,7 @@ Installer Node.js 22+ et Java 21+. Depuis la configuration locale d’émulation
 présentée dans [FIREBASE.md](FIREBASE.md), lancer `npm run firebase:emulators`,
 puis importer avec `--project=demo-nagi` et, pour écrire,
 `--apply --confirm-project=demo-nagi`. Aucune vraie clé n’est nécessaire.
-Pour une revue complète, sélectionner `NAGI_GEOGRAPHY_SOURCE=firestore` uniquement
-dans cet environnement d’émulation. Garder la production séparée.
+Garder la production séparée ; les tests utilisent uniquement le projet demo-nagi.
 
 ```sh
 npm test
@@ -272,7 +233,7 @@ Les commandes d’émulateurs doivent être exécutées séquentiellement. Le te
 la géographie démarre une copie temporaire de Next.js sur `3107`, crée ses comptes
 et documents dans `demo-nagi`, teste les créations / publications / dépublications,
 les URL, les quartiers facultatifs, les conflits de slug simultanés, les versions,
-les gardes d’accès, la migration et la séparation des sources, puis nettoie son
+les gardes d’accès, la migration et l’absence de source locale, puis nettoie son
 serveur et ses comptes. Les données de l’émulateur sont jetables à son arrêt.
 Le test Auth utilise `3105` et nécessite désormais aussi l’émulateur Firestore.
 Aucune de ces vérifications ne prouve une connexion réelle au projet de production.

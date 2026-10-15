@@ -136,8 +136,8 @@ try {
   assert.match(unconfiguredLogin, /type="submit" disabled/);
   assert.equal((await protectedPage()).status, 307);
   assert.equal((await login(adminToken)).status, 503);
-  for (const path of ["/", "/destinations", "/destinations/japon/tokyo"]) assert.equal((await fetch(`${origin}${path}`)).status, 200);
-  console.info("Configuration absente : formulaire désactivé, session refusée et pages publiques fonctionnelles.");
+  for (const path of ["/", "/destinations", "/destinations/japon/tokyo"]) { const response = await fetch(`${origin}${path}`); assert.ok(response.status >= 500 && response.status <= 503, path); }
+  console.info("Configuration absente : formulaire désactivé, session refusée et indisponibilité publique sans repli de démonstration.");
 } catch (error) {
   console.error(output);
   throw error;
