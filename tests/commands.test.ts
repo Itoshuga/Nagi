@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadCommands, validateCommand } from '../apps/bot/src/handlers/load-commands';
 import {
   synchronizeCommands,
@@ -31,7 +31,9 @@ function command(name = 'ping', overrides: Partial<NagiCommand> = {}): NagiComma
   };
 }
 async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), 'nagi-commands-'));
+  const root = fileURLToPath(new URL('../test-results/', import.meta.url));
+  await mkdir(root, { recursive: true });
+  const directory = await mkdtemp(join(root, 'nagi-commands-'));
   temporary.push(directory);
   return directory;
 }
@@ -90,7 +92,7 @@ describe('Automatic command loading', () => {
   });
   it('loads the real source commands without a central command list', async () => {
     const registry = await loadCommands(
-      new URL('../apps/bot/src/commands/', import.meta.url).pathname,
+      fileURLToPath(new URL('../apps/bot/src/commands/', import.meta.url)),
     );
     expect([...registry.enabled.keys()].sort()).toEqual(['help', 'ping', 'status']);
     expect(registry.enabled.get('status')?.adminOnly).toBe(true);

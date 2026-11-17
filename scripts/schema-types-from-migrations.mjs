@@ -1,14 +1,19 @@
 /** Offline, deterministic schema snapshot from real PostgreSQL catalog introspection. */
 import { PGlite } from '@electric-sql/pglite';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
-const db = new PGlite();
+const db = new PGlite({ extensions: { pg_trgm } });
 try {
-  // Minimal Supabase Auth contract, only for applying the public migrations locally.
+  // Minimal Supabase Auth and Storage contracts for applying migrations locally.
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create table auth.users(id uuid primary key,last_sign_in_at timestamptz);
     create table auth.identities(user_id uuid,provider text,provider_id text,identity_data jsonb);
     create function auth.uid() returns uuid language sql as $$select null::uuid$$;
-    create function auth.role() returns text language sql as $$select 'service_role'::text$$;`);
+    create function auth.role() returns text language sql as $$select 'service_role'::text$$;
+    create schema storage;
+    create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    create table storage.objects(id uuid primary key,bucket_id text references storage.buckets(id),name text);
+    alter table storage.objects enable row level security;`);
   const files = (await readdir('supabase/migrations'))
     .filter((file) => file.endsWith('.sql'))
     .sort();

@@ -9,7 +9,7 @@ import {
   TokenCipher,
   DiscordConnectionError,
 } from '@nagi/discord';
-import { GuildPreferencesService, TripService, CatalogAccessService } from '@nagi/database';
+import { GuildPreferencesService, TripService } from '@nagi/database';
 import { snowflakeSchema } from '@nagi/shared';
 import { hasGuildAdministration } from '@nagi/permissions';
 import { requireViewer } from '@/features/auth/session';
@@ -43,7 +43,6 @@ export const spaceServices = cache(async () => {
     db,
     preferences: new GuildPreferencesService(db),
     trips: new TripService(db),
-    catalog: new CatalogAccessService(db),
   };
 });
 export const discoverSpaces = cache(async (fresh = false) => {

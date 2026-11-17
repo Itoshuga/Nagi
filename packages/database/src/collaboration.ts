@@ -75,21 +75,3 @@ export class TripService {
     return data;
   }
 }
-/** Read the shared catalog through the caller's RLS, never copy entries into a space. */
-export class CatalogAccessService {
-  constructor(private readonly db: NagiDatabase) {}
-  async browse() {
-    const [countries, entries] = await Promise.all([
-      this.db.from('countries').select('*').order('name'),
-      this.db
-        .from('entries')
-        .select('id, title, description, cities(name), categories(name)')
-        .eq('published', true)
-        .order('created_at', { ascending: false })
-        .limit(30),
-    ]);
-    if (countries.error || entries.error)
-      throw new Error('Le catalogue est momentanément indisponible.');
-    return { countries: countries.data, entries: entries.data };
-  }
-}

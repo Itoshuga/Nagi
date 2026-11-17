@@ -136,27 +136,45 @@ export type Database = {
           country_id: string;
           name: string;
           slug: string;
-          neighborhoods_enabled: boolean;
+          has_neighborhoods: boolean;
           created_at: string;
           updated_at: string;
+          description: string | null;
+          cover_image_url: string | null;
+          is_published: boolean;
+          sort_order: number;
+          latitude: number | null;
+          longitude: number | null;
         };
         Insert: {
           id?: string;
           country_id: string;
           name: string;
           slug: string;
-          neighborhoods_enabled?: boolean;
+          has_neighborhoods?: boolean;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          latitude?: number | null;
+          longitude?: number | null;
         };
         Update: {
           id?: string;
           country_id?: string;
           name?: string;
           slug?: string;
-          neighborhoods_enabled?: boolean;
+          has_neighborhoods?: boolean;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          latitude?: number | null;
+          longitude?: number | null;
         };
         Relationships: [
           { foreignKeyName: 'cities_country_id_fkey'; columns: ["country_id"]; isOneToOne: false; referencedRelation: 'countries'; referencedColumns: ["id"]; },
@@ -167,25 +185,37 @@ export type Database = {
           id: string;
           name: string;
           slug: string;
-          code: string | null;
+          iso_code: string | null;
           created_at: string;
           updated_at: string;
+          description: string | null;
+          cover_image_url: string | null;
+          is_published: boolean;
+          sort_order: number;
         };
         Insert: {
           id?: string;
           name: string;
           slug: string;
-          code?: string | null;
+          iso_code?: string | null;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
         };
         Update: {
           id?: string;
           name?: string;
           slug?: string;
-          code?: string | null;
+          iso_code?: string | null;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
         };
         Relationships: [
         ];
@@ -318,6 +348,12 @@ export type Database = {
           slug: string;
           created_at: string;
           updated_at: string;
+          description: string | null;
+          cover_image_url: string | null;
+          is_published: boolean;
+          sort_order: number;
+          latitude: number | null;
+          longitude: number | null;
         };
         Insert: {
           id?: string;
@@ -326,6 +362,12 @@ export type Database = {
           slug: string;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          latitude?: number | null;
+          longitude?: number | null;
         };
         Update: {
           id?: string;
@@ -334,6 +376,12 @@ export type Database = {
           slug?: string;
           created_at?: string;
           updated_at?: string;
+          description?: string | null;
+          cover_image_url?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          latitude?: number | null;
+          longitude?: number | null;
         };
         Relationships: [
           { foreignKeyName: 'neighborhoods_city_id_fkey'; columns: ["city_id"]; isOneToOne: false; referencedRelation: 'cities'; referencedColumns: ["id"]; },

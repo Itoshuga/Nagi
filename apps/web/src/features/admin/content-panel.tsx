@@ -3,9 +3,6 @@ import { listCategories, listContent, type ContentTable } from '@nagi/database';
 import { sessionDatabase } from '@/lib/supabase/server';
 import { CategoryDialog } from '@/features/categories/category-dialog';
 const tables: Record<string, ContentTable> = {
-  countries: 'countries',
-  cities: 'cities',
-  neighborhoods: 'neighborhoods',
   categories: 'categories',
   entries: 'entries',
   relations: 'entry_relations',
@@ -53,10 +50,6 @@ export async function ContentPanel({ section }: { section: string }) {
                     <td className="px-6 py-5">
                       {section === 'categories' ? (
                         String(item.position)
-                      ) : section === 'cities' ? (
-                        <Badge>
-                          {item.neighborhoods_enabled ? 'Avec quartiers' : 'Sans quartiers'}
-                        </Badge>
                       ) : section === 'entries' ? (
                         <Badge>{item.published ? 'Publiée' : 'Brouillon'}</Badge>
                       ) : section === 'relations' ? (

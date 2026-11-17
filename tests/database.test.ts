@@ -1,7 +1,8 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-const db = new PGlite();
+const db = new PGlite({ extensions: { pg_trgm } });
 const userId = '11111111-1111-4111-8111-111111111111';
 const adminId = '22222222-2222-4222-8222-222222222222';
 const otherId = '33333333-3333-4333-8333-333333333333';
@@ -38,6 +39,12 @@ beforeAll(async () => {
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     create function auth.role() returns text language sql stable as $$ select current_setting('request.jwt.claim.role',true) $$;
     grant usage on schema auth,public to anon,authenticated,service_role;
+    create schema storage;
+    create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text);
+    alter table storage.objects enable row level security;
+    grant usage on schema storage to authenticated,service_role;
+    grant select,insert,update,delete on storage.objects to authenticated,service_role;
   `);
   const directory = new URL('../supabase/migrations/', import.meta.url);
   for (const file of (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort()) {
@@ -64,8 +71,11 @@ describe('Actual migration constraints', () => {
   it('seeds the five editable categories', async () =>
     expect(await scalar<number>('select count(*)::int as value from public.categories')).toBe(5));
   it('enforces geographic FKs and context-unique slugs', async () => {
-    await db.exec("insert into public.countries(name,slug) values ('Japon','japon')");
-    await fails("insert into public.countries(name,slug) values ('Duplicate','japon')", /unique/i);
+    await db.exec("insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP')");
+    await fails(
+      "insert into public.countries(name,slug,iso_code) values ('Duplicate','japon','FR')",
+      /unique/i,
+    );
     await fails(
       "insert into public.cities(country_id,name,slug) values (gen_random_uuid(),'Tokyo','tokyo')",
       /foreign key/i,
@@ -79,8 +89,8 @@ describe('Actual migration constraints', () => {
     );
   });
   it('prevents cross-city neighborhoods and neighborhoods in a disabled city', async () => {
-    await db.exec(`insert into public.countries(name,slug) values('Japon','japon');
-      insert into public.cities(country_id,name,slug,neighborhoods_enabled) select id,'Tokyo','tokyo',true from public.countries;
+    await db.exec(`insert into public.countries(name,slug,iso_code) values('Japon','japon','JP');
+      insert into public.cities(country_id,name,slug,has_neighborhoods) select id,'Tokyo','tokyo',true from public.countries;
       insert into public.cities(country_id,name,slug) select id,'Kyoto','kyoto' from public.countries;
       insert into public.neighborhoods(city_id,name,slug) select id,'Shinjuku','shinjuku' from public.cities where slug='tokyo';`);
     await fails(
@@ -88,7 +98,7 @@ describe('Actual migration constraints', () => {
       select c.id,n.id,k.id,'Test','test' from public.cities c,public.neighborhoods n,public.categories k where c.slug='kyoto' limit 1`,
       /disabled/i,
     );
-    await db.exec("update public.cities set neighborhoods_enabled=true where slug='kyoto'");
+    await db.exec("update public.cities set has_neighborhoods=true where slug='kyoto'");
     await fails(
       `insert into public.entries(city_id,neighborhood_id,category_id,title,slug)
       select c.id,n.id,k.id,'Test','test' from public.cities c,public.neighborhoods n,public.categories k where c.slug='kyoto' limit 1`,
@@ -97,12 +107,12 @@ describe('Actual migration constraints', () => {
     await db.exec(`insert into public.entries(city_id,neighborhood_id,category_id,title,slug)
       select c.id,n.id,k.id,'Test','test' from public.cities c,public.neighborhoods n,public.categories k where c.slug='tokyo' limit 1`);
     await fails(
-      "update public.cities set neighborhoods_enabled=false where slug='tokyo'",
+      "update public.cities set has_neighborhoods=false where slug='tokyo'",
       /Detach entries/i,
     );
   });
   it('enforces bidirectional uniqueness, no self-links, and dependency deletion rules', async () => {
-    await db.exec(`insert into public.countries(name,slug) values('Japon','japon');
+    await db.exec(`insert into public.countries(name,slug,iso_code) values('Japon','japon','JP');
       insert into public.cities(country_id,name,slug) select id,'Kyoto','kyoto' from public.countries;
       insert into public.entries(city_id,category_id,title,slug) select c.id,k.id,'A','a' from public.cities c,public.categories k limit 1;
       insert into public.entries(city_id,category_id,title,slug) select c.id,k.id,'B','b' from public.cities c,public.categories k limit 1;
@@ -222,8 +232,8 @@ describe('Identity, roles and RLS', () => {
     );
   });
   it('hides drafts and their relations from anonymous visitors', async () => {
-    await db.exec(`insert into public.countries(name,slug) values('Japon','japon');
-      insert into public.cities(country_id,name,slug) select id,'Kyoto','kyoto' from public.countries;
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true);
+      insert into public.cities(country_id,name,slug,is_published) select id,'Kyoto','kyoto',true from public.countries;
       insert into public.entries(city_id,category_id,title,slug,published) select c.id,k.id,'Public','public',true from public.cities c,public.categories k limit 1;
       insert into public.entries(city_id,category_id,title,slug) select c.id,k.id,'Private','private' from public.cities c,public.categories k limit 1;
       insert into public.entry_relations(source_id,target_id) select a.id,b.id from public.entries a,public.entries b where a.slug='public' and b.slug='private';
@@ -234,6 +244,130 @@ describe('Identity, roles and RLS', () => {
     );
   });
 });
+describe('Geographic catalog', () => {
+  it('lets Nagi admins create and edit countries while enforcing ISO, slugs and coordinates', async () => {
+    await asUser(adminId);
+    await db.exec(`insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP'),('France','france','FR');
+      update public.countries set description='Explorer le Japon', sort_order=1 where slug='japon';
+      insert into public.cities(country_id,name,slug,latitude,longitude) select id,'Tokyo','tokyo',35.68,139.65 from public.countries;`);
+    expect(
+      await scalar<string>("select description as value from public.countries where slug='japon'"),
+    ).toBe('Explorer le Japon');
+    expect(
+      await scalar<boolean>(
+        "select is_published as value from public.countries where slug='japon'",
+      ),
+    ).toBe(false);
+    await fails(
+      "insert into public.countries(name,slug,iso_code) values('Duplicate','duplicate','JP')",
+      /countries_iso_code_key/,
+    );
+    await fails(
+      "insert into public.countries(name,slug,iso_code) values('Lowercase','lowercase','jp')",
+      /check constraint/i,
+    );
+    await fails(
+      "insert into public.countries(name,slug) values('Code absent','code-absent')",
+      /countries_iso_required/,
+    );
+    await fails("update public.cities set latitude=91 where slug='tokyo'", /latitude/i);
+    await fails("update public.cities set longitude='NaN' where slug='tokyo'", /longitude/i);
+  });
+
+  it('guards city modes, preserves dependencies and permits explicit reorganization', async () => {
+    await asUser(adminId);
+    await db.exec(`insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP');
+      insert into public.cities(country_id,name,slug) select id,'Tokyo','tokyo' from public.countries;`);
+    const addDistrict =
+      "insert into public.neighborhoods(city_id,name,slug) select id,'Ginza','ginza' from public.cities";
+    await fails(addDistrict, /disabled/i);
+    await fails('delete from public.countries', /foreign key/i);
+    await db.exec(`update public.cities set has_neighborhoods=true; ${addDistrict};
+      insert into public.neighborhoods(city_id,name,slug,sort_order) select id,'Shinjuku','shinjuku',1 from public.cities;`);
+    expect(await scalar<number>('select count(*)::int as value from public.neighborhoods')).toBe(2);
+    await fails('delete from public.cities', /foreign key/i);
+    await fails('update public.cities set has_neighborhoods=false', /before disabling/i);
+    const addCityEntry = `insert into public.entries(city_id,category_id,title,slug)
+      select c.id,k.id,'Visite','visite' from public.cities c,public.categories k limit 1`;
+    await fails(addCityEntry, /neighborhood is required/i);
+    await db.exec(
+      `delete from public.neighborhoods; update public.cities set has_neighborhoods=false; ${addCityEntry};`,
+    );
+    await fails('update public.cities set has_neighborhoods=true', /before enabling/i);
+    await fails('delete from public.cities', /foreign key/i);
+    const entryId = await scalar<string>('select id as value from public.entries');
+    await db.exec(`set constraints public.check_city_neighborhoods deferred;
+      update public.cities set has_neighborhoods=true;
+      ${addDistrict};
+      update public.entries set neighborhood_id=(select id from public.neighborhoods where slug='ginza');
+      set constraints public.check_city_neighborhoods immediate;`);
+    expect(await scalar<string>('select id as value from public.entries')).toBe(entryId);
+  });
+
+  it('hides drafts and their descendants and rejects writes from ordinary accounts', async () => {
+    await asUser(adminId);
+    await db.exec(`insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP');
+      insert into public.cities(country_id,name,slug,has_neighborhoods,is_published) select id,'Tokyo','tokyo',true,true from public.countries;
+      insert into public.cities(country_id,name,slug) select id,'Kyoto','kyoto' from public.countries;
+      insert into public.neighborhoods(city_id,name,slug,is_published) select id,'Ginza','ginza',true from public.cities where slug='tokyo';
+      insert into public.neighborhoods(city_id,name,slug) select id,'Shinjuku','shinjuku' from public.cities where slug='tokyo';`);
+    expect(await scalar<number>('select count(*)::int as value from public.neighborhoods')).toBe(2);
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.countries')).toBe(0);
+    expect(await scalar<number>('select count(*)::int as value from public.cities')).toBe(0);
+    expect(await scalar<number>('select count(*)::int as value from public.neighborhoods')).toBe(0);
+    await asUser(adminId);
+    await db.exec('update public.countries set is_published=true');
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.cities')).toBe(1);
+    expect(await scalar<string>('select slug as value from public.neighborhoods')).toBe('ginza');
+    expect(
+      await scalar<number>(
+        `with edited as (update public.cities set name='Intrusion' returning id) select count(*)::int as value from edited`,
+      ),
+    ).toBe(0);
+    expect(
+      await scalar<number>(
+        `with deleted as (delete from public.neighborhoods returning id) select count(*)::int as value from deleted`,
+      ),
+    ).toBe(0);
+    await asUser(adminId);
+    await db.exec("update public.cities set is_published=false where slug='tokyo'");
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.neighborhoods')).toBe(0);
+  });
+
+  it('keeps cover references scoped to their destination and protects raw storage', async () => {
+    await db.exec(`create policy permissive_fixture on storage.objects for all to authenticated using(true) with check(true);
+      insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP');`);
+    const prefix = "'/app/catalog-cover/countries/' || id::text || '/'";
+    await db.exec(
+      `update public.countries set cover_image_url=${prefix} || gen_random_uuid()::text;`,
+    );
+    await fails(
+      "update public.countries set cover_image_url='https://example.com/cover.webp'",
+      /countries_cover_path/i,
+    );
+    const first = await scalar<string>('select cover_image_url as value from public.countries');
+    await db.exec(
+      `update public.countries set cover_image_url=${prefix} || gen_random_uuid()::text;`,
+    );
+    expect(await scalar<string>('select cover_image_url as value from public.countries')).not.toBe(
+      first,
+    );
+    await asService();
+    await db.exec(
+      "insert into storage.objects(bucket_id,name) values ('destination-covers','webp')",
+    );
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from storage.objects')).toBe(0);
+    await fails(
+      "insert into storage.objects(bucket_id,name) values ('destination-covers','forged')",
+      /row.level security/i,
+    );
+  });
+});
+
 describe('Durable queue and distributed lease', () => {
   it('coalesces startup requests, rejects concurrent owners, and processes the queued work', async () => {
     await asService();
@@ -438,7 +572,7 @@ describe('Discord spaces: real membership, isolation and durable data', () => {
     expect(await scalar<boolean>(`select public.is_guild_admin('${guildA}') as value`)).toBe(true);
     expect(await scalar<boolean>('select public.is_nagi_admin() as value')).toBe(false);
     await fails(
-      "insert into public.countries(name,slug) values('Intrusion','intrusion')",
+      "insert into public.countries(name,slug,iso_code) values('Intrusion','intrusion','JP')",
       /row.level security/i,
     );
     await fails(
@@ -557,8 +691,8 @@ describe('Discord spaces: real membership, isolation and durable data', () => {
     expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(0);
   });
   it('references one global entry from multiple trips and rejects a day from another trip', async () => {
-    await db.exec(`insert into public.countries(name,slug) values('Japon','japon');
-      insert into public.cities(country_id,name,slug) select id,'Tokyo','tokyo' from public.countries;
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true);
+      insert into public.cities(country_id,name,slug,is_published) select id,'Tokyo','tokyo',true from public.countries;
       insert into public.entries(city_id,category_id,title,slug,published) select c.id,k.id,'Tower','tower',true from public.cities c,public.categories k limit 1;
       insert into public.trip_days(trip_id,day_number) values('${tripA}',1),('${tripB}',1);
       insert into public.trip_items(trip_id,entry_id,added_by) select t.id,e.id,t.created_by from public.trips t,public.entries e;`);

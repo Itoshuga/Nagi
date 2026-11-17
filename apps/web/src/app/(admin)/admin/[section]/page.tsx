@@ -1,17 +1,29 @@
 import { notFound } from 'next/navigation';
 import { Badge, Card, EmptyState } from '@nagi/ui';
+import { destinationKindSchema } from '@nagi/shared';
 import { requireAdmin } from '@/features/auth/session';
 import { sectionInfo } from '@/features/admin/navigation';
 import { ContentPanel } from '@/features/admin/content-panel';
 import { BotPanel } from '@/features/admin/bot-panel';
+import { AdminDestinationList } from '@/features/geography/admin-list';
+import type { SearchParams } from '@/features/geography/model';
 import { sessionDatabase } from '@/lib/supabase/server';
 export async function generateMetadata({ params }: { params: Promise<{ section: string }> }) {
   const { section } = await params;
   return { title: sectionInfo[section]?.title ?? 'Administration' };
 }
-export default async function AdminSection({ params }: { params: Promise<{ section: string }> }) {
+export default async function AdminSection({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ section: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
   const viewer = await requireAdmin();
   const { section } = await params;
+  const destination = destinationKindSchema.safeParse(section);
+  if (destination.success)
+    return <AdminDestinationList kind={destination.data} params={await searchParams} />;
   const info = sectionInfo[section];
   if (!info) notFound();
   let content: React.ReactNode;

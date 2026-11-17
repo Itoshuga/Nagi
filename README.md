@@ -246,3 +246,13 @@ Les inventaires utilisateur et bot sont paginés par 200 et croisés par Guild I
 Les permissions locales proviennent du propriétaire Discord ou des bits `Administrator` / `ManageGuild`. Elles n’accordent aucun rôle global Nagi. Les requêtes de voyages utilisent le client Supabase de la session et la RLS, jamais le client service. Un global admin sans appartenance Discord ne lit pas les voyages privés d’un serveur. Les membres lisent les voyages communs ; le créateur et les administrateurs locaux peuvent les modifier. Les identifiants d’espace, auteurs et références de fiches sont immuables pour un client ordinaire. `trip_items.entry_id` référence une fiche globale unique réutilisable entre voyages ; sa journée doit appartenir au même voyage.
 
 Les tests exécutent toutes les migrations dans PostgreSQL embarqué et vérifient les scénarios de retrait/réintégration, préférences obsolètes, isolation, rôles locaux/globaux, privilèges SQL, contraintes des dates/journées, références partagées, chiffrement, refresh concurrent et absence des tokens Discord dans les cookies du vrai client SSR Supabase. La connexion OAuth réelle exige toujours la validation de l’utilisateur dans Discord.
+
+## Catalogue géographique
+
+Appliquer `202611170004_destination_catalog.sql` avec les autres migrations Supabase avant de déployer le web. La migration conserve les identifiants et la visibilité des destinations existantes. Les nouvelles destinations commencent en brouillon. La dépublication d’un parent masque ses descendants dans Découvrir et conserve leur propre statut.
+
+Les administrateurs Nagi gèrent les pays, villes et quartiers dans `/admin`. Pour retirer le mode quartiers d’une ville, réaffecter d’abord les fiches concernées et déplacer ou supprimer les quartiers depuis leurs fiches. Si une ville possède déjà des fiches rattachées directement, leur réorganisation doit précéder l’activation du mode quartiers. Les changements de mode et les suppressions sont bloqués tant que les relations sont incompatibles.
+
+Pour migrer des fiches à l’intérieur de la même ville, une transaction SQL peut différer `public.check_city_neighborhoods`, changer le mode, créer ou déplacer les quartiers et réaffecter explicitement chaque fiche. Vérifier les contraintes avant le commit avec `SET CONSTRAINTS public.check_city_neighborhoods IMMEDIATE`. Cette opération conserve les identifiants de fiches utilisés par les voyages.
+
+Le bucket privé `destination-covers` est créé par la migration. Les couvertures sont réencodées en WebP côté serveur. `NAGI_COVER_MAX_MIB` permet de limiter la taille du fichier envoyé entre 1 et 8 Mio. La valeur par défaut est de 8 Mio.

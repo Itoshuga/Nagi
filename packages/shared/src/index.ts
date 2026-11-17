@@ -1,16 +1,12 @@
 import { z } from 'zod';
-import { snowflakeSchema } from './identifiers';
+import { slugSchema, snowflakeSchema } from './identifiers';
 export { describeError } from './diagnostics';
-export { snowflakeSchema } from './identifiers';
+export { slugSchema, snowflakeSchema } from './identifiers';
 export * from './collaboration';
+export * from './geography';
 
 export const roleSchema = z.enum(['user', 'admin', 'owner']);
 export type Role = z.infer<typeof roleSchema>;
-export const slugSchema = z
-  .string()
-  .min(1)
-  .max(100)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 export const categoryInputSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
