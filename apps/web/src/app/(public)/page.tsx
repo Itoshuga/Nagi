@@ -20,7 +20,7 @@ export default async function Home() {
     <div className="landing-page">
       <header className="landing-header">
         <Logo />
-        <p className="landing-header-note">Un espace à part.</p>
+        <p className="landing-header-note">Discord Bot &amp; Web App</p>
       </header>
       <main id="main" className="landing-main">
         <FadeIn className="landing-copy">
@@ -63,10 +63,12 @@ export default async function Home() {
           </div>
         </FadeIn>
       </main>
-      <div className="landing-bottom" aria-hidden="true">
+      <footer className="landing-bottom">
         <span>Nagi.</span>
-        <span>À votre image.</span>
-      </div>
+        <span className="landing-legal-label">
+          Mentions Légales &amp; Politique de Confidentialité
+        </span>
+      </footer>
     </div>
   );
 }
