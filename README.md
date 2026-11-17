@@ -1,4 +1,4 @@
-# Nagi v3 · Phase 1
+# Nagi v3 · Espaces Discord et voyages
 
 Un socle commun pour une application de voyage et son bot Discord. Le web et le bot sont deux processus indépendants, reliés à Supabase PostgreSQL. Aucune destination ni statistique de démonstration n’est intégrée.
 
@@ -97,8 +97,8 @@ La génération utilise PGlite, sans Docker ni identifiants externes. Le contrat
 1. Créer une application sur le [Discord Developer Portal](https://discord.com/developers/applications).
 2. Copier **Application ID** dans `DISCORD_APPLICATION_ID`.
 3. Dans **OAuth2**, ajouter le redirect URI **Supabase** : `https://VOTRE_PROJECT_REF.supabase.co/auth/v1/callback`.
-4. Copier Client ID et Client Secret dans **Supabase → Authentication → Providers → Discord**. Le secret OAuth appartient à Supabase : le web et le bot n’ont pas besoin de le conserver. En local, la CLI le reçoit via `DISCORD_CLIENT_SECRET`.
-5. Le bouton de connexion appelle réellement Supabase `signInWithOAuth({ provider: 'discord' })`. Les scopes `identify email` sont utilisés par le fournisseur Supabase ; aucun formulaire email ou mot de passe n’existe.
+4. Copier Client ID et Client Secret dans **Supabase → Authentication → Providers → Discord**. Le backend web reçoit désormais le même secret dans `DISCORD_CLIENT_SECRET` pour renouveler les tokens Discord. Il utilise aussi `DISCORD_BOT_TOKEN` pour vérifier les serveurs communs. Ces deux valeurs restent exclusivement côté serveur.
+5. Le bouton appelle Supabase `signInWithOAuth({ provider: 'discord', options: { scopes: 'identify guilds' } })`. Nagi ne demande aucun autre scope utilisateur. Le [fournisseur Discord intégré à Supabase](https://github.com/supabase/auth/blob/master/internal/api/provider/discord.go) ajoute actuellement `email` à ses scopes internes ; aucun formulaire email ou mot de passe n’existe dans Nagi.
 
 Le callback `/auth/callback` échange le code PKCE et synchronise le profil depuis l’identité Discord vérifiée retournée par Supabase. Les redirections se limitent aux chemins internes `/app` et `/admin` sous l’URL canonique configurée. Les cookies sont HttpOnly, SameSite=Lax et Secure sur HTTPS. Aucun client Supabase de navigateur n’est nécessaire. La fabrique unique `apps/web/src/lib/supabase/auth.ts` est utilisée par le proxy, les Server Actions et le callback, comme dans Kitsu. Le cookie dédié `nagi-auth` utilise le mode `tokens-only` : l’objet utilisateur Discord complet ne gonfle plus les en-têtes. Les pages privées vérifient les claims puis relisent le profil et ses permissions en base. Les écritures de cookies sont explicites dans les actions et le callback ; le proxy persiste les renouvellements avant le rendu, y compris sur les pages publiques connectées.
 
@@ -220,8 +220,29 @@ Pour un hébergement Node, conserver le workspace et le lockfile, installer avec
 
 Un exemple de service systemd est fourni dans `docs/deployment/nagi-bot.service`. Il relance le bot après erreur et envoie SIGTERM lors de l’arrêt ; le worker annule le travail puis libère son lease. Garder une seule instance active par application/scope ; le lease protège aussi contre un chevauchement temporaire de déploiement. Utiliser HTTPS en production et des fichiers d’environnement non versionnés et lisibles uniquement par le compte de service.
 
-Les clés nécessaires au web sont les variables publiques, la clé serveur, Application ID, scope/Guild ID et liste de propriétaires. Le bot reçoit en plus son token ; il n’utilise pas de clé publique Supabase. Le secret OAuth reste dans Supabase.
+Les clés nécessaires au web sont les variables publiques, la clé serveur, Application ID, scope/Guild ID, liste de propriétaires, token du bot, secret OAuth Discord et clé de chiffrement. Le bot n’utilise ni la clé publique Supabase, ni le secret OAuth, ni la clé de chiffrement.
 
 ## Périmètre
 
 Cette phase prépare les destinations, la gestion des fiches et leurs relations. Recherche avancée, favoris, collections, commentaires, médias/vlog, pages détaillées et commandes Discord de gestion de contenu seront développés ensuite. Les routes d’administration lisent déjà les tables réelles ; elles ne prétendent pas offrir ces opérations futures.
+
+## Phase 2 — Espaces Discord et voyages
+
+Appliquer les migrations dans l’ordre, jusqu’à `202611170003_discord_spaces.sql`. Elles ajoutent les espaces, préférences, voyages, journées et références aux fiches ; aucune table du catalogue ni donnée existante n’est remplacée. Après mise à jour du `.env`, redémarrer `pnpm dev` et reconnecter Discord pour autoriser le scope `guilds`. Une ancienne session Supabase peut rester valide tout en nécessitant cette nouvelle autorisation Discord.
+
+Générer `NAGI_TOKEN_ENCRYPTION_KEY` une seule fois avec `openssl rand -base64 32`. Conserver cette clé dans le gestionnaire de secrets et la réutiliser sur chaque instance web. Les grants Discord sont chiffrés en AES-256-GCM, liés au compte par des données authentifiées et stockés dans le schéma `private`, inaccessible à PostgREST. Changer ou perdre la clé impose de reconnecter les comptes concernés. Le callback retire les tokens fournisseur des cookies, y compris les sessions fragmentées ; seuls les tokens de session Supabase restent dans le cookie HttpOnly. Aucun client Supabase navigateur n’est nécessaire.
+
+`@nagi/discord` sépare l’API, les profils, les guildes, le coffre et les vérifications d’appartenance. La véritable expiration Discord vient de `/oauth2/@me`. Un verrou PostgreSQL avec version protège le renouvellement et la rotation des refresh tokens entre plusieurs requêtes/instances. Supabase renouvelle sa propre session, pas le grant Discord. Une révocation impose une reconnexion ; une panne temporaire conserve les credentials. Voir les documentations [Discord OAuth2](https://docs.discord.com/developers/topics/oauth2) et [Supabase social login](https://supabase.com/docs/guides/auth/social-login/auth-discord).
+
+Les inventaires utilisateur et bot sont paginés par 200 et croisés par Guild ID. Le token bot est vérifié contre `DISCORD_APPLICATION_ID`. Le cache privé d’appartenance dure 30 secondes, les attestations RLS expirent après 60 secondes et la présence du bot après 120 secondes sans vérification. Les actions sensibles forcent une vérification Discord. Le bot réconcilie son inventaire au démarrage puis chaque minute et traite `guildCreate`, `guildDelete` et `guildUpdate`. Un retrait invalide les accès et les préférences sans supprimer les voyages. Une panne temporaire Discord.js (`guildUnavailable`) n’est pas traitée comme un retrait.
+
+- `/select-server` : choix initial, recherche au-delà de huit serveurs, véritables icônes, navigation clavier, animations Motion respectant les préférences de mouvement, installation du bot et actualisation.
+- `/app` : favori valide ou sélection explicite. Un changement d’espace conserve le favori ; l’action dédiée dans les paramètres le modifie.
+- `/app/[guildId]` : accueil et voyages réellement enregistrés.
+- `/app/[guildId]/trips` et `/trips/[tripId]` : création, consultation partagée, auteur, dates facultatives et état explicatif du futur sélecteur de lieux.
+- `/app/[guildId]/discover` : catalogue global en lecture, sans création de fiches par les membres.
+- `/app/[guildId]/settings` : préférence personnelle et permission locale de création de voyages.
+
+Les permissions locales proviennent du propriétaire Discord ou des bits `Administrator` / `ManageGuild`. Elles n’accordent aucun rôle global Nagi. Les requêtes de voyages utilisent le client Supabase de la session et la RLS, jamais le client service. Un global admin sans appartenance Discord ne lit pas les voyages privés d’un serveur. Les membres lisent les voyages communs ; le créateur et les administrateurs locaux peuvent les modifier. Les identifiants d’espace, auteurs et références de fiches sont immuables pour un client ordinaire. `trip_items.entry_id` référence une fiche globale unique réutilisable entre voyages ; sa journée doit appartenir au même voyage.
+
+Les tests exécutent toutes les migrations dans PostgreSQL embarqué et vérifient les scénarios de retrait/réintégration, préférences obsolètes, isolation, rôles locaux/globaux, privilèges SQL, contraintes des dates/journées, références partagées, chiffrement, refresh concurrent et absence des tokens Discord dans les cookies du vrai client SSR Supabase. La connexion OAuth réelle exige toujours la validation de l’utilisateur dans Discord.

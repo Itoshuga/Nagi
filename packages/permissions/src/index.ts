@@ -8,6 +8,11 @@ export interface CommandAccess {
   ownerOnly: boolean;
   adminOnly: boolean;
 }
+export function hasGuildAdministration(permissions: string, owner = false): boolean {
+  if (owner) return true;
+  if (!/^\d{1,30}$/.test(permissions)) return false;
+  return (BigInt(permissions) & 40n) !== 0n;
+}
 export function isAdmin(role: Role): boolean {
   return role === 'admin' || role === 'owner';
 }

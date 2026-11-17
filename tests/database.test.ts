@@ -386,3 +386,265 @@ describe('Durable queue and distributed lease', () => {
     ).toBe('failed');
   });
 });
+
+const guildA = '444444444444444444';
+const guildB = '555555555555555555';
+const tripA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const tripB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+async function spacesFixture() {
+  await asUser();
+  await db.exec('select public.sync_discord_profile(); reset role');
+  await asService();
+  await db.exec(`select public.reconcile_discord_guilds('${applicationId}','[{"id":"${guildA}","name":"A"},{"id":"${guildB}","name":"B"}]');
+    select public.record_discord_memberships('${userId}','${applicationId}','[{"id":"${guildA}","permissions":"8"}]');
+    select public.record_discord_memberships('${otherId}','${applicationId}','[{"id":"${guildA}","permissions":"0"}]');
+    select public.record_discord_memberships('${adminId}','${applicationId}','[{"id":"${guildB}","permissions":"32"}]');
+    insert into public.trips(id,guild_id,title,created_by) values('${tripA}','${guildA}','Voyage A','${userId}'),('${tripB}','${guildB}','Voyage B','${adminId}'); reset role`);
+}
+describe('Discord spaces: real membership, isolation and durable data', () => {
+  beforeEach(spacesFixture);
+  it('isolates trips by current Discord membership even from a global Nagi admin', async () => {
+    await asUser();
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(1);
+    expect(await scalar<string>('select title as value from public.trips')).toBe('Voyage A');
+    await fails(
+      `insert into public.trips(guild_id,title,created_by) values('${guildB}','Intrusion','${userId}')`,
+      /row.level security/i,
+    );
+    await db.exec('reset role');
+    await asUser(adminId);
+    expect(await scalar<string>('select title as value from public.trips')).toBe('Voyage B');
+    expect(await scalar<unknown>(`select public.trip_author_card('${tripA}') as value`)).toBeNull();
+  });
+  it('shares trips with other members while keeping editing with the author or local admin', async () => {
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(1);
+    await db.exec(`update public.trips set title='Forbidden' where id='${tripA}'`);
+    expect(await scalar<string>('select title as value from public.trips')).toBe('Voyage A');
+    await db.exec(
+      `insert into public.trips(guild_id,title,created_by) values('${guildA}','Shared','${otherId}')`,
+    );
+    await db.exec('reset role');
+    await asUser();
+    await db.exec(`update public.trips set title='Admin edit' where title='Shared'`);
+    expect(
+      await scalar<number>(
+        "select count(*)::int as value from public.trips where title='Admin edit'",
+      ),
+    ).toBe(1);
+  });
+  it('does not turn Discord administrators into global catalog administrators', async () => {
+    await asUser();
+    expect(await scalar<boolean>(`select public.is_guild_admin('${guildA}') as value`)).toBe(true);
+    expect(await scalar<boolean>('select public.is_nagi_admin() as value')).toBe(false);
+    await fails(
+      "insert into public.countries(name,slug) values('Intrusion','intrusion')",
+      /row.level security/i,
+    );
+    await fails(
+      `update public.profiles set role='admin' where id='${userId}'`,
+      /permission denied/i,
+    );
+    await fails(
+      `update public.discord_guilds set bot_present=true where id='${guildA}'`,
+      /permission denied/i,
+    );
+  });
+  it('rejects forged verification, private credentials access and foreign preferences', async () => {
+    await asUser(otherId);
+    await fails(
+      `select public.record_discord_memberships('${otherId}','${applicationId}','[]')`,
+      /permission denied/i,
+    );
+    await fails(`select public.read_discord_credentials('${userId}')`, /permission denied/i);
+    await fails('select * from private.guild_memberships', /permission denied/i);
+    await fails(
+      `insert into public.user_guild_preferences(user_id,default_guild_id) values('${otherId}','${guildB}')`,
+      /row.level security/i,
+    );
+    await fails(
+      `insert into public.user_guild_preferences(user_id,default_guild_id) values('${userId}','${guildA}')`,
+      /row.level security/i,
+    );
+  });
+  it('enforces space creation settings and immutable trip ownership columns', async () => {
+    await asUser();
+    await db.exec(
+      `update public.discord_guilds set members_can_create_trips=false where id='${guildA}'`,
+    );
+    await fails(
+      `update public.trips set guild_id='${guildB}' where id='${tripA}'`,
+      /permission denied/i,
+    );
+    await fails(
+      `update public.trips set created_by='${otherId}' where id='${tripA}'`,
+      /permission denied/i,
+    );
+    await db.exec('reset role');
+    await asUser(otherId);
+    await fails(
+      `insert into public.trips(guild_id,title,created_by) values('${guildA}','Forbidden','${otherId}')`,
+      /row.level security/i,
+    );
+    await db.exec('reset role');
+    await asUser();
+    await db.exec(
+      `insert into public.trips(guild_id,title,created_by) values('${guildA}','Admin allowed','${userId}')`,
+    );
+    await fails(
+      `insert into public.trips(guild_id,title,created_by) values('${guildA}','  ','${userId}')`,
+      /check constraint/i,
+    );
+    await fails(
+      `insert into public.trips(guild_id,title,start_date,end_date,created_by) values('${guildA}','Bad dates','2027-02-02','2027-02-01','${userId}')`,
+      /check constraint/i,
+    );
+  });
+  it('invalidates access and preferences after a user leaves, preserving the shared trips', async () => {
+    await asUser();
+    await db.exec(
+      `insert into public.user_guild_preferences(user_id,default_guild_id,last_active_guild_id) values('${userId}','${guildA}','${guildA}'); reset role`,
+    );
+    await asService();
+    await db.exec(
+      `select public.record_discord_memberships('${userId}','${applicationId}','[]'); reset role`,
+    );
+    await asUser();
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(0);
+    expect(
+      await scalar<string>('select default_guild_id as value from public.user_guild_preferences'),
+    ).toBeNull();
+    await db.exec('reset role');
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(2);
+  });
+  it('handles bot removal and rejoining without deleting trips or restoring an obsolete favorite', async () => {
+    await asUser();
+    await db.exec(
+      `insert into public.user_guild_preferences(user_id,default_guild_id,last_active_guild_id) values('${userId}','${guildA}','${guildA}'); reset role`,
+    );
+    await asService();
+    await db.exec(
+      `select public.set_discord_guild_presence('${applicationId}','{"id":"${guildA}","name":"A"}',false); reset role`,
+    );
+    await asUser();
+    expect(await scalar<boolean>(`select public.is_guild_member('${guildA}') as value`)).toBe(
+      false,
+    );
+    expect(
+      await scalar<string>('select default_guild_id as value from public.user_guild_preferences'),
+    ).toBeNull();
+    await db.exec('reset role');
+    await asService();
+    await db.exec(`select public.set_discord_guild_presence('${applicationId}','{"id":"${guildA}","name":"Renamed"}',true);
+      select public.record_discord_memberships('${userId}','${applicationId}','[{"id":"${guildA}","permissions":"0"}]'); reset role`);
+    await asUser();
+    expect(await scalar<string>('select title as value from public.trips')).toBe('Voyage A');
+    expect(
+      await scalar<string>('select default_guild_id as value from public.user_guild_preferences'),
+    ).toBeNull();
+  });
+  it('fails closed when membership or the bot inventory expires', async () => {
+    await db.exec(
+      `update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${userId}'`,
+    );
+    await asUser();
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(0);
+    await db.exec('reset role');
+    await db.exec(
+      `update public.discord_guilds set last_synced_at=now()-interval '121 seconds' where id='${guildA}'`,
+    );
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(0);
+  });
+  it('references one global entry from multiple trips and rejects a day from another trip', async () => {
+    await db.exec(`insert into public.countries(name,slug) values('Japon','japon');
+      insert into public.cities(country_id,name,slug) select id,'Tokyo','tokyo' from public.countries;
+      insert into public.entries(city_id,category_id,title,slug,published) select c.id,k.id,'Tower','tower',true from public.cities c,public.categories k limit 1;
+      insert into public.trip_days(trip_id,day_number) values('${tripA}',1),('${tripB}',1);
+      insert into public.trip_items(trip_id,entry_id,added_by) select t.id,e.id,t.created_by from public.trips t,public.entries e;`);
+    expect(await scalar<number>('select count(*)::int as value from public.entries')).toBe(1);
+    expect(await scalar<number>('select count(*)::int as value from public.trip_items')).toBe(2);
+    await fails(
+      `insert into public.trip_items(trip_id,trip_day_id,entry_id) select '${tripA}',d.id,e.id from public.trip_days d,public.entries e where d.trip_id='${tripB}'`,
+      /foreign key/i,
+    );
+    await asUser();
+    expect(await scalar<number>('select count(*)::int as value from public.trip_items')).toBe(1);
+    await fails(
+      `insert into public.trip_days(trip_id,day_number) values('${tripB}',2)`,
+      /row.level security/i,
+    );
+  });
+  it('stores verified Discord profiles without changing global roles and fences token refresh', async () => {
+    await asService();
+    await fails(
+      `select public.save_discord_credentials('${userId}','222222222222222222','{}','cipher',now(),array['identify','guilds'])`,
+      /identity mismatch/i,
+    );
+    await db.exec(
+      `select public.save_discord_credentials('${userId}','111111111111111111','{"username":"handle","global_name":"Display","avatar_url":"https://cdn.discordapp.com/example.png"}','cipher',now(),array['identify','guilds'])`,
+    );
+    const lease = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    expect(
+      await scalar<boolean>(
+        `select public.claim_discord_refresh('${userId}',1,'${lease}') as value`,
+      ),
+    ).toBe(true);
+    expect(
+      await scalar<boolean>(
+        `select public.claim_discord_refresh('${userId}',1,gen_random_uuid()) as value`,
+      ),
+    ).toBe(false);
+    expect(
+      await scalar<boolean>(
+        `select public.finish_discord_refresh('${userId}',gen_random_uuid(),'bad',now(),array['identify']) as value`,
+      ),
+    ).toBe(false);
+    expect(
+      await scalar<boolean>(
+        `select public.finish_discord_refresh('${userId}','${lease}','fresh',now()+interval '1 hour',array['identify','guilds']) as value`,
+      ),
+    ).toBe(true);
+    await db.exec(`select public.revoke_discord_credentials('${userId}',1); reset role`);
+    expect(
+      await scalar<string>(
+        `select encrypted_tokens as value from private.discord_credentials where user_id='${userId}'`,
+      ),
+    ).toBe('fresh');
+    expect(
+      await scalar<string>(
+        `select display_name as value from public.profiles where id='${userId}'`,
+      ),
+    ).toBe('Display');
+    expect(
+      await scalar<string>(`select role::text as value from public.profiles where id='${userId}'`),
+    ).toBe('user');
+  });
+});
+
+describe('Periodic guild reconciliation', () => {
+  it('prunes only removed guild access and keeps the underlying trips', async () => {
+    await spacesFixture();
+    await asUser();
+    await db.exec(
+      `insert into public.user_guild_preferences(user_id,default_guild_id,last_active_guild_id) values('${userId}','${guildA}','${guildA}'); reset role`,
+    );
+    await asService();
+    await db.exec(
+      `select public.reconcile_discord_guilds('${applicationId}','[{"id":"${guildB}","name":"B renamed"}]'); reset role`,
+    );
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(2);
+    expect(
+      await scalar<string>(
+        `select default_guild_id as value from public.user_guild_preferences where user_id='${userId}'`,
+      ),
+    ).toBeNull();
+    await asUser();
+    expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(0);
+    await db.exec('reset role');
+    await asUser(adminId);
+    expect(await scalar<string>('select name as value from public.discord_guilds')).toBe(
+      'B renamed',
+    );
+  });
+});

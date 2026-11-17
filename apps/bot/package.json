@@ -13,7 +13,8 @@
     "@nagi/database": "workspace:*",
     "@nagi/permissions": "workspace:*",
     "@nagi/shared": "workspace:*",
-    "discord.js": "14.28.1"
+    "discord.js": "14.28.1",
+    "@nagi/discord": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

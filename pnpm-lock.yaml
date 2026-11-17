@@ -47,6 +47,9 @@ importers:
       '@nagi/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@nagi/discord':
+        specifier: workspace:*
+        version: link:../../packages/discord
       '@nagi/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
@@ -72,6 +75,9 @@ importers:
       '@nagi/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@nagi/discord':
+        specifier: workspace:*
+        version: link:../../packages/discord
       '@nagi/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
@@ -132,6 +138,21 @@ importers:
       '@supabase/supabase-js':
         specifier: 2.119.0
         version: 2.119.0
+
+  packages/discord:
+    dependencies:
+      '@nagi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@nagi/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      '@nagi/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/permissions:
     dependencies:

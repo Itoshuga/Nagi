@@ -52,7 +52,7 @@ export default async function Home() {
         <FadeIn className="landing-visual">
           <div className="landing-character" aria-hidden="true">
             <Image
-              src="/nagi-logo.png"
+              src="/nagi-logo-full.png"
               alt=""
               width={500}
               height={500}

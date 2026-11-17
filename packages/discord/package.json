@@ -1,0 +1,18 @@
+{
+  "name": "@nagi/discord",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nagi/database": "workspace:*",
+    "@nagi/permissions": "workspace:*",
+    "@nagi/shared": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

@@ -14,7 +14,7 @@ export default async function Login({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  if (await getViewer()) redirect(safeNext(params.next));
+  if ((await getViewer()) && params.error !== 'discord') redirect(safeNext(params.next));
   return (
     <main id="main" className="hero flex flex-col items-center justify-center px-6 py-16">
       <Logo />
@@ -26,7 +26,9 @@ export default async function Login({
         </p>
         {params.error && (
           <Alert className="mb-6 text-left">
-            La connexion n’a pas abouti. Vérifiez votre autorisation Discord et réessayez.
+            {params.error === 'discord'
+              ? 'Reconnectez Discord pour autoriser l’accès à vos serveurs et retrouver vos espaces.'
+              : 'La connexion n’a pas abouti. Vérifiez votre autorisation Discord et réessayez.'}
           </Alert>
         )}
         <div className="flex justify-center">

@@ -3,6 +3,7 @@ import { describeError, safeNext } from '@nagi/shared';
 import { sessionDatabase } from '@/lib/supabase/server';
 import { publicEnv } from '@/lib/env';
 import { ensureBackendStartup } from '@/lib/startup';
+import { discordServices } from '@/features/spaces/server';
 
 export async function GET(request: NextRequest) {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL;
@@ -22,8 +23,15 @@ export async function GET(request: NextRequest) {
     if (!data.user?.identities?.some((identity) => identity.provider === 'discord')) {
       throw new Error('Une identité Discord vérifiée est requise.');
     }
-    const { error: profileError } = await db.rpc('sync_discord_profile');
+    const { data: profile, error: profileError } = await db.rpc('sync_discord_profile');
     if (profileError) throw profileError;
+    if (!data.session?.provider_token || !profile) throw new Error('Autorisation Discord requise.');
+    await discordServices().tokens.capture(
+      data.user.id,
+      profile.discord_id,
+      data.session.provider_token,
+      data.session.provider_refresh_token ?? null,
+    );
     return go(safeNext(request.nextUrl.searchParams.get('next')));
   } catch (error) {
     console.error(

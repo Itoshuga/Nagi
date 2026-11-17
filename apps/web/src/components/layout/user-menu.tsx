@@ -66,7 +66,7 @@ export function UserMenu({
               </Link>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem asChild>
+          <DropdownMenuItem asChild onSelect={(event) => event.preventDefault()}>
             <button
               form="nagi-sign-out"
               className="flex w-full items-center gap-2 text-left"

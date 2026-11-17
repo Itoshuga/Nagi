@@ -1,0 +1,113 @@
+@import '@fontsource-variable/manrope';
+.nagi-space {
+  font-family: 'Manrope Variable', sans-serif;
+  background: #f8faff;
+  min-height: 100svh;
+}
+.space-title {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 1.13;
+  text-wrap: balance;
+}
+.space-eyebrow {
+  color: var(--primary-ink);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+}
+.space-panel {
+  border: 1px solid #e1e9f4;
+  border-radius: 1.5rem;
+  background: white;
+  box-shadow: 0 8px 40px -30px #315f9840;
+}
+.selector-shell {
+  display: flex;
+  flex-direction: column;
+  background-color: #fbfcff;
+  background-image: radial-gradient(#73a6df22 0.8px, transparent 0.8px);
+  background-size: 24px 24px;
+}
+.selector-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 1160px;
+  margin-inline: auto;
+  padding: 3rem 1.25rem;
+}
+.guild-bubble {
+  display: grid;
+  place-items: center;
+  width: clamp(6rem, 12vw, 8.5rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 6px solid white;
+  background: #e9f1fc;
+  color: #315f98;
+  box-shadow:
+    0 0 0 1px #dfe8f5,
+    0 12px 24px -16px #315f9860;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  overflow: hidden;
+  transition: box-shadow 220ms;
+}
+.guild-choice:hover .guild-bubble,
+.guild-choice:focus-visible .guild-bubble {
+  box-shadow:
+    0 0 0 3px #73a6df,
+    0 18px 30px -15px #315f9870;
+}
+.guild-choice:focus-visible {
+  outline-offset: 12px;
+  border-radius: 1rem;
+}
+.space-nav-link {
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.space-nav-link[aria-current='page'] {
+  background: #e8f1fc;
+  color: #315f98;
+}
+.space-nav-link:hover {
+  background: #edf3fb;
+}
+.trip-tile {
+  transition:
+    transform 180ms,
+    box-shadow 180ms;
+}
+.trip-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px -20px #315f9860;
+}
+@media (max-width: 480px) {
+  .space-nav-link {
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+  }
+}
+@media (max-width: 360px) {
+  .space-nav-link {
+    padding-inline: 0.375rem;
+    font-size: 0.6875rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-tile:hover {
+    transform: none;
+  }
+}

@@ -1,11 +1,11 @@
 import { z } from 'zod';
+import { snowflakeSchema } from './identifiers';
 export { describeError } from './diagnostics';
+export { snowflakeSchema } from './identifiers';
+export * from './collaboration';
 
 export const roleSchema = z.enum(['user', 'admin', 'owner']);
 export type Role = z.infer<typeof roleSchema>;
-export const snowflakeSchema = z
-  .string()
-  .regex(/^\d{17,20}$/, 'Discord User ID invalide (17 à 20 chiffres).');
 export const slugSchema = z
   .string()
   .min(1)
@@ -43,11 +43,12 @@ export const relationInputSchema = z
   });
 
 export function safeNext(value: string | null | undefined): string {
-  if (!value || !/^\/(app|admin)(\/|\?|$)/.test(value) || /[\\\r\n]/.test(value)) return '/app';
+  if (!value || !/^\/(app|admin|select-server)(\/|\?|$)/.test(value) || /[\\\r\n]/.test(value))
+    return '/app';
   return value;
 }
 export function isPrivatePath(path: string): boolean {
-  return /^\/(app|admin)(\/|$)/.test(path);
+  return /^\/(app|admin|select-server)(\/|$)/.test(path);
 }
 export type BotPresence = 'online' | 'offline' | 'unavailable';
 export function botPresence(

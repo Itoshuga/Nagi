@@ -10,7 +10,7 @@ export async function signIn(form: FormData) {
   callback.searchParams.set('next', next);
   const { data, error } = await db.auth.signInWithOAuth({
     provider: 'discord',
-    options: { redirectTo: callback.toString(), scopes: 'identify email' },
+    options: { redirectTo: callback.toString(), scopes: 'identify guilds' },
   });
   if (error || !data.url) redirect('/login?error=oauth');
   redirect(data.url);

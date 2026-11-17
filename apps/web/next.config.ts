@@ -1,6 +1,12 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
-  transpilePackages: ['@nagi/ui', '@nagi/shared', '@nagi/permissions', '@nagi/database'],
+  transpilePackages: [
+    '@nagi/ui',
+    '@nagi/shared',
+    '@nagi/permissions',
+    '@nagi/database',
+    '@nagi/discord',
+  ],
   poweredByHeader: false,
   devIndicators: false,
   async headers() {

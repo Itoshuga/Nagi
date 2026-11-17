@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { withoutProviderCredentials } from '../apps/web/src/lib/supabase/provider-cookies';
 import {
   authCookieName,
   createAuthClient,
@@ -74,6 +75,74 @@ function mockAuth(validToken: string) {
 }
 
 describe('Nagi authentication, aligned with Kitsu', () => {
+  it('captures provider tokens from OAuth only in server memory, never in response cookies', async () => {
+    const access = token();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          access_token: access,
+          refresh_token: 'supabase-refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user,
+          provider_token: 'discord-private-access',
+          provider_refresh_token: 'discord-private-refresh',
+        }),
+      ),
+    );
+    const cookies = store();
+    const client = createAuthClient(config, cookies.methods);
+    await client.auth.signInWithOAuth({
+      provider: 'discord',
+      options: { scopes: 'identify guilds' },
+    });
+    const result = await client.auth.exchangeCodeForSession('fixture-code');
+    expect(result.error).toBeNull();
+    expect(result.data.session?.provider_token).toBe('discord-private-access');
+    const stored = JSON.parse(
+      Buffer.from(cookies.jar.get(authCookieName)!.slice(7), 'base64url').toString(),
+    );
+    expect(stored.access_token).toBe(access);
+    expect(stored).not.toHaveProperty('provider_token');
+    expect(stored).not.toHaveProperty('provider_refresh_token');
+    expect(stored).not.toHaveProperty('user');
+  });
+  it('reassembles large sessions and expires all obsolete chunks without touching other projects', () => {
+    const raw = {
+      access_token: 'supabase-access',
+      refresh_token: 'supabase-refresh',
+      provider_token: 'sensitive'.repeat(2000),
+      provider_refresh_token: 'private',
+    };
+    const encoded = `base64-${Buffer.from(JSON.stringify(raw)).toString('base64url')}`;
+    const chunks = Array.from({ length: Math.ceil(encoded.length / 3000) }, (_, i) => ({
+      name: `${authCookieName}.${i}`,
+      value: encoded.slice(i * 3000, (i + 1) * 3000),
+    }));
+    expect(chunks.length).toBeGreaterThan(1);
+    const result = withoutProviderCredentials(
+      [
+        ...chunks.map((chunk) => ({ ...chunk, options: { httpOnly: true, path: '/' } })),
+        { name: 'kitsu-auth', value: 'untouched', options: {} },
+      ],
+      chunks,
+    );
+    expect(result.find((cookie) => cookie.name === 'kitsu-auth')?.value).toBe('untouched');
+    expect(
+      result
+        .filter((cookie) => cookie.name.startsWith('nagi-auth.'))
+        .every((cookie) => cookie.options.maxAge === 0),
+    ).toBe(true);
+    const saved = result.find((cookie) => cookie.name === authCookieName)!;
+    expect(JSON.parse(Buffer.from(saved.value.slice(7), 'base64url').toString())).toEqual({
+      access_token: 'supabase-access',
+      refresh_token: 'supabase-refresh',
+    });
+    expect(() =>
+      withoutProviderCredentials([{ name: authCookieName, value: 'invalid', options: {} }], []),
+    ).toThrow();
+  });
   it('recognizes only Nagi session cookies, excluding OAuth verifiers and other projects', () => {
     for (const name of ['nagi-auth', 'nagi-auth.0', 'nagi-auth.1'])
       expect(isSessionCookie(name)).toBe(true);

@@ -1,4 +1,5 @@
 import { Badge, Card } from '@nagi/ui';
+import Image from 'next/image';
 import { requireViewer } from '@/features/auth/session';
 export const metadata = { title: 'Mon profil' };
 export default async function Profile() {
@@ -7,13 +8,35 @@ export default async function Profile() {
   return (
     <div className="max-w-2xl">
       <p className="mb-4 text-xs uppercase tracking-widest text-primary-ink">Compte personnel</p>
-      <h1 className="display-title font-display">Mon profil</h1>
+      <h1 className="space-title">Mon profil</h1>
       <p className="mt-4 text-sm text-muted-foreground">
         Votre identité est reliée à votre compte Discord.
       </p>
       <Card className="mt-9">
+        {viewer.banner_url && (
+          <Image
+            src={viewer.banner_url}
+            alt="Bannière Discord"
+            width={700}
+            height={240}
+            className="mb-6 h-36 w-full rounded-2xl object-cover"
+            unoptimized
+          />
+        )}
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-medium">{viewer.display_name}</h2>
+          <div className="flex items-center gap-4">
+            {viewer.avatar_url && (
+              <Image
+                src={viewer.avatar_url}
+                alt=""
+                width={56}
+                height={56}
+                className="rounded-full"
+                unoptimized
+              />
+            )}
+            <h2 className="text-xl font-extrabold">{viewer.display_name}</h2>
+          </div>
           <Badge>{viewer.role}</Badge>
         </div>
         <dl className="mt-6 divide-y divide-border text-sm">

@@ -10,7 +10,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   external: ['discord.js'],
-  noExternal: ['@nagi/shared', '@nagi/permissions', '@nagi/database'],
+  noExternal: ['@nagi/shared', '@nagi/permissions', '@nagi/database', '@nagi/discord'],
   async onSuccess() {
     await access('src/commands');
     await mkdir('dist/commands', { recursive: true });

@@ -9,6 +9,7 @@ import { loadCommands } from './handlers/load-commands';
 import { createDiscordRegistryApi } from './handlers/sync-commands';
 import { handleInteraction } from './handlers/interaction';
 import { startSyncWorker } from './services/sync-worker';
+import { startGuildRegistry } from './services/guild-registry';
 import { errorDetails, log } from './utils/logger';
 import type { NagiCommand } from './types/command';
 
@@ -23,12 +24,14 @@ async function main() {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   const shutdownSignal = new AbortController();
   let worker: ReturnType<typeof startSyncWorker> | undefined = undefined;
+  let guildRegistry: ReturnType<typeof startGuildRegistry> | undefined;
   let stopping = false;
   async function shutdown(exitCode: number) {
     if (stopping) return;
     stopping = true;
     shutdownSignal.abort();
     client.destroy();
+    if (guildRegistry) await guildRegistry.stop();
     if (worker) await worker.stop();
     process.exitCode = exitCode;
     log('bot.stopped', { scope, exitCode });
@@ -84,6 +87,12 @@ async function main() {
       return;
     }
     log('bot.ready', { applicationId: env.DISCORD_APPLICATION_ID, scope, commands: registry.size });
+    guildRegistry = startGuildRegistry(
+      client,
+      db,
+      env.DISCORD_APPLICATION_ID,
+      env.DISCORD_BOT_TOKEN,
+    );
   });
   client.on(Events.Error, (error) => log('discord.error', errorDetails(error)));
   client.on(Events.ShardDisconnect, () => log('discord.disconnected'));

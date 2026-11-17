@@ -1,8 +1,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs' || process.env.NEXT_PHASE === 'phase-production-build')
     return;
-  const { serverEnv } = await import('./lib/env');
-  serverEnv(); // Invalid/missing variables stop startup with actionable, redacted messages.
+  const { discordEnv } = await import('./lib/env');
+  discordEnv(); // Invalid/missing variables stop startup with actionable, redacted messages.
   const { ensureBackendStartup } = await import('./lib/startup');
   try {
     await ensureBackendStartup();

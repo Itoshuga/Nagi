@@ -2,12 +2,47 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { isPrivatePath } from '@nagi/shared';
 import { publicEnv } from '@/lib/env';
 import { createAuthClient, isLegacyAuthCookie, isSessionCookie } from '@/lib/supabase/auth';
+import { withoutProviderCredentials } from '@/lib/supabase/provider-cookies';
 
 export async function proxy(request: NextRequest) {
   const env = publicEnv();
   const privateRoute = isPrivatePath(request.nextUrl.pathname);
   let response = NextResponse.next({ request });
   const cacheHeaders = new Headers();
+  // Upgrade existing Phase 1 sessions too, without waiting for their next Supabase refresh.
+  const incoming = request.cookies
+    .getAll()
+    .filter((cookie) => isSessionCookie(cookie.name) && cookie.value);
+  if (incoming.length) {
+    try {
+      const clean = withoutProviderCredentials(
+        incoming.map((cookie) => ({
+          ...cookie,
+          options: {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: env.NEXT_PUBLIC_APP_URL.startsWith('https://'),
+            maxAge: 400 * 24 * 60 * 60,
+          },
+        })),
+        incoming,
+      );
+      if (
+        clean.some(
+          (cookie) => cookie.value !== incoming.find((old) => old.name === cookie.name)?.value,
+        )
+      ) {
+        for (const { name, value, options } of clean) {
+          if (options.maxAge === 0) request.cookies.delete(name);
+          else request.cookies.set(name, value);
+          response.cookies.set(name, value, options);
+        }
+      }
+    } catch {
+      // The Auth client below rejects/clears malformed sessions; never trust their contents.
+    }
+  }
   function signInRedirect() {
     const url = new URL('/login', env.NEXT_PUBLIC_APP_URL);
     url.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search);
@@ -63,4 +98,6 @@ export async function proxy(request: NextRequest) {
 }
 
 // Refresh public signed-in pages too, so tokens never rotate in a read-only render.
-export const config = { matcher: ['/', '/login', '/app/:path*', '/admin/:path*'] };
+export const config = {
+  matcher: ['/', '/login', '/select-server', '/app/:path*', '/admin/:path*'],
+};

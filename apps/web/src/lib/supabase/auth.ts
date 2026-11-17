@@ -1,5 +1,6 @@
 import { createServerClient, type CookieMethodsServer } from '@supabase/ssr';
 import { timedFetch, type Database } from '@nagi/database';
+import { withoutProviderCredentials } from './provider-cookies';
 
 export const authCookieName = 'nagi-auth';
 export const isSessionCookie = (name: string) => /^nagi-auth(?:\.\d+)?$/.test(name);
@@ -32,7 +33,16 @@ export function createAuthClient(config: AuthConfig, methods: CookieMethodsServe
         path: '/',
       },
       // As in Kitsu: keep the complete Discord user object out of request headers.
-      cookies: { ...methods, encode: 'tokens-only' },
+      cookies: {
+        ...methods,
+        encode: 'tokens-only',
+        async setAll(updates, headers) {
+          await methods.setAll?.(
+            withoutProviderCredentials(updates, (await methods.getAll()) ?? []),
+            headers,
+          );
+        },
+      },
     },
   );
 }
