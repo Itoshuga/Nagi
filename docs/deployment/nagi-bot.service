@@ -1,0 +1,23 @@
+[Unit]
+Description=Nagi Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nagi
+WorkingDirectory=/srv/nagi/apps/bot
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/nagi/bot.env
+ExecStart=/usr/bin/node --enable-source-maps /srv/nagi/apps/bot/dist/index.js
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

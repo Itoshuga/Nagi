@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+.turbo
+pnpm-lock.yaml
+packages/database/src/database.types.ts
+artifacts
+**/next-env.d.ts

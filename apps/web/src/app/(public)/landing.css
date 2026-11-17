@@ -1,0 +1,232 @@
+@import '@fontsource-variable/manrope';
+
+.landing-page {
+  --primary: #73a6df;
+  --primary-foreground: #142b48;
+  --primary-ink: #315f98;
+  --accent: #e8f1fc;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100svh;
+  flex-direction: column;
+  overflow: clip;
+  background: #fcfdff;
+  color: #162332;
+  font-family: 'Manrope Variable', var(--font-sans);
+}
+
+.landing-header,
+.landing-main,
+.landing-bottom {
+  width: min(calc(100% - 112px), 1248px);
+  margin-inline: auto;
+}
+
+.landing-header {
+  display: flex;
+  min-height: 116px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.landing-header a {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.065em;
+}
+
+.landing-header-note {
+  color: #596777;
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+}
+
+.landing-main {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 56px;
+  padding-block: 50px 80px;
+}
+
+.landing-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 24px;
+  color: #4a617b;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing-eyebrow > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.landing-title {
+  margin: 0;
+  font-size: clamp(3.5rem, 6.4vw, 5.8rem);
+  font-weight: 800;
+  line-height: 1.075;
+  letter-spacing: -0.07em;
+}
+
+.landing-title > span {
+  display: block;
+  color: #3c6caa;
+}
+
+.landing-description {
+  max-width: 380px;
+  margin: 28px 0 0;
+  color: #596777;
+  font-size: 16px;
+  font-weight: 450;
+  line-height: 1.8;
+  letter-spacing: -0.015em;
+  text-wrap: pretty;
+}
+
+.landing-actions {
+  margin-top: 36px;
+}
+
+.landing-cta {
+  height: 56px;
+  gap: 11px;
+  border-radius: 15px;
+  padding-inline: 24px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  box-shadow: none;
+}
+
+.landing-sign-in-note {
+  margin: 14px 0 0;
+  color: #596777;
+  font-size: 11px;
+  font-weight: 450;
+}
+
+.landing-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+.landing-character {
+  position: relative;
+  width: min(100%, 428px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.landing-character-image {
+  position: absolute;
+  top: -10%;
+  left: -6%;
+  width: 112%;
+  max-width: none;
+  height: auto;
+  user-select: none;
+}
+
+.landing-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 20px 28px;
+  color: #596777;
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.landing-bottom > span:first-child {
+  color: #162332;
+  font-weight: 800;
+}
+
+@media (max-width: 1100px) {
+  .landing-header,
+  .landing-main,
+  .landing-bottom {
+    width: calc(100% - 64px);
+  }
+  .landing-main {
+    gap: 30px;
+  }
+  .landing-title {
+    font-size: clamp(3.1rem, 6.5vw, 4.5rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .landing-header,
+  .landing-main,
+  .landing-bottom {
+    width: calc(100% - 48px);
+  }
+  .landing-header {
+    min-height: 94px;
+  }
+  .landing-header-note {
+    font-size: 11px;
+  }
+  .landing-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 44px;
+    padding-block: 34px 30px;
+  }
+  .landing-title {
+    font-size: clamp(2.7rem, 12.3vw, 4.1rem);
+    line-height: 1.1;
+  }
+  .landing-eyebrow {
+    margin-bottom: 19px;
+    font-size: 11px;
+  }
+  .landing-description {
+    max-width: 350px;
+    margin-top: 22px;
+    font-size: 14px;
+  }
+  .landing-actions {
+    margin-top: 26px;
+  }
+  .landing-visual {
+    padding: 0;
+  }
+  .landing-character {
+    width: min(68vw, 260px);
+  }
+  .landing-bottom {
+    padding-block: 18px 24px;
+  }
+}
+
+@media (max-width: 359px) {
+  .landing-header,
+  .landing-main,
+  .landing-bottom {
+    width: calc(100% - 36px);
+  }
+  .landing-header-note {
+    display: none;
+  }
+}

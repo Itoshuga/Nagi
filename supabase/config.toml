@@ -1,0 +1,26 @@
+project_id = "nagi"
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+[db]
+port = 54322
+major_version = 17
+[studio]
+enabled = true
+port = 54323
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+enable_signup = true
+[auth.email]
+enable_signup = false
+[auth.sms]
+enable_signup = false
+[auth.external.discord]
+enabled = true
+client_id = "env(DISCORD_APPLICATION_ID)"
+secret = "env(DISCORD_CLIENT_SECRET)"
+redirect_uri = "http://localhost:54321/auth/v1/callback"

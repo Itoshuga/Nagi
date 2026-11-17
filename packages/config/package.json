@@ -1,0 +1,8 @@
+{
+  "name": "@nagi/config",
+  "version": "3.0.0",
+  "private": true,
+  "files": [
+    "tsconfig.base.json"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@nagi/bot",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "dotenv -e ../../.env -- node --enable-source-maps dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nagi/database": "workspace:*",
+    "@nagi/permissions": "workspace:*",
+    "@nagi/shared": "workspace:*",
+    "discord.js": "14.28.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "tsup": "^8.5.0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@nagi/database",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nagi/shared": "workspace:*",
+    "@nagi/permissions": "workspace:*",
+    "@supabase/supabase-js": "2.119.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@nagi/permissions",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nagi/shared": "workspace:*"
+  }
+}

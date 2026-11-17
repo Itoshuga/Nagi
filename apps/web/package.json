@@ -1,0 +1,32 @@
+{
+  "name": "@nagi/web",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- node --max-http-header-size=32768 node_modules/next/dist/bin/next dev --webpack",
+    "build": "dotenv -e ../../.env -- next build --webpack",
+    "start": "dotenv -e ../../.env -- node --max-http-header-size=32768 node_modules/next/dist/bin/next start",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "5.3.0",
+    "@nagi/database": "workspace:*",
+    "@nagi/permissions": "workspace:*",
+    "@nagi/shared": "workspace:*",
+    "@nagi/ui": "workspace:*",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.119.0",
+    "@tailwindcss/postcss": "4.3.5",
+    "lucide-react": "^0.577.0",
+    "motion": "^12.34.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "^0.0.1",
+    "tailwindcss": "4.3.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

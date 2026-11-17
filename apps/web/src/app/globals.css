@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@source "../../../../packages/ui/src";
+
+@custom-variant dark (&:where(.dark, .dark *));
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-ink: var(--primary-ink);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary-ink);
+  --color-destructive: #a43e37;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+  --shadow-card: 0 2px 8px rgb(20 43 72 / 0.025);
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1.15rem;
+  --radius-3xl: 1.75rem;
+  --spacing: 0.25rem;
+  --default-transition-duration: 180ms;
+}
+:root {
+  color-scheme: light;
+  --background: #f7faff;
+  --foreground: #142b48;
+  --card: #ffffff;
+  --primary: #73a6df;
+  --primary-foreground: #142b48;
+  --primary-ink: #315f98;
+  --muted: #edf3fb;
+  --muted-foreground: #5e6d82;
+  --accent: #e8f1fc;
+  --border: #dce6f3;
+}
+.dark {
+  color-scheme: dark;
+  --background: #111b2b;
+  --foreground: #edf4ff;
+  --card: #17243a;
+  --primary: #73a6df;
+  --primary-foreground: #101f34;
+  --primary-ink: #a9c9ee;
+  --muted: #1b2b43;
+  --muted-foreground: #a0b1c9;
+  --accent: #1d3350;
+  --border: #2b405e;
+}
+* {
+  border-color: var(--border);
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: #d9e9fc;
+  color: #193c67;
+}
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+button:not(:disabled),
+summary {
+  cursor: pointer;
+}
+a {
+  text-underline-offset: 4px;
+}
+.hero {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+.display-title {
+  font-size: clamp(2rem, 3.5vw, 3.15rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+:focus-visible {
+  outline: 2px solid var(--primary-ink);
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
