@@ -57,7 +57,14 @@ export async function createCategory(db: NagiDatabase, actor: Actor, input: Cate
 export async function createEntry(db: NagiDatabase, actor: Actor, input: unknown) {
   assertAdmin(actor);
   const values = entryInputSchema.parse(input);
-  const { data, error } = await db.from('entries').insert(values).select().single();
+  const city = await db.from('cities').select('country_id').eq('id', values.city_id).single();
+  if (city.error)
+    throw new Error('Impossible de charger la ville de cette fiche.', { cause: city.error });
+  const { data, error } = await db
+    .from('entries')
+    .insert({ ...values, country_id: city.data.country_id })
+    .select()
+    .single();
   if (error)
     throw new Error('Impossible de créer cette fiche. Vérifiez sa localisation et son slug.', {
       cause: error,
@@ -70,7 +77,14 @@ export async function createRelation(db: NagiDatabase, actor: Actor, input: unkn
   if (values.bidirectional && values.source_id > values.target_id) {
     [values.source_id, values.target_id] = [values.target_id, values.source_id];
   }
-  const { data, error } = await db.from('entry_relations').insert(values).select().single();
+  const type = await db.from('relation_types').select('id').eq('slug', values.kind).single();
+  if (type.error)
+    throw new Error('Impossible de trouver le type de relation.', { cause: type.error });
+  const { data, error } = await db
+    .from('entry_relations')
+    .insert({ ...values, relation_type_id: type.data.id })
+    .select()
+    .single();
   if (error) throw new Error('Impossible de créer cette relation.', { cause: error });
   return data;
 }

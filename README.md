@@ -186,7 +186,7 @@ La file PostgreSQL remplace une API HTTP entre les processus. Elle est protégé
 
 Le dashboard affiche les données de `bot_runtime` pour **l’application et le scope configurés**. Le bot est considéré en ligne uniquement si le heartbeat date de moins de 45 secondes et que Discord est connecté ; jusqu’à 90 secondes il est potentiellement indisponible, puis hors ligne. Un ancien booléen de connexion ne suffit pas. L’écran s’actualise toutes les 20 secondes.
 
-Les deux backends utilisent les mêmes services `createCategory`, `createEntry`, `createRelation`, les mêmes validations et les mêmes permissions. L’interface propose un ajout réel de catégorie, qui fournit un premier exemple de mutation partagée, sans développer un CRUD complet. Pour un nouveau service privilégié, obtenir l’acteur depuis la session vérifiée ou `findActor` côté bot, puis conserver les vérifications serveur et RLS.
+Les deux backends utilisent les types et services du package `@nagi/database`. Les mutations du catalogue web vérifient le rôle global dans la session avant d’utiliser le client serveur. Les lectures de Découvrir passent par les politiques de visibilité ordinaires, y compris pour un administrateur. L’aperçu des brouillons est disponible depuis l’administration.
 
 ## 7. Vérifications
 
@@ -224,7 +224,7 @@ Les clés nécessaires au web sont les variables publiques, la clé serveur, App
 
 ## Périmètre
 
-Cette phase prépare les destinations, la gestion des fiches et leurs relations. Recherche avancée, favoris, collections, commentaires, médias/vlog, pages détaillées et commandes Discord de gestion de contenu seront développés ensuite. Les routes d’administration lisent déjà les tables réelles ; elles ne prétendent pas offrir ces opérations futures.
+Découvrir réutilise les pays, villes et quartiers du catalogue mondial. Les catégories, les fiches détaillées et leurs relations sont administrées depuis le web et partagées entre les espaces Discord.
 
 ## Phase 2 — Espaces Discord et voyages
 
@@ -243,7 +243,7 @@ Les inventaires utilisateur et bot sont paginés par 200 et croisés par Guild I
 - `/app/[guildId]/discover` : catalogue global en lecture, sans création de fiches par les membres.
 - `/app/[guildId]/settings` : préférence personnelle et permission locale de création de voyages.
 
-Les permissions locales proviennent du propriétaire Discord ou des bits `Administrator` / `ManageGuild`. Elles n’accordent aucun rôle global Nagi. Les requêtes de voyages utilisent le client Supabase de la session et la RLS, jamais le client service. Un global admin sans appartenance Discord ne lit pas les voyages privés d’un serveur. Les membres lisent les voyages communs ; le créateur et les administrateurs locaux peuvent les modifier. Les identifiants d’espace, auteurs et références de fiches sont immuables pour un client ordinaire. `trip_items.entry_id` référence une fiche globale unique réutilisable entre voyages ; sa journée doit appartenir au même voyage.
+Les permissions locales proviennent du propriétaire Discord ou des bits `Administrator` / `ManageGuild`. Elles permettent de gérer les paramètres du serveur. Les données des voyages sont lues avec le client Supabase de la session et les politiques d’appartenance au serveur. `trip_items.entry_id` référence une fiche globale réutilisable. Sa journée appartient au même voyage.
 
 Les tests exécutent toutes les migrations dans PostgreSQL embarqué et vérifient les scénarios de retrait/réintégration, préférences obsolètes, isolation, rôles locaux/globaux, privilèges SQL, contraintes des dates/journées, références partagées, chiffrement, refresh concurrent et absence des tokens Discord dans les cookies du vrai client SSR Supabase. La connexion OAuth réelle exige toujours la validation de l’utilisateur dans Discord.
 
@@ -256,3 +256,23 @@ Les administrateurs Nagi gèrent les pays, villes et quartiers dans `/admin`. Po
 Pour migrer des fiches à l’intérieur de la même ville, une transaction SQL peut différer `public.check_city_neighborhoods`, changer le mode, créer ou déplacer les quartiers et réaffecter explicitement chaque fiche. Vérifier les contraintes avant le commit avec `SET CONSTRAINTS public.check_city_neighborhoods IMMEDIATE`. Cette opération conserve les identifiants de fiches utilisés par les voyages.
 
 Le bucket privé `destination-covers` est créé par la migration. Les couvertures sont réencodées en WebP côté serveur. `NAGI_COVER_MAX_MIB` permet de limiter la taille du fichier envoyé entre 1 et 8 Mio. La valeur par défaut est de 8 Mio.
+
+## Catalogue mondial
+
+Appliquer `202611170005_global_catalog.sql` avant de lancer la version web correspondante. Cette migration conserve les identifiants de fiches et le lien `trip_items.entry_id`. Le schéma continue d’utiliser `categories.position` pour l’ordre et `entries.published` pour l’état de publication.
+
+- **Catégories** dans `/admin/categories`. Modifier les catégories globales et leurs champs, puis glisser les lignes ou utiliser les boutons Monter et Descendre pour enregistrer un nouvel ordre. Une réaffectation conserve les valeurs lorsque les définitions cibles ont les mêmes clés et types et acceptent les valeurs existantes.
+- **Fiches** dans `/admin/entries`. Enregistrer la fiche avant d’ajouter sa galerie ou ses relations. Les champs obligatoires s’appliquent à la publication. L’aperçu permet de consulter un brouillon depuis l’administration.
+- **Types de relation** dans `/admin/relations`. Les deux extrémités partagent une seule relation et chaque sens peut avoir son propre libellé.
+- **Médias** dans le bucket privé `entry-media`. Le serveur valide et redimensionne chaque image puis la convertit en WebP. Le premier élément sert de couverture automatique. Les suppressions de fichiers sont enregistrées en base et retentées lors des opérations suivantes si Storage est indisponible.
+
+La [recette d’intégration](docs/INTEGRATION.md) couvre la connexion Discord et le parcours catalogue avec deux rôles.
+
+## Phase 4 — Planificateur de voyages
+
+Appliquer `202611170006_trip_planner.sql` après `202611170005_global_catalog.sql`, puis lancer la version web correspondante. La migration conserve les voyages, les journées et les références du catalogue existants. Elle initialise le créateur comme organisateur et le mode de collaboration à « tous les membres ».
+
+- **Voyages** permet de chercher, filtrer et créer un voyage avec une destination, des dates et une couverture facultatives. Le calendrier conserve les dates locales et les horaires utilisent le fuseau du voyage. Les journées hors de la nouvelle période restent visibles dans l’itinéraire.
+- **Itinéraire** permet d’ajouter des fiches depuis la recherche, depuis leurs pages et depuis les suggestions issues de leurs relations. Les étapes se déplacent à la souris, au toucher ou avec les boutons et menus. La suppression d’une journée conserve ses étapes dans la destination choisie.
+- **Calendrier** permet de lire les horaires et signale les chevauchements. **Carte** utilise les coordonnées des fiches et charge Leaflet à l’ouverture de la vue. Les repères sont numérotés par journée. Le fond OpenStreetMap et son attribution sont centralisés dans `apps/web/src/features/trips/map-config.ts`. [Politique des tuiles OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/)
+- **Les organisateurs** gèrent les réglages, la liste des organisateurs et la suppression. Les écritures de planification utilisent une transaction et une version du voyage. La synchronisation reçoit des notifications Supabase Realtime privées côté serveur et revérifie périodiquement la version. Le bucket de couvertures `trip-covers` est privé. [Autorisation Realtime](https://supabase.com/docs/guides/realtime/authorization)

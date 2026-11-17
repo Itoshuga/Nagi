@@ -3,7 +3,7 @@ import { ArrowUpRight, BookOpen, History, Sparkles } from 'lucide-react';
 import { Alert, Button } from '@nagi/ui';
 import { requireGuild, spaceServices } from '@/features/spaces/server';
 import { TripList } from '@/features/trips/trip-list';
-import { CreateTripDialog } from '@/features/trips/create-trip-dialog';
+import { CreateTripLink } from '@/features/trips/create-trip-dialog';
 export const metadata = { title: 'Votre espace' };
 export default async function GuildHome({
   params,
@@ -14,7 +14,7 @@ export default async function GuildHome({
 }) {
   const { guildId } = await params;
   const { guild, isAdmin, viewer } = await requireGuild(guildId);
-  const trips = await (await spaceServices()).trips.list(guildId, 5);
+  const { rows: trips } = await (await spaceServices()).trips.cards(guildId, { limit: 5 });
   const canCreate = isAdmin || guild.members_can_create_trips;
   const query = await searchParams;
   return (
@@ -49,7 +49,7 @@ export default async function GuildHome({
             </h2>
           </div>
           <div className="flex gap-2">
-            {trips.length > 0 && canCreate && <CreateTripDialog guildId={guildId} />}
+            {trips.length > 0 && canCreate && <CreateTripLink guildId={guildId} />}
             <Button asChild variant="ghost" size="sm">
               <Link href={`/app/${guildId}/trips`}>
                 Tout voir

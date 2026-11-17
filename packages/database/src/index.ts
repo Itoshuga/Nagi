@@ -3,3 +3,4 @@ export * from './client';
 export * from './services';
 export * from './collaboration';
 export * from './geography';
+export * from './catalog';

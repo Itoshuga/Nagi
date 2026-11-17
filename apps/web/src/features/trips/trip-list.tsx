@@ -1,93 +1,104 @@
 import Link from 'next/link';
-import { ArrowUpRight, CalendarDays, MapPinned, Plus } from 'lucide-react';
-import { Badge } from '@nagi/ui';
-import type { Trip } from '@nagi/database';
-import { CreateTripDialog } from './create-trip-dialog';
+import { ArrowUpRight, CalendarDays, MapPin, Route } from 'lucide-react';
+import { Badge, EmptyState } from '@nagi/ui';
+import { relatedCount, type Trip, type TripCard } from '@nagi/database';
+import { tripDateLabel } from '@nagi/shared';
+import { EntryImage } from '@/features/media/image';
+import { CreateTripLink } from './create-trip-dialog';
+
 export function tripDates(trip: Pick<Trip, 'start_date' | 'end_date'>) {
-  const format = (value: string) =>
-    new Intl.DateTimeFormat('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(new Date(`${value}T12:00:00Z`));
+  const format = (date: string) => tripDateLabel(date, { dateStyle: 'medium' });
   return trip.start_date && trip.end_date
-    ? `${format(trip.start_date)} — ${format(trip.end_date)}`
+    ? trip.start_date === trip.end_date
+      ? format(trip.start_date)
+      : `${format(trip.start_date)} – ${format(trip.end_date)}`
     : trip.start_date
       ? `À partir du ${format(trip.start_date)}`
       : trip.end_date
         ? `Jusqu’au ${format(trip.end_date)}`
-        : 'Dates à imaginer ensemble';
+        : 'Dates à définir';
 }
-export const tripStatus = {
-  planned: 'En préparation',
+export const tripStatus: Record<Trip['status'], string> = {
+  draft: 'Brouillon',
+  planned: 'Planifié',
   ongoing: 'En cours',
   completed: 'Terminé',
   cancelled: 'Annulé',
 };
+
 export function TripList({
   trips,
   guildId,
   canCreate,
+  filtered = false,
 }: {
-  trips: Trip[];
+  trips: TripCard[];
   guildId: string;
   canCreate: boolean;
+  filtered?: boolean;
 }) {
   if (!trips.length)
     return (
-      <div className="space-panel flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
-        <span className="mb-6 flex size-16 items-center justify-center rounded-[1.4rem] bg-accent text-primary-ink">
-          <MapPinned className="size-7" strokeWidth={1.5} />
-        </span>
-        <h3 className="text-xl font-extrabold tracking-tight">
-          Votre prochaine aventure commence ici.
-        </h3>
-        <p className="mb-7 mt-3 max-w-sm text-sm leading-7 text-muted-foreground">
-          Aucun voyage n’a encore été organisé sur ce serveur.
-        </p>
-        {canCreate ? (
-          <CreateTripDialog guildId={guildId} />
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Un administrateur de cet espace peut créer le premier voyage.
-          </p>
-        )}
-      </div>
+      <EmptyState
+        title={filtered ? 'Aucun voyage trouvé' : 'Votre prochaine aventure commence ici.'}
+        description={
+          filtered
+            ? 'Modifiez la recherche ou changez de filtre.'
+            : 'Choisissez votre destination et commencez à organiser votre premier voyage ensemble.'
+        }
+      >
+        {canCreate && !filtered && <CreateTripLink guildId={guildId} />}
+      </EmptyState>
     );
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {trips.map((trip) => (
-        <Link
-          key={trip.id}
-          href={`/app/${guildId}/trips/${trip.id}`}
-          className="space-panel trip-tile group flex min-h-60 flex-col p-6"
-        >
-          <div className="mb-8 flex items-center justify-between">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-accent text-primary-ink">
-              <MapPinned className="size-5" />
-            </span>
-            <ArrowUpRight className="size-4 text-muted-foreground group-hover:text-primary-ink" />
-          </div>
-          <Badge className="mb-3 w-fit text-[10px]">{tripStatus[trip.status]}</Badge>
-          <h3 className="break-words text-xl font-extrabold tracking-tight">{trip.title}</h3>
-          {trip.description && (
-            <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">
-              {trip.description}
-            </p>
-          )}
-          <p className="mt-auto flex items-center gap-2 pt-7 text-xs text-muted-foreground">
-            <CalendarDays className="size-3.5 shrink-0" />
-            {tripDates(trip)}
-          </p>
-        </Link>
-      ))}
-      {canCreate && (
-        <div className="flex min-h-60 flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-border p-6">
-          <Plus className="size-6 text-primary-ink" strokeWidth={1.5} />
-          <CreateTripDialog guildId={guildId} />
-        </div>
-      )}
-    </div>
+    <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {trips.map((trip) => {
+        const days = relatedCount(trip.days),
+          places = relatedCount(trip.items);
+        const destination = trip.destination?.is_published ? trip.destination : null;
+        return (
+          <li key={trip.id} className="min-w-0">
+            <Link
+              href={`/app/${guildId}/trips/${trip.id}`}
+              className="group block h-full overflow-hidden rounded-3xl border border-border bg-card shadow-card transition-shadow hover:shadow-lg focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none"
+            >
+              <div className="relative">
+                <EntryImage
+                  src={trip.cover_image_url ?? destination?.cover_image_url}
+                  className="aspect-[16/9] [&>img]:transition-transform [&>img]:duration-500 group-hover:[&>img]:scale-105 motion-reduce:[&>img]:transform-none motion-reduce:[&>img]:transition-none"
+                />
+                <Badge className="absolute left-4 top-4 bg-card text-foreground shadow-sm">
+                  {tripStatus[trip.status]}
+                </Badge>
+              </div>
+              <div className="space-y-3 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="break-words font-display text-xl font-extrabold">{trip.title}</h3>
+                  <ArrowUpRight
+                    aria-hidden="true"
+                    className="mt-1 size-4 shrink-0 text-primary-ink"
+                  />
+                </div>
+                {destination && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin aria-hidden="true" className="size-4 shrink-0" />
+                    {destination.name}
+                  </p>
+                )}
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CalendarDays aria-hidden="true" className="size-4 shrink-0" />
+                  {tripDates(trip)}
+                </p>
+                <p className="flex items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                  <Route aria-hidden="true" className="size-4 shrink-0 text-primary-ink" />
+                  {days} {days === 1 ? 'journée' : 'journées'} · {places}{' '}
+                  {places === 1 ? 'étape' : 'étapes'}
+                </p>
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

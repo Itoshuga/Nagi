@@ -7,6 +7,7 @@ import { safeNext } from '@nagi/shared';
 import { Logo } from '@/components/shared/logo';
 import { DiscordButton } from '@/components/shared/discord-button';
 import { getViewer } from '@/features/auth/session';
+export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Connexion' };
 export default async function Login({
   searchParams,

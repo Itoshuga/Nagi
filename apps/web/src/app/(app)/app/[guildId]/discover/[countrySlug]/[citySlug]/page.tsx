@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { GeographyService } from '@nagi/database';
 import { slugSchema } from '@nagi/shared';
-import { DiscoverCategories, DiscoverGrid, DestinationHero } from '@/features/geography/discover';
+import { DiscoverGrid, DestinationHero } from '@/features/geography/discover';
+import { DiscoverEntryCategories } from '@/features/entries/discovery';
 import { pageParam, type SearchParams } from '@/features/geography/model';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { requireGuild } from '@/features/spaces/server';
@@ -50,7 +51,13 @@ export default async function DiscoverCity({
           emptyDescription="Vous pourrez choisir un quartier de cette ville après sa publication."
         />
       ) : (
-        <DiscoverCategories cityId={city.id} neighborhoodId={null} path={path} params={query} />
+        <DiscoverEntryCategories
+          cityId={city.id}
+          neighborhoodId={null}
+          guildId={guildId}
+          path={path}
+          params={query}
+        />
       )}
     </>
   );

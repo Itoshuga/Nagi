@@ -31,3 +31,8 @@ export function serviceDatabase() {
   const env = serverEnv();
   return createServiceDatabase(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 }
+
+/** Published catalog pages always use ordinary RLS, including when viewed by an admin. */
+export function publicCatalogDatabase() {
+  return createAuthClient(publicEnv(), { getAll: () => [] });
+}

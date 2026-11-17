@@ -44,7 +44,7 @@ export class GeographyService {
             ? this.db
                 .from(kind)
                 .select(
-                  '*, parent:countries(id,name), children:neighborhoods(count), entries(count)',
+                  '*, parent:countries(id,name), children:neighborhoods(count), entries!entries_city_id_fkey(count)',
                   count,
                 )
             : this.db

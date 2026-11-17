@@ -45,6 +45,14 @@ beforeAll(async () => {
     alter table storage.objects enable row level security;
     grant usage on schema storage to authenticated,service_role;
     grant select,insert,update,delete on storage.objects to authenticated,service_role;
+    create schema realtime;
+    create table realtime.messages(extension text,topic text,event text,payload jsonb,private boolean);
+    alter table realtime.messages enable row level security;
+    grant usage on schema realtime to authenticated;
+    grant select on realtime.messages to authenticated;
+    create function realtime.topic() returns text language sql as $$ select current_setting('test.realtime_topic',true) $$;
+    create function realtime.send(p_payload jsonb,p_event text,p_topic text,p_private boolean) returns void
+      language sql as $$insert into realtime.messages values ('broadcast',p_topic,p_event,p_payload,p_private)$$;
   `);
   const directory = new URL('../supabase/migrations/', import.meta.url);
   for (const file of (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort()) {
@@ -65,6 +73,253 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await db.close();
+});
+
+describe('Global catalog phase 3', () => {
+  const world = `
+    insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true),('France','france','FR',true);
+    insert into public.cities(country_id,name,slug,is_published,has_neighborhoods)
+      select id,'Tokyo','tokyo',true,true from public.countries where slug='japon';
+    insert into public.cities(country_id,name,slug,is_published)
+      select id,'Kyoto','kyoto',true from public.countries where slug='japon';
+    insert into public.neighborhoods(city_id,name,slug,is_published)
+      select id,'Shinjuku','shinjuku',true from public.cities where slug='tokyo';
+    insert into public.entries(city_id,neighborhood_id,category_id,title,slug,published)
+      select n.city_id,n.id,c.id,'Tonkatsu','tonkatsu',true from public.neighborhoods n,public.categories c where c.slug='gastronomie';
+    insert into public.entries(city_id,category_id,title,slug,published)
+      select city.id,c.id,'Restaurant X','restaurant-x',true from public.cities city,public.categories c
+      where city.slug='kyoto' and c.slug='adresses';
+    insert into public.entries(city_id,category_id,title,slug)
+      select city.id,c.id,'Autre adresse','autre-adresse' from public.cities city,public.categories c
+      where city.slug='kyoto' and c.slug='adresses';`;
+  const entry = "(select id from public.entries where slug='tonkatsu')";
+  const restaurant = "(select id from public.entries where slug='restaurant-x')";
+  const other = "(select id from public.entries where slug='autre-adresse')";
+  const geo = "(select id from public.cities where slug='tokyo')";
+  const district = "(select id::text from public.neighborhoods where slug='shinjuku')";
+  const food = "(select id from public.categories where slug='gastronomie')";
+  const addresses = "(select id from public.categories where slug='adresses')";
+  const firstImage = '4b829946-624f-4a32-846f-69bd1ac99312';
+  const secondImage = '9f2135c3-c0f3-4eee-99ca-d2b67e02ea5f';
+  const version = 'f1e95d24-80ad-4fbe-93b8-12ea0480f173';
+  const replacement = 'fc6d0a94-c1a1-471c-9619-11215ce372eb';
+  const edit = (id: string, operation: string, data: Record<string, unknown>) =>
+    `select public.catalog_edit_media(${id},'${operation}','${JSON.stringify(data)}')`;
+
+  it('reorders and reassigns categories with fields while preserving entry IDs and links', async () => {
+    await db.exec(world);
+    await asService();
+    await db.exec(`
+      insert into public.categories(name,slug) values ('Saveurs','saveurs');
+      update public.categories set description='Spécialités locales',is_enabled=false where slug='saveurs';
+      select public.catalog_order_categories(array(select id from public.categories order by (slug='saveurs') desc,position,id));
+      insert into public.category_fields(category_id,key,label,type)
+        values (${food},'origin','Origine','short_text'),(${addresses},'origin','Origine','short_text');
+      update public.entries set custom_values=jsonb_build_object((select id::text from public.category_fields where category_id=${food}),'Japon') where id=${entry};
+      insert into public.entry_relations(source_id,target_id) values(${entry},${restaurant});`);
+    expect(
+      await scalar<number>("select position as value from public.categories where slug='saveurs'"),
+    ).toBe(0);
+    await fails(`select public.catalog_remove_category(${food},'')`, /foreign key/i);
+    await fails(
+      `select public.catalog_remove_category(${food},(select id::text from public.categories where slug='saveurs'))`,
+      /catalog_reassign_fields/,
+    );
+    const originalId = await scalar<string>(`select ${entry} as value`);
+    expect(
+      await scalar<number>(
+        `select public.catalog_remove_category(${food},${addresses}::text) as value`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar<string>(
+        `select id as value from public.entries where id='${originalId}' and category_id=${addresses}`,
+      ),
+    ).toBe(originalId);
+    expect(
+      await scalar<string>(`select custom_values->>(select id::text from public.category_fields where category_id=${addresses}) as value
+      from public.entries where id='${originalId}'`),
+    ).toBe('Japon');
+    expect(
+      await scalar<string>(
+        `select source_id as value from public.entry_relations where target_id=${restaurant}`,
+      ),
+    ).toBe(originalId);
+  });
+
+  it('validates custom fields and protects existing values during definition edits', async () => {
+    await db.exec(world);
+    await asService();
+    const field = "(select id from public.category_fields where key='styles')";
+    await fails(
+      `insert into public.category_fields(category_id,key,label,type,is_required)
+      values (${food},'origin','Origine','short_text',true)`,
+      /catalog_required_field/,
+    );
+    await db.exec(`insert into public.category_fields(category_id,key,label,type,options)
+      values (${food},'styles','Styles','multi_select',array['Classique','Moderne']);
+      update public.entries set custom_values=jsonb_build_object(${field}::text,jsonb_build_array('Classique')) where id=${entry};
+      update public.category_fields set is_required=true where id=${field};`);
+    await fails(
+      `update public.entries set custom_values='{}' where id=${entry}`,
+      /catalog_required_field/,
+    );
+    await fails(
+      `update public.entries set custom_values=jsonb_build_object(${field}::text,jsonb_build_array('Inconnue')) where id=${entry}`,
+      /catalog_invalid_field/,
+    );
+    await fails(
+      `update public.category_fields set options=array['Moderne'] where id=${field}`,
+      /catalog_invalid_field/,
+    );
+    await fails(
+      `update public.category_fields set type='short_text',options='{}' where id=${field}`,
+      /catalog_field_in_use/,
+    );
+    await fails(`delete from public.category_fields where id=${field}`, /catalog_field_in_use/);
+    await fails(
+      `update public.entries set country_id=(select id from public.countries where slug='france') where id=${entry}`,
+      /foreign key/i,
+    );
+  });
+
+  it('shows only active, published and geographically visible entries and relations', async () => {
+    await db.exec(world);
+    await asService();
+    await db.exec(`insert into public.entry_relations(source_id,target_id,relation_type_id)
+      values (${entry},${restaurant},(select id from public.relation_types where slug='served-at')),
+      (${restaurant},${other},(select id from public.relation_types where slug='nearby'));
+      ${edit(entry, 'add', { id: firstImage, version, alt_text: 'Tonkatsu' })};`);
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.entries')).toBe(2);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      1,
+    );
+    expect(
+      await scalar<string>(
+        `select slug as value from public.catalog_categories_at(${geo},${district})`,
+      ),
+    ).toBe('gastronomie');
+    expect(
+      await scalar<string>(
+        `select slug as value from public.catalog_categories_at((select id from public.cities where slug='kyoto'),'')`,
+      ),
+    ).toBe('adresses');
+    expect(await scalar<number>('select count(*)::int as value from public.entry_media')).toBe(1);
+    await fails(
+      `insert into public.category_fields(category_id,key,label,type) values (${food},'fake','Fake','number')`,
+      /permission denied/i,
+    );
+    await fails(
+      `insert into public.entries(city_id,category_id,title,slug) select id,${food},'Fake','fake' from public.cities where slug='kyoto'`,
+      /permission denied/i,
+    );
+    await fails(`select public.catalog_order_categories(array[]::uuid[])`, /permission denied/i);
+    await asService();
+    await db.exec("update public.categories set is_enabled=false where slug='gastronomie'");
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.entries')).toBe(1);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      0,
+    );
+    expect(await scalar<number>('select count(*)::int as value from public.entry_media')).toBe(0);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.catalog_categories_at(${geo},${district})`,
+      ),
+    ).toBe(0);
+    await asService();
+    await db.exec(
+      "update public.categories set is_enabled=true where slug='gastronomie'; update public.neighborhoods set is_published=false where slug='shinjuku'",
+    );
+    await db.exec(
+      "set local role anon; set local request.jwt.claim.sub=''; set local request.jwt.claim.role='anon'",
+    );
+    expect(await scalar<number>('select count(*)::int as value from public.entries')).toBe(1);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      0,
+    );
+  });
+
+  it('supports reciprocal labels, same-category edges, duplicate prevention and graph constraints', async () => {
+    await db.exec(world);
+    await asService();
+    const directed = "(select id from public.relation_types where slug='ordered')";
+    const symmetric = "(select id from public.relation_types where slug='nearby')";
+    await db.exec(`insert into public.relation_types(slug,name,forward_label,inverse_label,is_acyclic)
+      values ('ordered','Parcours','Étape suivante','Étape précédente',true);
+      insert into public.entry_relations(source_id,target_id,relation_type_id) values
+        (${entry},${restaurant},${directed}),(${restaurant},${other},${directed}),(${restaurant},${other},${symmetric});`);
+    expect(
+      await scalar<string>(`select t.inverse_label as value from public.entry_relations r join public.relation_types t on r.relation_type_id=t.id
+      where r.target_id=${restaurant} and r.source_id=${entry}`),
+    ).toBe('Étape précédente');
+    await fails(
+      `insert into public.entry_relations(source_id,target_id,relation_type_id) values(${other},${entry},${directed})`,
+      /catalog_relation_cycle/,
+    );
+    await fails(
+      `insert into public.entry_relations(source_id,target_id,relation_type_id) values(${other},${restaurant},${symmetric})`,
+      /unique/i,
+    );
+    await fails(
+      `insert into public.entry_relations(source_id,target_id,relation_type_id) values(${entry},${entry},${symmetric})`,
+      /check constraint/i,
+    );
+    await db.exec(`update public.entry_relations set relation_type_id=${symmetric} where source_id=${entry};
+      delete from public.entries where id=${restaurant};`);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      0,
+    );
+  });
+
+  it('maintains covers across gallery changes and queues storage deletions', async () => {
+    await db.exec(world);
+    await asService();
+    const cover = () =>
+      scalar<string | null>(
+        `select cover_image_url as value from public.entries where id=${entry}`,
+      );
+    await db.exec(`${edit(entry, 'add', { id: firstImage, version, alt_text: 'Tonkatsu' })};
+      ${edit(entry, 'add', { id: secondImage, version, alt_text: 'Restaurant' })};`);
+    expect(await cover()).toContain(firstImage);
+    await db.exec(edit(entry, 'order', { ids: [secondImage, firstImage] }));
+    expect(await cover()).toContain(secondImage);
+    await db.exec(edit(entry, 'cover', { id: firstImage, expected_version: version }));
+    expect(await cover()).toContain(firstImage);
+    await db.exec(
+      edit(entry, 'replace', {
+        id: firstImage,
+        expected_version: version,
+        version: replacement,
+        alt_text: 'Nouvelle photo',
+      }),
+    );
+    expect(await cover()).toContain(replacement);
+    await fails(
+      edit(entry, 'remove', { id: firstImage, expected_version: version }),
+      /catalog_media_changed/,
+    );
+    await db.exec(edit(entry, 'remove', { id: firstImage, expected_version: replacement }));
+    expect(await cover()).toContain(secondImage);
+    await db.exec(`delete from public.entries where id=${entry}`);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_media')).toBe(0);
+    expect(
+      await scalar<number>('select count(*)::int as value from public.catalog_media_garbage'),
+    ).toBe(3);
+    await db.exec('reset role');
+    expect(
+      await scalar<boolean>("select public as value from storage.buckets where id='entry-media'"),
+    ).toBe(false);
+    await db.exec(
+      'create policy entry_media_fixture on storage.objects for all to authenticated using (true) with check (true)',
+    );
+    await asUser(adminId);
+    await fails(
+      "insert into storage.objects(bucket_id,name) values ('entry-media','forged')",
+      /row-level security/i,
+    );
+  });
 });
 
 describe('Actual migration constraints', () => {
@@ -535,6 +790,271 @@ async function spacesFixture() {
     select public.record_discord_memberships('${adminId}','${applicationId}','[{"id":"${guildB}","permissions":"32"}]');
     insert into public.trips(id,guild_id,title,created_by) values('${tripA}','${guildA}','Voyage A','${userId}'),('${tripB}','${guildB}','Voyage B','${adminId}'); reset role`);
 }
+describe('Collaborative planner transactions', () => {
+  beforeEach(spacesFixture);
+  const dayOne = 'e93c463c-feee-454e-9222-40ea186a0830';
+  const dayTwo = '129dbc74-17aa-4725-95d4-c71b3c16c360';
+  const catalogEntry = '01bb0a6b-5199-4ac9-8ead-4ea337ac8009';
+  const firstItem = '69847ac8-0814-4ba9-8d71-ebf83c5a671a';
+  const secondItem = 'dd0ca684-50ba-4c78-b8fa-d2d064e46236';
+  const plannedTrip = '98883867-4390-473d-bd32-d82a02e110a0';
+  const operation = (
+    version: number,
+    name: string,
+    data: Record<string, unknown>,
+    guild = guildA,
+    trip = tripA,
+  ) =>
+    `select public.edit_trip_plan('${guild}','${trip}',${version},'${name}','${JSON.stringify(data).replaceAll("'", "''")}') as value`;
+  async function catalogAndDays() {
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values ('Japon','japon','JP',true);
+      insert into public.cities(country_id,name,slug,is_published) select id,'Tokyo','tokyo',true from public.countries;
+      insert into public.entries(id,city_id,category_id,title,slug,description,published)
+        select '${catalogEntry}',c.id,k.id,'Tokyo Tower','tower','Catalogue',true from public.cities c,public.categories k limit 1;
+      insert into public.trip_days(id,trip_id,day_number,title,sort_order)
+        values ('${dayOne}','${tripA}',1,'Tokyo',0),('${dayTwo}','${tripA}',2,'Kyoto',1);`);
+  }
+  const settings = {
+    title: 'Voyage Japon',
+    description: 'En commun',
+    destination_country_id: null,
+    start_date: '2027-07-12',
+    end_date: '2027-07-14',
+    timezone: 'Asia/Tokyo',
+    status: 'planned',
+    collaboration_mode: 'all_members',
+  };
+
+  it('initializes dated trips and preserves days when the date range is shortened', async () => {
+    await asUser(otherId);
+    await db.exec(`insert into public.trips(id,guild_id,title,start_date,end_date,timezone,created_by)
+      values('${plannedTrip}','${guildA}','Japon','2027-07-12','2027-07-14','Asia/Tokyo','${otherId}')`);
+    expect(
+      await scalar<string>(
+        `select string_agg(date::text,',' order by day_number) as value from public.trip_days where trip_id='${plannedTrip}'`,
+      ),
+    ).toBe('2027-07-12,2027-07-13,2027-07-14');
+    expect(
+      await scalar<boolean>(`select public.is_trip_organizer('${plannedTrip}') as value`),
+    ).toBe(true);
+    expect(
+      await scalar<number>(
+        operation(0, 'settings', { ...settings, end_date: '2027-07-13' }, guildA, plannedTrip),
+      ),
+    ).toBe(1);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_days where trip_id='${plannedTrip}'`,
+      ),
+    ).toBe(3);
+    await fails(
+      operation(
+        1,
+        'add_day',
+        { title: 'Hors calendrier', date: '2027-07-15' },
+        guildA,
+        plannedTrip,
+      ),
+      /trip_day_date/,
+    );
+    expect(await scalar<number>(operation(1, 'generate_days', {}, guildA, plannedTrip))).toBe(2);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_days where trip_id='${plannedTrip}'`,
+      ),
+    ).toBe(3);
+  });
+
+  it('supports undated days, transactional ordering, safe day removal and collaborative notes', async () => {
+    await catalogAndDays();
+    await asUser(otherId);
+    expect(await scalar<number>(operation(0, 'add_day', { title: 'Osaka', date: null }))).toBe(1);
+    expect(await scalar<number>(operation(1, 'move_day', { id: dayTwo, direction: 'up' }))).toBe(2);
+    expect(
+      await scalar<string>(
+        `select id as value from public.trip_days where trip_id='${tripA}' order by sort_order limit 1`,
+      ),
+    ).toBe(dayTwo);
+    expect(
+      await scalar<number>(
+        operation(2, 'edit_day', { id: dayOne, title: 'Tokyo avec le groupe', date: null }),
+      ),
+    ).toBe(3);
+    expect(
+      await scalar<number>(
+        operation(0, 'add_item', {
+          id: firstItem,
+          entry: catalogEntry,
+          day: dayOne,
+          repeat: false,
+        }),
+      ),
+    ).toBe(4);
+    expect(
+      await scalar<number>(
+        operation(4, 'edit_item', {
+          id: firstItem,
+          item_version: 0,
+          start_time: '09:00',
+          end_time: '10:30',
+          duration: 90,
+          notes: 'Billets déjà achetés',
+        }),
+      ),
+    ).toBe(5);
+    await db.exec('reset role');
+    await asUser();
+    expect(
+      await scalar<string>(`select notes as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('Billets déjà achetés');
+    expect(await scalar<number>(operation(5, 'delete_day', { id: dayOne, day: null }))).toBe(6);
+    expect(
+      await scalar<string | null>(
+        `select trip_day_id as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBeNull();
+    expect(
+      await scalar<string>(
+        `select start_time::text as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe('09:00:00');
+    expect(
+      await scalar<string>(
+        `select description as value from public.entries where id='${catalogEntry}'`,
+      ),
+    ).toBe('Catalogue');
+  });
+
+  it('deduplicates requests, checks day membership, and protects concurrent reordering', async () => {
+    await catalogAndDays();
+    await db.exec(`insert into public.trip_days(trip_id,id,day_number) values
+      ('${tripB}','${plannedTrip}',1)`);
+    await asUser();
+    const add = { id: firstItem, entry: catalogEntry, day: null, repeat: false };
+    expect(await scalar<number>(operation(0, 'add_item', add))).toBe(1);
+    expect(await scalar<number>(operation(0, 'add_item', add))).toBe(1);
+    await fails(operation(1, 'add_item', { ...add, id: secondItem }), /trip_duplicate/);
+    expect(
+      await scalar<number>(operation(1, 'add_item', { ...add, id: secondItem, repeat: true })),
+    ).toBe(2);
+    await fails(
+      operation(2, 'move_item', { id: firstItem, day: plannedTrip, before: null }),
+      /trip_day_missing/,
+    );
+    expect(
+      await scalar<number>(operation(2, 'move_item', { id: firstItem, day: dayTwo, before: null })),
+    ).toBe(3);
+    await db.exec('reset role');
+    await asUser(otherId);
+    await fails(
+      operation(2, 'move_item', { id: secondItem, day: dayOne, before: null }),
+      /trip_conflict/,
+    );
+    expect(
+      await scalar<number>(
+        operation(3, 'move_item', { id: secondItem, day: dayTwo, before: firstItem }),
+      ),
+    ).toBe(4);
+    expect(
+      await scalar<string>(
+        `select id as value from public.trip_items where trip_day_id='${dayTwo}' order by sort_order limit 1`,
+      ),
+    ).toBe(secondItem);
+    expect(await scalar<number>(operation(4, 'delete_item', { id: secondItem }))).toBe(5);
+    await db.exec('reset role');
+    await asUser();
+    expect(
+      await scalar<number>(operation(4, 'add_item', { ...add, id: secondItem, repeat: true })),
+    ).toBe(5);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_items where trip_id='${tripA}'`,
+      ),
+    ).toBe(1);
+  });
+
+  it('isolates organizer-only writes and realtime invalidations by Discord server', async () => {
+    await asUser();
+    expect(
+      await scalar<number>(
+        operation(0, 'settings', { ...settings, collaboration_mode: 'organizers_only' }),
+      ),
+    ).toBe(1);
+    await db.exec('reset role');
+    await asUser(otherId);
+    await fails(operation(1, 'add_day', { title: 'Cannot', date: null }), /trip_forbidden/);
+    await db.exec(`set local test.realtime_topic='trip:${tripA}'`);
+    expect(
+      await scalar<string>(
+        "select payload::text as value from realtime.messages where event='refresh'",
+      ),
+    ).toBe('{}');
+    await db.exec('reset role');
+    await asUser(adminId);
+    expect(await scalar<number>('select count(*)::int as value from realtime.messages')).toBe(0);
+    await fails(operation(1, 'add_day', { title: 'Intrusion', date: null }), /trip_forbidden/);
+    await db.exec('reset role');
+    await asUser();
+    expect(
+      await scalar<number>(operation(1, 'organizer_add', { discord_id: '333333333333333333' })),
+    ).toBe(2);
+    await db.exec('reset role');
+    await asUser(otherId);
+    expect(
+      await scalar<number>(operation(2, 'add_day', { title: 'Avec mon groupe', date: null })),
+    ).toBe(3);
+    await fails(operation(3, 'organizer_remove', { id: userId }), /trip_organizer_required/);
+    expect(await scalar<number>(operation(3, 'delete_trip', {}))).toBe(4);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_days where trip_id='${tripA}'`,
+      ),
+    ).toBe(0);
+  });
+
+  it('preserves private trip notes when the source entry is unpublished', async () => {
+    await catalogAndDays();
+    await asUser();
+    expect(
+      await scalar<number>(
+        operation(0, 'add_item', {
+          id: firstItem,
+          entry: catalogEntry,
+          day: dayOne,
+          repeat: false,
+        }),
+      ),
+    ).toBe(1);
+    await asService();
+    await db.exec(`update public.entries set published=false where id='${catalogEntry}'`);
+    await asUser(otherId);
+    await fails(
+      operation(1, 'add_item', { id: secondItem, entry: catalogEntry, day: dayTwo, repeat: false }),
+      /trip_entry_hidden/,
+    );
+    expect(
+      await scalar<number>(
+        operation(1, 'edit_item', {
+          id: firstItem,
+          item_version: 0,
+          start_time: null,
+          end_time: null,
+          duration: null,
+          notes: 'À adapter',
+        }),
+      ),
+    ).toBe(2);
+    expect(
+      await scalar<string>(`select notes as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('À adapter');
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.entries where id='${catalogEntry}'`,
+      ),
+    ).toBe(0);
+  });
+});
+
 describe('Discord spaces: real membership, isolation and durable data', () => {
   beforeEach(spacesFixture);
   it('isolates trips by current Discord membership even from a global Nagi admin', async () => {
@@ -550,7 +1070,7 @@ describe('Discord spaces: real membership, isolation and durable data', () => {
     expect(await scalar<string>('select title as value from public.trips')).toBe('Voyage B');
     expect(await scalar<unknown>(`select public.trip_author_card('${tripA}') as value`)).toBeNull();
   });
-  it('shares trips with other members while keeping editing with the author or local admin', async () => {
+  it('shares trips with other members while reserving settings for organizers', async () => {
     await asUser(otherId);
     expect(await scalar<number>('select count(*)::int as value from public.trips')).toBe(1);
     await db.exec(`update public.trips set title='Forbidden' where id='${tripA}'`);
@@ -564,6 +1084,14 @@ describe('Discord spaces: real membership, isolation and durable data', () => {
     expect(
       await scalar<number>(
         "select count(*)::int as value from public.trips where title='Admin edit'",
+      ),
+    ).toBe(0);
+    await db.exec('reset role');
+    await asUser(otherId);
+    await db.exec("update public.trips set title='Organizer edit' where title='Shared'");
+    expect(
+      await scalar<number>(
+        "select count(*)::int as value from public.trips where title='Organizer edit'",
       ),
     ).toBe(1);
   });
@@ -706,7 +1234,7 @@ describe('Discord spaces: real membership, isolation and durable data', () => {
     expect(await scalar<number>('select count(*)::int as value from public.trip_items')).toBe(1);
     await fails(
       `insert into public.trip_days(trip_id,day_number) values('${tripB}',2)`,
-      /row.level security/i,
+      /permission denied/i,
     );
   });
   it('stores verified Discord profiles without changing global roles and fences token refresh', async () => {

@@ -4,6 +4,7 @@ export { describeError } from './diagnostics';
 export { slugSchema, snowflakeSchema } from './identifiers';
 export * from './collaboration';
 export * from './geography';
+export * from './trip-planner';
 
 export const roleSchema = z.enum(['user', 'admin', 'owner']);
 export type Role = z.infer<typeof roleSchema>;
@@ -126,3 +127,4 @@ export function commandScope(
     throw new Error('Un serveur Discord est requis pour le scope guild.');
   return `guild:${env.DISCORD_DEV_GUILD_ID}`;
 }
+export * from './catalog';

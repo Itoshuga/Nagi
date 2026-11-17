@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { GeographyService } from '@nagi/database';
 import { slugSchema } from '@nagi/shared';
-import { DiscoverCategories, DestinationHero } from '@/features/geography/discover';
+import { DestinationHero } from '@/features/geography/discover';
+import { DiscoverEntryCategories } from '@/features/entries/discovery';
 import type { SearchParams } from '@/features/geography/model';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { requireGuild } from '@/features/spaces/server';
@@ -45,9 +46,10 @@ export default async function DiscoverNeighborhood({
         ]}
       />
       <DestinationHero destination={neighborhood} kind="neighborhoods" />
-      <DiscoverCategories
+      <DiscoverEntryCategories
         cityId={neighborhood.city_id}
         neighborhoodId={neighborhood.id}
+        guildId={guildId}
         path={`${cityPath}/quartiers/${neighborhoodSlug}`}
         params={await searchParams}
       />

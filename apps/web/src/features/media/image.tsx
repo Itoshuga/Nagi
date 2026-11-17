@@ -1,0 +1,40 @@
+import Image from 'next/image';
+import { Image as ImageIcon } from 'lucide-react';
+import { cn } from '@nagi/ui';
+
+export function EntryImage({
+  src,
+  alt = '',
+  className,
+  sizes = '(max-width: 640px) 100vw, 420px',
+  eager = false,
+}: {
+  src?: string | null;
+  alt?: string;
+  className?: string;
+  sizes?: string;
+  eager?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'relative isolate grid place-items-center overflow-hidden bg-gradient-to-br from-accent to-muted',
+        className,
+      )}
+    >
+      {src ? (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes={sizes}
+          unoptimized
+          loading={eager ? 'eager' : 'lazy'}
+          className="object-cover"
+        />
+      ) : (
+        <ImageIcon aria-hidden="true" className="size-1/4 max-w-14 text-primary-ink opacity-45" />
+      )}
+    </div>
+  );
+}

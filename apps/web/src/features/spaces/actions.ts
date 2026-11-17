@@ -1,7 +1,7 @@
 'use server';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { snowflakeSchema, tripInputSchema } from '@nagi/shared';
+import { snowflakeSchema } from '@nagi/shared';
 import { DiscordConnectionError } from '@nagi/discord';
 import { requireGuild, discoverSpaces, spaceServices } from './server';
 
@@ -36,29 +36,6 @@ export async function refreshSpaces(): Promise<void> {
   revalidatePath('/select-server');
   revalidatePath('/app', 'layout');
   redirect('/select-server');
-}
-export async function createTrip(
-  guildId: string,
-  _previous: FormState,
-  form: FormData,
-): Promise<FormState> {
-  const { viewer } = await requireGuild(guildId, 'create', true);
-  const parsed = tripInputSchema.safeParse({
-    title: form.get('title'),
-    description: form.get('description') ?? '',
-    start_date: form.get('start_date') ?? '',
-    end_date: form.get('end_date') ?? '',
-  });
-  if (!parsed.success)
-    return { error: parsed.error.issues[0]?.message ?? 'Vérifiez les informations du voyage.' };
-  let id: string;
-  try {
-    id = (await (await spaceServices()).trips.create(guildId, viewer.id, parsed.data)).id;
-  } catch {
-    return { error: 'Le voyage n’a pas pu être créé. Réessayez.' };
-  }
-  revalidatePath(`/app/${guildId}`);
-  redirect(`/app/${guildId}/trips/${id}`);
 }
 export async function saveGuildSettings(
   guildId: string,

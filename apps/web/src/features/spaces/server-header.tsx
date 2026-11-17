@@ -31,7 +31,11 @@ export function ServerHeader({
     return links.map(({ path, label, icon: Icon }) => {
       const href = `${base}${path}`;
       const active =
-        path === '' ? pathname === base : pathname === href || pathname.startsWith(`${href}/`);
+        path === ''
+          ? pathname === base
+          : pathname === href ||
+            pathname.startsWith(`${href}/`) ||
+            (path === '/discover' && pathname.startsWith(`${base}/fiches/`));
       return (
         <Link
           key={path}
