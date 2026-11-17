@@ -1,17 +1,25 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { Logo } from '@/components/shared/logo';
-import { UserMenu } from '@/components/layout/user-menu';
+import { AccountHeader } from '@/components/layout/account-header';
 import { requireViewer } from '@/features/auth/session';
+import { discoverSpaces } from '@/features/spaces/server';
 export default async function ProfileLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireViewer();
+  let spaces: Awaited<ReturnType<typeof discoverSpaces>> | null = null;
+  try {
+    spaces = await discoverSpaces();
+  } catch {
+    // The personal account remains accessible when its optional Discord context is unavailable.
+  }
   return (
     <>
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 sm:px-8">
-        <Logo href="/app" />
-        <UserMenu viewer={viewer} />
-      </header>
-      <main id="main" className="mx-auto max-w-7xl px-6 py-10 sm:px-8">
+      <AccountHeader
+        viewer={viewer}
+        guilds={spaces?.guilds ?? []}
+        defaultGuildId={spaces?.preferences?.default_guild_id ?? null}
+        lastActiveGuildId={spaces?.preferences?.last_active_guild_id ?? null}
+      />
+      <main id="main" className="app-container app-content py-10">
         <Link
           href="/app"
           className="mb-9 inline-flex items-center gap-2 text-xs text-muted-foreground"

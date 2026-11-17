@@ -17,7 +17,7 @@ export default async function GuildLayout({
         viewer={viewer}
         favorite={preferences?.default_guild_id ?? null}
       />
-      <main id="main" className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14">
+      <main id="main" className="app-container app-content py-10 sm:py-14">
         {children}
       </main>
     </div>

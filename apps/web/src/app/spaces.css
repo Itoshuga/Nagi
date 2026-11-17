@@ -70,21 +70,6 @@
   outline-offset: 12px;
   border-radius: 1rem;
 }
-.space-nav-link {
-  border-radius: 999px;
-  padding: 0.55rem 1rem;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-  font-size: 0.8rem;
-  font-weight: 650;
-}
-.space-nav-link[aria-current='page'] {
-  background: #e8f1fc;
-  color: #315f98;
-}
-.space-nav-link:hover {
-  background: #edf3fb;
-}
 .trip-tile {
   transition:
     transform 180ms,
@@ -93,18 +78,6 @@
 .trip-tile:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 30px -20px #315f9860;
-}
-@media (max-width: 480px) {
-  .space-nav-link {
-    padding-inline: 0.5rem;
-    font-size: 0.75rem;
-  }
-}
-@media (max-width: 360px) {
-  .space-nav-link {
-    padding-inline: 0.375rem;
-    font-size: 0.6875rem;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .trip-tile:hover {
