@@ -19,6 +19,7 @@ import { EntryCard, entryHref } from './discovery';
 import { EntryRichText } from './rich-text';
 import { AddPlaceDialog } from '@/features/trips/add-place-dialog';
 import { FieldIcon } from '@/features/icons/field-icon';
+import { publishedCatalog } from '@/features/catalog/queries';
 
 function groupRelations(relations: CatalogRelation[]) {
   const groups = new Map<string, { label: string; relations: CatalogRelation[] }>();
@@ -41,11 +42,13 @@ export async function CatalogEntryPage({
   entry: CatalogEntryDetail;
   guildId?: string;
 }) {
-  const [media, fields, relations] = await Promise.all([
-    listEntryMedia(db, entry.id),
-    listCategoryFields(db, entry.category_id),
-    listEntryRelations(db, entry.id),
-  ]);
+  const [media, fields, relations] = guildId
+    ? await publishedCatalog.content(entry.id, entry.category_id)
+    : await Promise.all([
+        listEntryMedia(db, entry.id),
+        listCategoryFields(db, entry.category_id),
+        listEntryRelations(db, entry.id),
+      ]);
   const cover = media.find((image) => entryMediaUrl(image) === entry.cover_image_url);
   const custom =
     entry.custom_values &&

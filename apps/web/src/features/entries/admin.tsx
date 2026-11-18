@@ -7,17 +7,13 @@ import {
   listCatalogEntries,
   listCategories,
   listCategoryFields,
-  listEntryMedia,
-  listEntryRelations,
-  listRelationTypes,
 } from '@nagi/database';
 import { requireAdmin } from '@/features/auth/session';
 import { CatalogSelect } from '@/features/catalog/admin-form';
 import { firstParam, pageParam, type SearchParams } from '@/features/geography/model';
 import { CatalogPagination } from '@/features/geography/navigation';
-import { AdminGallery } from '@/features/media/gallery-admin';
 import { EntryImage } from '@/features/media/image';
-import { AdminEntryRelations } from '@/features/relations/admin';
+import { DeferredEntryPanel } from './panels';
 import { sessionDatabase } from '@/lib/supabase/server';
 import { EntryForm } from './form';
 import { EntryLocationFields } from './location';
@@ -254,14 +250,22 @@ export async function AdminEntry({ id }: { id?: string }) {
     listCategories(db),
   ]);
   if (id && !entry) notFound();
-  const [fields, media, relations, types] = entry
+  const [fields, mediaCount, relationCount] = entry
     ? await Promise.all([
         listCategoryFields(db, entry.category_id),
-        listEntryMedia(db, entry.id),
-        listEntryRelations(db, entry.id),
-        listRelationTypes(db),
+        db
+          .from('entry_media')
+          .select('id', { count: 'exact', head: true })
+          .eq('entry_id', entry.id),
+        db
+          .from('entry_relations')
+          .select('id', { count: 'exact', head: true })
+          .or(`source_id.eq.${entry.id},target_id.eq.${entry.id}`),
       ])
-    : [[], [], [], []];
+    : [[], null, null];
+  if (mediaCount?.error || relationCount?.error)
+    throw new Error('Impossible de charger les compteurs.');
+  const refreshKey = crypto.randomUUID();
   return (
     <div className="max-w-5xl space-y-5">
       <header className="entry-editor-header pb-2">
@@ -312,26 +316,29 @@ export async function AdminEntry({ id }: { id?: string }) {
           entry={entry ?? undefined}
           categories={categories}
           fields={fields}
-          mediaCount={media.length}
-          relationCount={relations.length}
+          mediaCount={mediaCount?.count ?? 0}
+          relationCount={relationCount?.count ?? 0}
           media={
             entry && (
-              <AdminGallery
+              <DeferredEntryPanel
+                kind="medias"
                 entryId={entry.id}
-                media={media}
-                cover={entry.cover_image_url}
+                title={entry.title}
+                categories={categories}
                 maxFileSize={maxCoverSize()}
+                refreshKey={refreshKey}
               />
             )
           }
           relations={
             entry && (
-              <AdminEntryRelations
+              <DeferredEntryPanel
+                kind="relations"
                 entryId={entry.id}
                 title={entry.title}
-                relations={relations}
-                types={types}
                 categories={categories}
+                maxFileSize={maxCoverSize()}
+                refreshKey={refreshKey}
               />
             )
           }

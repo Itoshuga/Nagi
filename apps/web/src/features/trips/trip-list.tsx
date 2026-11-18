@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/shared/intent-link';
 import { ArrowUpRight, CalendarDays, MapPin, Route } from 'lucide-react';
 import { Badge, EmptyState } from '@nagi/ui';
 import { relatedCount, type Trip, type TripCard } from '@nagi/database';

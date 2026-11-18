@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { listCategories, catalogEntriesById } from '@nagi/database';
+import { catalogEntriesById } from '@nagi/database';
+import { publishedCatalog } from '@/features/catalog/queries';
 import { uuidSchema } from '@nagi/shared';
 import { requireGuild, spaceServices } from '@/features/spaces/server';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
@@ -21,7 +22,7 @@ export default async function TripPage({
   const selection = uuidSchema.safeParse((await searchParams).ajouter);
   const [plan, categories, selected] = await Promise.all([
     trips.plan(guildId, tripId, catalog),
-    listCategories(catalog),
+    publishedCatalog.categories(),
     selection.success ? catalogEntriesById(catalog, [selection.data]) : null,
   ]);
   if (!plan) notFound();

@@ -1,7 +1,8 @@
 'use server';
 
 import { randomUUID } from 'node:crypto';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
+import { publishedCatalogTag } from '@/features/catalog/queries';
 import { GeographyService } from '@nagi/database';
 import {
   coverFileSchema,
@@ -24,6 +25,7 @@ export type DestinationActionState = {
 };
 
 function refreshCatalog() {
+  updateTag(publishedCatalogTag);
   revalidatePath('/admin', 'layout');
   revalidatePath('/app/[guildId]/discover', 'layout');
 }

@@ -1,12 +1,11 @@
 import { notFound } from 'next/navigation';
-import { GeographyService } from '@nagi/database';
+import { publishedGeography } from '@/features/catalog/queries';
 import { slugSchema } from '@nagi/shared';
 import { DiscoverGrid, DestinationHero } from '@/features/geography/discover';
 import { DiscoverEntryCategories } from '@/features/entries/discovery';
 import { pageParam, type SearchParams } from '@/features/geography/model';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { requireGuild } from '@/features/spaces/server';
-import { sessionDatabase } from '@/lib/supabase/server';
 
 export default async function DiscoverCity({
   params,
@@ -18,8 +17,8 @@ export default async function DiscoverCity({
   const { guildId, countrySlug, citySlug } = await params;
   if (![countrySlug, citySlug].every((slug) => slugSchema.safeParse(slug).success)) notFound();
   await requireGuild(guildId);
-  const catalog = new GeographyService(await sessionDatabase());
-  const city = await catalog.publishedCity(countrySlug, citySlug);
+  const catalog = publishedGeography;
+  const city = await catalog.city(countrySlug, citySlug);
   if (!city?.country) notFound();
   const base = `/app/${guildId}/discover`;
   const countryPath = `${base}/${countrySlug}`;
@@ -27,7 +26,7 @@ export default async function DiscoverCity({
   const query = await searchParams;
   const page = pageParam(query);
   const neighborhoods = city.has_neighborhoods
-    ? await catalog.list('neighborhoods', { page, parentId: city.id }, true)
+    ? await catalog.list('neighborhoods', { page, parentId: city.id })
     : null;
   return (
     <>

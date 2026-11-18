@@ -1,4 +1,5 @@
 'use server';
+import { after } from 'next/server';
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -10,11 +11,34 @@ import {
   type CatalogValue,
   type DestinationKind,
 } from '@nagi/shared';
-import { listCategoryFields, searchCatalogLocations } from '@nagi/database';
+import {
+  listCategoryFields,
+  searchCatalogLocations,
+  listEntryMedia,
+  listEntryRelations,
+  listRelationTypes,
+} from '@nagi/database';
 import { requireAdmin } from '@/features/auth/session';
 import { catalogError, refreshCatalog, type CatalogResult } from '@/features/catalog/mutations';
 import { cleanEntryMedia } from '@/features/media/storage';
 import { serviceDatabase, sessionDatabase } from '@/lib/supabase/server';
+
+export async function loadEntryPanel(id: string, kind: 'medias' | 'relations') {
+  await requireAdmin();
+  if (!destinationIdSchema.safeParse(id).success || !['medias', 'relations'].includes(kind))
+    throw new Error('Fiche introuvable.');
+  const db = await sessionDatabase();
+  if (kind === 'medias') {
+    const [media, entry] = await Promise.all([
+      listEntryMedia(db, id),
+      db.from('entries').select('cover_image_url').eq('id', id).single(),
+    ]);
+    if (entry.error) throw new Error('Fiche introuvable.');
+    return { kind: 'medias' as const, media, cover: entry.data.cover_image_url };
+  }
+  const [relations, types] = await Promise.all([listEntryRelations(db, id), listRelationTypes(db)]);
+  return { kind: 'relations' as const, relations, types };
+}
 
 export async function findEntryLocations(kind: DestinationKind, search: string, parent?: string) {
   await requireAdmin();
@@ -170,7 +194,7 @@ export async function deleteEntry(id: string, form: FormData): Promise<CatalogRe
         'Cette fiche est utilisée dans un voyage. Dépubliez-la pour la retirer de Découvrir en conservant la référence.',
     };
   if (error) return catalogError(error, 'Impossible de supprimer la fiche.');
-  await cleanEntryMedia();
+  after(cleanEntryMedia);
   refreshCatalog('entries');
   return { ok: true, message: 'Fiche supprimée.', href: '/admin/entries' };
 }

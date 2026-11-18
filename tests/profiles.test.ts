@@ -117,6 +117,20 @@ describe('Social profile plain text validation', () => {
 });
 
 describe('Trusted profile services', () => {
+  it('uses the existing authorized DTO when the banner RPC is pending deployment', async () => {
+    const rpc = vi
+      .fn()
+      .mockImplementation(async (name: string) =>
+        name === 'can_read_profile_banner'
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: { customization: { banner_path: `${target}/${user}.webp` } }, error: null },
+      );
+    const store = new SocialProfileStore({ rpc } as unknown as NagiDatabase, 'app');
+    expect(await store.banner(user, target, `${target}/${user}.webp`)).toBe(true);
+    expect(await store.banner(user, target, `${target}/${target}.webp`)).toBe(false);
+    rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202' } });
+    await expect(store.banner(user, target, `${target}/${user}.webp`)).rejects.toThrow();
+  });
   it('validates in the service before any write and rejects foreign banner ownership', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: 2, error: null });
     const store = new SocialProfileStore({ rpc } as unknown as NagiDatabase, 'app');

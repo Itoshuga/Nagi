@@ -4,6 +4,29 @@ import type { TripEdit, TripResult } from '@nagi/shared';
 export type PlanMutation = (change: TripEdit, version?: number) => Promise<TripResult>;
 export type LanePosition = { day: string | null; before: string | null };
 
+export function optimisticTripItems(items: TripPlanItem[], change: TripEdit) {
+  switch (change.operation) {
+    case 'move_item':
+      return movedTripItems(items, change.data.id, change.data);
+    case 'delete_item':
+      return items.filter((item) => item.id !== change.data.id);
+    case 'edit_item':
+      return items.map((item) =>
+        item.id === change.data.id
+          ? {
+              ...item,
+              start_time: change.data.start_time,
+              end_time: change.data.end_time,
+              estimated_duration_minutes: change.data.duration,
+              notes: change.data.notes,
+            }
+          : item,
+      );
+    default:
+      return items;
+  }
+}
+
 export function movedTripItems(items: TripPlanItem[], id: string, destination: LanePosition) {
   const current = items.find((item) => item.id === id);
   if (!current || destination.before === id) return items;

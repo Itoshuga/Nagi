@@ -8,7 +8,7 @@ export class SocialProfileAccess {
     private readonly store: SocialProfileStore,
     private readonly memberships: Pick<GuildMembershipService, 'discover'>,
   ) {}
-  async read(viewer: string, target: string) {
+  async verify(viewer: string, target: string) {
     if (viewer === target) {
       try {
         await this.memberships.discover(viewer);
@@ -23,10 +23,14 @@ export class SocialProfileAccess {
           error instanceof DiscordConnectionError &&
           ['reconnect', 'forbidden'].includes(error.reason)
         )
-          return null;
+          return false;
         throw error;
       }
     }
+    return true;
+  }
+  async read(viewer: string, target: string) {
+    if (!(await this.verify(viewer, target))) return null;
     // The database independently checks both memberships, their expiry and current bot presence.
     return this.store.read(viewer, target);
   }

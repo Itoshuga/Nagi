@@ -2,10 +2,11 @@ import { snowflakeSchema, uuidSchema } from '@nagi/shared';
 import { requireGuild, spaceServices } from '@/features/spaces/server';
 import { tripCoverBucket, tripCoverKey, tripCoverPath } from '@/features/trips/cover';
 import { serviceDatabase } from '@/lib/supabase/server';
+import { privateImageResponse } from '@/features/media/private-response';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 export async function GET(
-  _request: Request,
+  request: Request,
   {
     params,
   }: {
@@ -22,11 +23,7 @@ export async function GET(
   const trip = await (await spaceServices()).trips.get(guildId, tripId);
   const url = tripCoverPath(guildId, tripId, version);
   if (trip?.cover_image_url !== url) return new Response(null, { status: 404, headers });
-  const { data, error } = await serviceDatabase()
-    .storage.from(tripCoverBucket)
-    .download(tripCoverKey(url));
-  if (error) return new Response(null, { status: 404, headers });
-  return new Response(data.stream(), {
-    headers: { ...headers, 'Content-Type': 'image/webp', 'Content-Length': String(data.size) },
-  });
+  return privateImageResponse(request, url, () =>
+    serviceDatabase().storage.from(tripCoverBucket).download(tripCoverKey(url)),
+  );
 }

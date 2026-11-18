@@ -13,10 +13,40 @@ import {
   calendarDateAt,
   dayRange,
   movedTripItems,
+  optimisticTripItems,
 } from '../apps/web/src/features/trips/planner-model';
 import type { TripPlanItem } from '../packages/database/src/collaboration';
 
 describe('Trip planner model', () => {
+  it('previews item edits and deletions without mutating the server snapshot', () => {
+    const item = {
+      id: 'step',
+      notes: 'Initial',
+      start_time: null,
+      end_time: null,
+      estimated_duration_minutes: null,
+    } as TripPlanItem;
+    const result = optimisticTripItems([item], {
+      operation: 'edit_item',
+      data: {
+        id: 'step',
+        item_version: 1,
+        notes: 'Modifié',
+        start_time: '10:00',
+        end_time: null,
+        duration: 30,
+      },
+    });
+    expect(result[0]).toMatchObject({
+      notes: 'Modifié',
+      start_time: '10:00',
+      estimated_duration_minutes: 30,
+    });
+    expect(item.notes).toBe('Initial');
+    expect(optimisticTripItems(result, { operation: 'delete_item', data: { id: 'step' } })).toEqual(
+      [],
+    );
+  });
   it('uses calendar dates through DST and leaves undated days ordered', () => {
     expect(calendarDateAt('2027-03-27', 2)).toBe('2027-03-29');
     expect(dayRange('2027-03-27', '2027-03-29')).toBe(3);

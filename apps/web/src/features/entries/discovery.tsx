@@ -1,8 +1,8 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/shared/intent-link';
 import { ArrowUpRight, MapPin, Search } from 'lucide-react';
 import { Button, EmptyState, Input, cn } from '@nagi/ui';
-import { listCatalogEntries, listCategoriesAt, type EntryCardRow } from '@nagi/database';
-import { publicCatalogDatabase } from '@/lib/supabase/server';
+import type { EntryCardRow } from '@nagi/database';
+import { publishedCatalog } from '@/features/catalog/queries';
 import { CategoryIcon } from '@/features/categories/icon';
 import { EntryImage } from '@/features/media/image';
 import { CatalogPagination } from '@/features/geography/navigation';
@@ -59,24 +59,19 @@ export async function DiscoverEntryCategories({
   path: string;
   params: SearchParams;
 }) {
-  const db = publicCatalogDatabase();
-  const categories = await listCategoriesAt(db, cityId, neighborhoodId);
+  const categories = await publishedCatalog.categoriesAt(cityId, neighborhoodId);
   const active = categories.find((category) => category.slug === firstParam(params, 'categorie'));
   const page = pageParam(params);
   const search = firstParam(params, 'q')?.trim().slice(0, 100) || undefined;
   const entries = active
-    ? await listCatalogEntries(
-        db,
-        {
-          cityId,
-          neighborhoodId,
-          categoryId: active.id,
-          page,
-          search,
-          published: true,
-        },
-        true,
-      )
+    ? await publishedCatalog.entries({
+        cityId,
+        neighborhoodId,
+        categoryId: active.id,
+        page,
+        search,
+        published: true,
+      })
     : null;
   return (
     <section>

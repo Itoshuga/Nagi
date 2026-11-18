@@ -48,9 +48,11 @@ export const spaceServices = cache(async () => {
 });
 export const discoverSpaces = cache(async (fresh = false) => {
   const viewer = await requireViewer();
-  const guilds = await discordServices().memberships.discover(viewer.id, fresh);
   const services = await spaceServices();
-  const preferences = await services.preferences.get(viewer.id);
+  const [guilds, preferences] = await Promise.all([
+    discordServices().memberships.discover(viewer.id, fresh),
+    services.preferences.get(viewer.id),
+  ]);
   return { viewer, guilds, preferences };
 });
 export const requireGuild = cache(

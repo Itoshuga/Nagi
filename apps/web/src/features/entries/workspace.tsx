@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FileText, Image, Link2, LockKeyhole } from 'lucide-react';
 import './workspace.css';
@@ -35,6 +35,8 @@ export function EntryWorkspace({
   const requested = params.get('onglet');
   const active: Section =
     saved && (requested === 'medias' || requested === 'relations') ? requested : 'contenu';
+  const [visited, setVisited] = useState<Section[]>([active]);
+  if (!visited.includes(active)) setVisited([...visited, active]);
   function select(section: Section) {
     const url = new URL(window.location.href);
     if (section === 'contenu') url.searchParams.delete('onglet');
@@ -125,7 +127,13 @@ export function EntryWorkspace({
           tabIndex={0}
           className="entry-workspace-panel"
         >
-          {section === 'contenu' ? content : section === 'medias' ? media : relations}
+          {section === 'contenu'
+            ? content
+            : visited.includes(section)
+              ? section === 'medias'
+                ? media
+                : relations
+              : null}
         </div>
       ))}
       {publication && <div className="mt-5">{publication}</div>}

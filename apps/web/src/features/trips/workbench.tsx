@@ -13,13 +13,15 @@ import { EntryImage } from '@/features/media/image';
 import { UserIdentity } from '@/features/profiles/identity';
 import { editTrip } from './actions';
 import { AddPlaceDialog, type PlaceCard } from './add-place-dialog';
-import { TripCalendar } from './calendar';
 import { TripItinerary } from './itinerary';
 import { useTripLive } from './live';
-import { movedTripItems, type PlanMutation } from './planner-model';
+import { optimisticTripItems, type PlanMutation } from './planner-model';
 import { tripDates, tripStatus } from './trip-list';
 
 const TripMap = dynamic(() => import('./map'), { ssr: false, loading: () => <LoadingState /> });
+const TripCalendar = dynamic(() => import('./calendar').then((module) => module.TripCalendar), {
+  loading: () => <LoadingState />,
+});
 const tabs = [
   { id: 'itinerary', label: 'Itinéraire', icon: Route },
   { id: 'calendar', label: 'Calendrier', icon: CalendarDays },
@@ -60,16 +62,11 @@ export function TripWorkbench({
     inFlight.current = true;
     setBusy(true);
     setError('');
-    if (change.operation === 'move_item')
-      setOptimistic({
-        base: plan.version,
-        items: movedTripItems(displayed.items, change.data.id, change.data),
-      });
+    setOptimistic({ base: plan.version, items: optimisticTripItems(displayed.items, change) });
     try {
       const result = await editTrip(guild, plan.id, version, change);
       if (result.ok) {
         if (change.operation === 'move_item') toast.success('Étape déplacée.');
-        router.refresh();
       } else {
         setOptimistic(undefined);
         setError(result.error);

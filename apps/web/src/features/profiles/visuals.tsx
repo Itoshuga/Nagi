@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
 import type { ProfileIdentity } from '@nagi/database';
+import { isPrivateImage, privateImageLoader } from '@/features/media/private-loader';
 
 export function ProfileBanner({
   src,
@@ -20,7 +21,9 @@ export function ProfileBanner({
           src={src}
           alt="Bannière du profil"
           fill
-          unoptimized
+          loader={isPrivateImage(src) ? privateImageLoader : undefined}
+          unoptimized={!isPrivateImage(src)}
+          loading={compact ? 'lazy' : 'eager'}
           sizes="(max-width: 640px) 100vw, 1040px"
           className="object-cover"
           style={{ objectPosition: `${x}% ${y}%` }}

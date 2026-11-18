@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { destinationIdSchema } from '@nagi/shared';
-import { findCatalogEntry } from '@nagi/database';
+import { publishedCatalog } from '@/features/catalog/queries';
 import { CatalogEntryPage } from '@/features/entries/detail';
 import { entryHref } from '@/features/entries/discovery';
 import { requireGuild } from '@/features/spaces/server';
@@ -15,7 +15,7 @@ export default async function DiscoverEntry({
   if (!destinationIdSchema.safeParse(entryId).success) notFound();
   await requireGuild(guildId);
   const db = publicCatalogDatabase();
-  const entry = await findCatalogEntry(db, entryId);
+  const entry = await publishedCatalog.entry(entryId);
   if (!entry?.published || !entry.country || !entry.city || !entry.category) notFound();
   if (entry.slug !== slug) redirect(entryHref(guildId, entry));
   return <CatalogEntryPage db={db} entry={entry} guildId={guildId} />;

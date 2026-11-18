@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Building2, Globe2, MapPin } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { DestinationKind } from '@nagi/shared';
+import { isPrivateImage, privateImageLoader } from '@/features/media/private-loader';
 
 const icons = { countries: Globe2, cities: Building2, neighborhoods: MapPin };
 
@@ -36,7 +37,9 @@ export function DestinationCover({
           src={src}
           fill
           alt=""
-          unoptimized
+          loader={isPrivateImage(src) ? privateImageLoader : undefined}
+          unoptimized={!isPrivateImage(src)}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 420px"
           loading={eager ? 'eager' : 'lazy'}
           className="object-cover"
           onError={() => setFailed(src)}

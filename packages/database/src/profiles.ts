@@ -74,6 +74,21 @@ export class SocialProfileStore {
     if (error) throw new Error('Impossible de charger les voyages.', { cause: error });
     return data as ProfileTrip[];
   }
+  async banner(viewer: string, target: string, path: string) {
+    const { data, error } = await this.db.rpc('can_read_profile_banner', {
+      p_viewer: viewer,
+      p_target: target,
+      p_app: this.applicationId,
+      p_path: path,
+    });
+    // Support application deployments while the access-query migration is pending.
+    if (error && ['PGRST202', '42883'].includes(error.code)) {
+      const profile = await this.read(viewer, target);
+      return profile?.customization.banner_path === path;
+    }
+    if (error) throw new Error('Impossible de vérifier cette bannière.', { cause: error });
+    return data === true;
+  }
   async save(user: string, revision: number, input: unknown, banner: string | null) {
     const values = profileCustomizationInput.parse(input);
     if (

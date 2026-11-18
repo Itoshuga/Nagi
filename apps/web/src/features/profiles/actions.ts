@@ -1,4 +1,5 @@
 'use server';
+import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { ProfileWriteError } from '@nagi/database';
 import {
@@ -9,7 +10,7 @@ import {
 } from '@nagi/shared';
 import { requireViewer } from '@/features/auth/session';
 import { serviceDatabase, publicCatalogDatabase } from '@/lib/supabase/server';
-import { profileServices, authorizedProfile } from './server';
+import { profileServices } from './server';
 import { uploadProfileBanner, cleanProfileBanners } from './banner';
 
 export async function saveProfile(form: FormData) {
@@ -31,7 +32,7 @@ export async function saveProfile(form: FormData) {
     const file = form.get('banner');
     if (file instanceof File && file.size) banner = await uploadProfileBanner(viewer.id, file);
     await profileServices().store.save(viewer.id, revision.data, parsed.data, banner);
-    await cleanProfileBanners();
+    after(cleanProfileBanners);
     revalidatePath('/app/profile', 'layout');
     return { ok: true, error: '' };
   } catch (error) {
@@ -48,9 +49,10 @@ export async function profileTrips(target: string, page: number) {
   const viewer = await requireViewer();
   if (!uuidSchema.safeParse(target).success) throw new Error('Profil invalide.');
   if (!Number.isInteger(page) || page < 0 || page > 1000) throw new Error('Page invalide.');
-  const profile = await authorizedProfile(target);
-  if (!profile) throw new Error('Ce profil n’est plus accessible.');
-  return profileServices().store.trips(viewer.id, profile.id, page * 12);
+  const { access, store } = profileServices();
+  if (!(await access.verify(viewer.id, target)))
+    throw new Error('Ce profil n’est plus accessible.');
+  return store.trips(viewer.id, target, page * 12);
 }
 export type DreamDestination = {
   id: string;

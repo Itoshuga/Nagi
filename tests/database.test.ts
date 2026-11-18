@@ -1428,6 +1428,25 @@ describe('Social profiles: verified audiences, identity and private banners', ()
     expect(await scalar(read(userId, adminId))).toBeNull();
     expect(await scalar(read(userId, '99999999-9999-4999-8999-999999999999'))).toBeNull();
   });
+  it('authorizes only the current banner version and revokes it with shared membership', async () => {
+    const path = `${otherId}/${userId}.webp`;
+    const banner = (viewer = userId, version = path) =>
+      `select public.can_read_profile_banner('${viewer}','${otherId}','${applicationId}','${version}') as value`;
+    await asService();
+    await db.exec(save({ ...values, banner_path: path }, 1, otherId));
+    expect(await scalar(banner())).toBe(true);
+    expect(await scalar(banner(otherId))).toBe(true);
+    expect(await scalar(banner(adminId))).toBe(false);
+    expect(await scalar(banner(userId, `${otherId}/${adminId}.webp`))).toBe(false);
+    await db.exec(
+      `reset role; update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${userId}'`,
+    );
+    await asService();
+    expect(await scalar(banner())).toBe(false);
+    expect(await scalar(banner(otherId))).toBe(true);
+    await asUser();
+    await fails(banner(), /permission denied/);
+  });
   it('revokes access when either membership expires, the bot leaves, or bot verification is stale', async () => {
     await asService();
     for (const id of [userId, otherId]) {

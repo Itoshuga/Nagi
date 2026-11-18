@@ -864,6 +864,7 @@ export type Database = {
       acquire_bot_lease: { Args: { p_application_id: string; p_scope: string; p_instance: string }; Returns: string; };
       can_create_guild_trip: { Args: { p_guild_id: string }; Returns: boolean; };
       can_edit_guild_trip: { Args: { p_trip_id: string }; Returns: boolean; };
+      can_read_profile_banner: { Args: { p_viewer: string; p_target: string; p_app: string; p_path: string }; Returns: boolean; };
       catalog_categories_at: { Args: { p_city: string; p_neighborhood: string }; Returns: Database['public']['Tables']['categories']['Row'][]; };
       catalog_edit_media: { Args: { p_entry: string; p_operation: string; p_data: Json }; Returns: undefined; };
       catalog_order_categories: { Args: { p_ids: (string)[] }; Returns: undefined; };

@@ -1,9 +1,11 @@
 import 'server-only';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
+import { publishedCatalogTag } from './queries';
 
 export type CatalogResult = { ok: boolean; message: string; href?: string };
 
 export function refreshCatalog(section: 'categories' | 'entries' | 'relations', id?: string) {
+  updateTag(publishedCatalogTag);
   revalidatePath(`/admin/${section}`);
   if (id) revalidatePath(`/admin/${section}/${id}`);
   revalidatePath('/app/[guildId]/discover', 'layout');

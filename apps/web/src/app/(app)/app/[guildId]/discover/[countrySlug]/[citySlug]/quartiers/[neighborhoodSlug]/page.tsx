@@ -1,12 +1,11 @@
 import { notFound } from 'next/navigation';
-import { GeographyService } from '@nagi/database';
+import { publishedGeography } from '@/features/catalog/queries';
 import { slugSchema } from '@nagi/shared';
 import { DestinationHero } from '@/features/geography/discover';
 import { DiscoverEntryCategories } from '@/features/entries/discovery';
 import type { SearchParams } from '@/features/geography/model';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { requireGuild } from '@/features/spaces/server';
-import { sessionDatabase } from '@/lib/supabase/server';
 
 export default async function DiscoverNeighborhood({
   params,
@@ -26,7 +25,7 @@ export default async function DiscoverNeighborhood({
   )
     notFound();
   await requireGuild(guildId);
-  const neighborhood = await new GeographyService(await sessionDatabase()).publishedNeighborhood(
+  const neighborhood = await publishedGeography.neighborhood(
     countrySlug,
     citySlug,
     neighborhoodSlug,

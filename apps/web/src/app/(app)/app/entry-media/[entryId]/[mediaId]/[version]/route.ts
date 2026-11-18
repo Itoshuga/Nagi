@@ -1,11 +1,12 @@
 import { destinationIdSchema } from '@nagi/shared';
 import { serviceDatabase, sessionDatabase } from '@/lib/supabase/server';
 import { entryMediaBucket } from '@/features/media/storage';
+import { privateImageResponse } from '@/features/media/private-response';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ entryId: string; mediaId: string; version: string }> },
 ) {
   const { entryId, mediaId, version } = await params;
@@ -13,7 +14,7 @@ export async function GET(
     return new Response(null, { status: 404, headers });
   const db = await sessionDatabase();
   const { data: auth } = await db.auth.getClaims();
-  if (!auth?.claims.sub) return new Response(null, { status: 404, headers });
+  if (!auth?.claims?.sub) return new Response(null, { status: 404, headers });
   const media = await db
     .from('entry_media')
     .select('storage_path')
@@ -23,12 +24,8 @@ export async function GET(
     .maybeSingle();
   if (media.error) return new Response(null, { status: 503, headers });
   if (!media.data) return new Response(null, { status: 404, headers });
-  const file = await serviceDatabase()
-    .storage.from(entryMediaBucket)
-    .download(media.data.storage_path);
-  if (file.error)
-    return new Response(null, { status: file.error.status === 404 ? 404 : 503, headers });
-  return new Response(file.data.stream(), {
-    headers: { ...headers, 'Content-Type': 'image/webp', 'Content-Length': String(file.data.size) },
-  });
+  const path = media.data.storage_path;
+  return privateImageResponse(request, `${entryMediaBucket}/${path}`, () =>
+    serviceDatabase().storage.from(entryMediaBucket).download(path),
+  );
 }

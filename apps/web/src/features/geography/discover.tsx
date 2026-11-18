@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/shared/intent-link';
 import { ArrowUpRight } from 'lucide-react';
 import { EmptyState, cn } from '@nagi/ui';
 import { relatedCount, type Destination, type DestinationListRow } from '@nagi/database';

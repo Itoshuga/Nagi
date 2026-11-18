@@ -1,4 +1,5 @@
 'use server';
+import { after } from 'next/server';
 
 import { randomUUID } from 'node:crypto';
 import type { Json } from '@nagi/database';
@@ -19,7 +20,7 @@ async function edit(entry: string, operation: string, data: Json): Promise<Catal
     p_data: data,
   });
   if (error) return catalogError(error, 'Impossible de modifier la galerie.');
-  await cleanEntryMedia();
+  after(cleanEntryMedia);
   refreshCatalog('entries', entry);
   return { ok: true, message: 'Galerie mise à jour.' };
 }
@@ -77,7 +78,7 @@ export async function uploadEntryImage(
       .from('catalog_media_garbage')
       .update({ not_before: new Date().toISOString() })
       .eq('path', path);
-    await cleanEntryMedia();
+    after(cleanEntryMedia);
   }
   return result;
 }

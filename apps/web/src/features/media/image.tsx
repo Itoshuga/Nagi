@@ -1,6 +1,9 @@
+'use client';
+
 import Image from 'next/image';
 import { Image as ImageIcon } from 'lucide-react';
 import { cn } from '@nagi/ui';
+import { isPrivateImage, privateImageLoader } from './private-loader';
 
 export function EntryImage({
   src,
@@ -30,7 +33,8 @@ export function EntryImage({
           alt={alt}
           fill
           sizes={sizes}
-          unoptimized
+          loader={isPrivateImage(src) ? privateImageLoader : undefined}
+          unoptimized={!isPrivateImage(src)}
           loading={eager ? 'eager' : 'lazy'}
           className={fit === 'contain' ? 'object-contain' : 'object-cover'}
         />

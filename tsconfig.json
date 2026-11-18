@@ -1,5 +1,9 @@
 {
   "extends": "./packages/config/tsconfig.base.json",
-  "compilerOptions": { "noEmit": true },
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "paths": { "@/*": ["./apps/web/src/*"] }
+  },
   "include": ["tests/**/*.ts", "vitest.config.ts"]
 }

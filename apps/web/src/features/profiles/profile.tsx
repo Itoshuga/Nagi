@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/shared/intent-link';
 import { useId, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -38,6 +38,8 @@ export function SocialProfilePage({
   const [editor, setEditor] = useState(false);
   const [tab, setTab] = useState<'overview' | 'trips'>('overview');
   const [copied, setCopied] = useState(false);
+  const [tripsVisited, setTripsVisited] = useState(false);
+  if (tab === 'trips' && !tripsVisited) setTripsVisited(true);
   const reduced = useReducedMotion();
   const prefix = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -175,7 +177,6 @@ export function SocialProfilePage({
             ))}
           </div>
           <motion.div
-            key={tab}
             id={`${prefix}-panel-${tab}`}
             role="tabpanel"
             aria-labelledby={`${prefix}-${tab}`}
@@ -185,93 +186,94 @@ export function SocialProfilePage({
             transition={{ duration: 0.15 }}
             className="profile-panel"
           >
-            {tab === 'overview' ? (
-              <div className="profile-overview">
-                {profile.dream ? (
-                  <section className="profile-dream">
-                    <div className="profile-section-label">
-                      <Sparkles className="size-4" />
-                      Destination de rêve
-                    </div>
-                    <div className="profile-dream-link">
-                      {profile.dream.cover && (
-                        <EntryImage src={profile.dream.cover} className="profile-dream-image" />
+            <div className="profile-overview" hidden={tab !== 'overview'}>
+              {profile.dream ? (
+                <section className="profile-dream">
+                  <div className="profile-section-label">
+                    <Sparkles className="size-4" />
+                    Destination de rêve
+                  </div>
+                  <div className="profile-dream-link">
+                    {profile.dream.cover && (
+                      <EntryImage src={profile.dream.cover} className="profile-dream-image" />
+                    )}
+                    <div>
+                      <p className="profile-dream-eyebrow">Un jour, peut-être.</p>
+                      <h2>{profile.dream.city ?? profile.dream.country}</h2>
+                      {profile.dream.city && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {profile.dream.country}
+                        </p>
                       )}
-                      <div>
-                        <p className="profile-dream-eyebrow">Un jour, peut-être.</p>
-                        <h2>{profile.dream.city ?? profile.dream.country}</h2>
-                        {profile.dream.city && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {profile.dream.country}
-                          </p>
-                        )}
-                      </div>
                     </div>
-                  </section>
-                ) : own ? (
-                  <button className="profile-empty-dream" onClick={() => setEditor(true)}>
-                    <Sparkles className="size-5" />
-                    <span>
-                      <strong>Quelque part, une envie d’ailleurs.</strong>
-                      <small>Ajoutez la destination qui vous fait rêver.</small>
-                    </span>
+                  </div>
+                </section>
+              ) : own ? (
+                <button className="profile-empty-dream" onClick={() => setEditor(true)}>
+                  <Sparkles className="size-5" />
+                  <span>
+                    <strong>Quelque part, une envie d’ailleurs.</strong>
+                    <small>Ajoutez la destination qui vous fait rêver.</small>
+                  </span>
+                  <ArrowUpRight className="size-4" />
+                </button>
+              ) : null}
+              {profile.organized_count > 0 && (
+                <section className="profile-overview-trips">
+                  <div className="profile-section-label">
+                    <Route className="size-4" />
+                    Carnet de voyages
+                  </div>
+                  <h2>Les aventures prennent forme.</h2>
+                  <p>
+                    {profile.display_name} organise {profile.organized_count}{' '}
+                    {profile.organized_count === 1 ? 'voyage accessible' : 'voyages accessibles'}{' '}
+                    dans vos espaces Discord partagés.
+                  </p>
+                  <button className="profile-text-link" onClick={() => setTab('trips')}>
+                    Parcourir les voyages
                     <ArrowUpRight className="size-4" />
                   </button>
-                ) : null}
-                {profile.organized_count > 0 && (
-                  <section className="profile-overview-trips">
-                    <div className="profile-section-label">
-                      <Route className="size-4" />
-                      Carnet de voyages
-                    </div>
-                    <h2>Les aventures prennent forme.</h2>
-                    <p>
-                      {profile.display_name} organise {profile.organized_count}{' '}
-                      {profile.organized_count === 1 ? 'voyage accessible' : 'voyages accessibles'}{' '}
-                      dans vos espaces Discord partagés.
-                    </p>
-                    <button className="profile-text-link" onClick={() => setTab('trips')}>
-                      Parcourir les voyages
-                      <ArrowUpRight className="size-4" />
-                    </button>
-                  </section>
-                )}
-                {!profile.dream && !profile.organized_count && !own && (
-                  <p className="py-4 text-sm text-muted-foreground">
-                    Ce carnet s’écrira au fil des envies et des voyages.
-                  </p>
-                )}
-                {!own && profile.common_guilds.length > 0 && (
-                  <section className="profile-common-detail">
-                    <h2>On se croise ici</h2>
-                    <ul>
-                      {profile.common_guilds.map((g) => (
-                        <li key={g.id}>
-                          <Link href={`/app/${g.id}`} prefetch={false}>
-                            {g.icon_url ? (
-                              <Image
-                                src={g.icon_url}
-                                alt=""
-                                width={28}
-                                height={28}
-                                unoptimized
-                                className="rounded-lg"
-                              />
-                            ) : (
-                              <span className="grid size-7 place-items-center rounded-lg bg-muted text-xs">
-                                {g.name.slice(0, 1)}
-                              </span>
-                            )}
-                            <span>{g.name}</span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
+                </section>
+              )}
+              {!profile.dream && !profile.organized_count && !own && (
+                <p className="py-4 text-sm text-muted-foreground">
+                  Ce carnet s’écrira au fil des envies et des voyages.
+                </p>
+              )}
+              {!own && profile.common_guilds.length > 0 && (
+                <section className="profile-common-detail">
+                  <h2>On se croise ici</h2>
+                  <ul>
+                    {profile.common_guilds.map((g) => (
+                      <li key={g.id}>
+                        <Link href={`/app/${g.id}`} prefetch={false}>
+                          {g.icon_url ? (
+                            <Image
+                              src={g.icon_url}
+                              alt=""
+                              width={28}
+                              height={28}
+                              unoptimized
+                              className="rounded-lg"
+                            />
+                          ) : (
+                            <span className="grid size-7 place-items-center rounded-lg bg-muted text-xs">
+                              {g.name.slice(0, 1)}
+                            </span>
+                          )}
+                          <span>{g.name}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+            {tripsVisited && (
+              <div hidden={tab !== 'trips'}>
+                <ProfileJourneys target={profile.id} />
               </div>
-            ) : (
-              <ProfileJourneys target={profile.id} />
             )}
           </motion.div>
         </div>

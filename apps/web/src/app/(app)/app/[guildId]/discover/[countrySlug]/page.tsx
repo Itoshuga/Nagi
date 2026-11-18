@@ -1,11 +1,10 @@
 import { notFound } from 'next/navigation';
-import { GeographyService } from '@nagi/database';
+import { publishedGeography } from '@/features/catalog/queries';
 import { slugSchema } from '@nagi/shared';
 import { DiscoverGrid, DestinationHero } from '@/features/geography/discover';
 import { pageParam, type SearchParams } from '@/features/geography/model';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { requireGuild } from '@/features/spaces/server';
-import { sessionDatabase } from '@/lib/supabase/server';
 
 export default async function DiscoverCountry({
   params,
@@ -17,11 +16,11 @@ export default async function DiscoverCountry({
   const { guildId, countrySlug } = await params;
   if (!slugSchema.safeParse(countrySlug).success) notFound();
   await requireGuild(guildId);
-  const catalog = new GeographyService(await sessionDatabase());
-  const country = await catalog.publishedCountry(countrySlug);
+  const catalog = publishedGeography;
+  const country = await catalog.country(countrySlug);
   if (!country) notFound();
   const page = pageParam(await searchParams);
-  const { rows, count } = await catalog.list('cities', { page, parentId: country.id }, true);
+  const { rows, count } = await catalog.list('cities', { page, parentId: country.id });
   const base = `/app/${guildId}/discover`;
   return (
     <>
