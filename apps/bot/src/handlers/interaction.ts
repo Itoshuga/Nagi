@@ -11,10 +11,15 @@ export async function handleInteraction(
   context: Omit<CommandContext, 'actor' | 'commands'>,
   owners: readonly string[],
 ) {
+  const command = commands.get(interaction.commandName);
+  const unrestricted = command && !command.adminOnly && !command.ownerOnly;
+  const publicReply =
+    unrestricted && command.ephemeral === false && command.isEnabled && !command.isMaintenance;
   // Acknowledge before database/network work to respect Discord's three-second deadline.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const acknowledgementStarted = performance.now();
+  await interaction.deferReply(publicReply ? {} : { flags: MessageFlags.Ephemeral });
+  const acknowledgementLatencyMs = performance.now() - acknowledgementStarted;
   try {
-    const command = commands.get(interaction.commandName);
     if (!command) {
       await interaction.editReply({
         embeds: [
@@ -26,7 +31,10 @@ export async function handleInteraction(
       });
       return;
     }
-    const actor = await findActor(context.db, interaction.user.id, owners);
+    const actor =
+      unrestricted && command.requiresProfile === false
+        ? { discordId: interaction.user.id, role: 'user' as const }
+        : await findActor(context.db, interaction.user.id, owners);
     const decision = commandAccess(command, actor);
     if (decision !== 'allowed') {
       await interaction.editReply({
@@ -43,7 +51,7 @@ export async function handleInteraction(
       });
       return;
     }
-    await command.execute(interaction, { ...context, commands, actor });
+    await command.execute(interaction, { ...context, commands, actor, acknowledgementLatencyMs });
   } catch (error) {
     log('interaction.failed', { command: interaction.commandName, ...errorDetails(error) });
     await interaction

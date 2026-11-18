@@ -138,7 +138,9 @@ Pour révoquer ce rôle : attribuer `user`. Les comptes `owner` restent contrôl
 
 ## 5. Commandes et synchronisation
 
-Les commandes initiales sont `/ping`, `/help` et `/status` (admin Nagi). Tous les retours sont des embeds éphémères. `/help` masque les commandes désactivées et celles interdites à l’utilisateur.
+Les commandes initiales sont `/ping`, `/help` et `/status` (admin Nagi). `/ping` publie un embed « Aye Sir !! Nagi au rapport. », suivi d’un court texte et de trois paragraphes Discord, API Discord et Supabase. Il présente le statut et la latence de la passerelle, le délai de l’accusé de réception REST et une lecture Supabase limitée à 2,5 secondes. L’avatar du bot apparaît en miniature à droite. Le footer affiche l’avatar de l’utilisateur et `Demandé par @username • JJ/MM/AAAA, HH:mm`, à l’heure de la demande dans le fuseau Europe/Paris. Le texte s’adapte aux pannes et reste disponible si Supabase est inaccessible.
+
+Les autres réponses restent éphémères par défaut. Une commande sans restriction peut déclarer `ephemeral: false` pour une réponse publique et `requiresProfile: false` si elle n’a pas besoin du profil Nagi. Cette dernière option est interdite aux commandes administrateur/propriétaire : leurs permissions sont toujours vérifiées en base. Les refus, commandes désactivées et réponses de maintenance restent privés. `/help` masque les commandes désactivées et celles interdites à l’utilisateur.
 
 Pour ajouter une commande, créer un module `.ts` dans un sous-dossier de `apps/bot/src/commands`, avec un export par défaut conforme à `NagiCommand` :
 

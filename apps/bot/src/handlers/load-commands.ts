@@ -19,6 +19,12 @@ export function validateCommand(value: unknown, source: string): asserts value i
     if (typeof command[key] !== 'boolean')
       throw new CommandLoadError(`${source}: ${key} doit être un booléen.`);
   }
+  for (const key of ['ephemeral', 'requiresProfile']) {
+    if (command[key] !== undefined && typeof command[key] !== 'boolean')
+      throw new CommandLoadError(`${source}: ${key} doit être un booléen.`);
+  }
+  if (command.requiresProfile === false && (command.ownerOnly || command.adminOnly))
+    throw new CommandLoadError(`${source}: une commande protégée doit vérifier le profil Nagi.`);
   if (
     typeof command.execute !== 'function' ||
     !command.data ||

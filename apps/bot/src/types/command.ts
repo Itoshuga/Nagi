@@ -13,6 +13,8 @@ export interface CommandContext {
   commands: ReadonlyMap<string, NagiCommand>;
   applicationId: string;
   scope: string;
+  /** REST round trip for Discord's initial interaction acknowledgement. */
+  acknowledgementLatencyMs?: number;
 }
 export interface NagiCommand {
   name: string;
@@ -22,6 +24,10 @@ export interface NagiCommand {
   isMaintenance: boolean;
   ownerOnly: boolean;
   adminOnly: boolean;
+  /** Unrestricted commands may opt into public replies. Defaults to private. */
+  ephemeral?: boolean;
+  /** Only unrestricted commands may run without a database-backed profile. */
+  requiresProfile?: boolean;
   data: { toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody };
   execute(interaction: ChatInputCommandInteraction, context: CommandContext): Promise<void>;
 }
