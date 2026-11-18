@@ -10,14 +10,14 @@ import {
   DropdownMenuTrigger,
 } from '@nagi/ui';
 import { isAdmin } from '@nagi/permissions';
-import type { Role } from '@nagi/shared';
+import { profileHref, type Role } from '@nagi/shared';
 import { signOut } from '@/features/auth/actions';
 export function UserMenu({
   viewer,
   variant = 'default',
   guildId,
 }: {
-  viewer: { display_name: string; avatar_url: string | null; role: Role };
+  viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
   variant?: 'default' | 'app';
   guildId?: string;
 }) {
@@ -74,15 +74,15 @@ export function UserMenu({
             </p>
           </div>
           <DropdownMenuItem asChild>
-            <Link
-              href={
-                app && guildId
-                  ? `/app/profile?guild=${encodeURIComponent(guildId)}`
-                  : '/app/profile'
-              }
-            >
+            <Link href={viewer.username ? profileHref(viewer.username) : '/app/profile'}>
               <UserRound className="size-4" />
-              {app ? 'Mon compte' : 'Mon profil'}
+              Mon profil
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/app/settings">
+              <Settings2 className="size-4" />
+              Paramètres du compte
             </Link>
           </DropdownMenuItem>
           {app && guildId && (

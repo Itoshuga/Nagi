@@ -10,6 +10,7 @@ import { Alert, Badge, Button, LoadingState, cn, toast } from '@nagi/ui';
 import type { TripPlan } from '@nagi/database';
 import type { TripResult } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
+import { UserIdentity } from '@/features/profiles/identity';
 import { editTrip } from './actions';
 import { AddPlaceDialog, type PlaceCard } from './add-place-dialog';
 import { TripCalendar } from './calendar';
@@ -116,6 +117,15 @@ export function TripWorkbench({
               </Button>
             )}
           </div>
+          {plan.people.find((person) => person.id === plan.created_by) && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Créé par</span>
+              <UserIdentity
+                compact
+                user={plan.people.find((person) => person.id === plan.created_by)!}
+              />
+            </div>
+          )}
           {plan.description && (
             <p className="max-w-3xl whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
               {plan.description}

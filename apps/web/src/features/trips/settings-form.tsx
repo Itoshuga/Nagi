@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { UserIdentity } from '@/features/profiles/identity';
 import { Alert, Button, Card, Input, Label } from '@nagi/ui';
 import { suggestedTripZone } from '@nagi/shared';
 import type { CatalogLocation, Trip, TripService } from '@nagi/database';
@@ -223,19 +224,14 @@ export function TripOrganizers({
             key={person.id}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-2.5"
           >
-            <span className="flex items-center gap-2 text-sm font-medium">
-              {person.avatar && (
-                <Image
-                  alt=""
-                  src={person.avatar}
-                  width={28}
-                  height={28}
-                  unoptimized
-                  className="rounded-full"
-                />
-              )}
-              {person.name}
-            </span>
+            <UserIdentity
+              user={{
+                id: person.id,
+                username: person.username,
+                display_name: person.name,
+                avatar_url: person.avatar,
+              }}
+            />
             {person.id === trip.created_by ? (
               <span className="text-xs text-muted-foreground">Créateur du voyage</span>
             ) : (

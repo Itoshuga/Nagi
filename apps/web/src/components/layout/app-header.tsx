@@ -11,7 +11,7 @@ export function AppHeader({
   feedback,
   guildId,
 }: {
-  viewer: { display_name: string; avatar_url: string | null; role: Role };
+  viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
   context?: React.ReactNode;
   navigation?: React.ReactNode;
   mobileNavigation?: React.ReactNode;

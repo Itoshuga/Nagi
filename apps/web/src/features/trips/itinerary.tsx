@@ -27,6 +27,7 @@ import type { TripPlan, TripPlanItem, TripPlannerDay } from '@nagi/database';
 import { isOutsideTrip, overlappingTripItems, tripDateLabel } from '@nagi/shared';
 import { entryHref } from '@/features/entries/links';
 import { EntryImage } from '@/features/media/image';
+import { UserIdentity } from '@/features/profiles/identity';
 import { AddPlaceDialog } from './add-place-dialog';
 import { TripDayEditor, TripStepDialog } from './plan-dialogs';
 import { stepLocation, stepTime, type LanePosition, type PlanMutation } from './planner-model';
@@ -165,6 +166,16 @@ function Step({
             <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-muted-foreground">
               {item.notes}
             </p>
+          )}
+          {plan.people.find((person) => person.id === item.added_by) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Ajouté par</span>
+              <UserIdentity
+                compact
+                className="text-xs [&>span:first-child]:size-5"
+                user={plan.people.find((person) => person.id === item.added_by)!}
+              />
+            </div>
           )}
           {conflict && (
             <Badge className="mt-1 bg-amber-100 text-amber-950">Horaire chevauché</Badge>

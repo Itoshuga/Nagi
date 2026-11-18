@@ -128,3 +128,4 @@ export function commandScope(
   return `guild:${env.DISCORD_DEV_GUILD_ID}`;
 }
 export * from './catalog';
+export * from './profiles';

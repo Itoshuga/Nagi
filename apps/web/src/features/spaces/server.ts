@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation';
 import {
   DiscordApi,
   DiscordGuildService,
+  DiscordUserService,
   DiscordTokenService,
   GuildMembershipService,
   TokenCipher,
@@ -35,7 +36,7 @@ export const discordServices = cache(() => {
     env.DISCORD_APPLICATION_ID,
     env.DISCORD_BOT_TOKEN,
   );
-  return { tokens, memberships };
+  return { tokens, memberships, users: new DiscordUserService(api) };
 });
 export const spaceServices = cache(async () => {
   const db = await sessionDatabase();

@@ -10,7 +10,7 @@ export function AccountHeader({
   defaultGuildId,
   lastActiveGuildId,
 }: {
-  viewer: { display_name: string; avatar_url: string | null; role: Role };
+  viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
   guilds: DiscordGuild[];
   defaultGuildId: string | null;
   lastActiveGuildId: string | null;
@@ -29,6 +29,6 @@ export function AccountHeader({
       viewer={viewer}
     />
   ) : (
-    <AppHeader viewer={viewer} context={<span className="app-account-context">Mon compte</span>} />
+    <AppHeader viewer={viewer} context={<span className="app-account-context">Mon profil</span>} />
   );
 }

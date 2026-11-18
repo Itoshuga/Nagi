@@ -1,5 +1,3 @@
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
 import { AccountHeader } from '@/components/layout/account-header';
 import { requireViewer } from '@/features/auth/session';
 import { discoverSpaces } from '@/features/spaces/server';
@@ -19,14 +17,7 @@ export default async function ProfileLayout({ children }: { children: React.Reac
         defaultGuildId={spaces?.preferences?.default_guild_id ?? null}
         lastActiveGuildId={spaces?.preferences?.last_active_guild_id ?? null}
       />
-      <main id="main" className="app-container app-content py-10">
-        <Link
-          href="/app"
-          className="mb-9 inline-flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Mes espaces
-        </Link>
+      <main id="main" className="app-container app-content py-6 sm:py-10">
         {children}
       </main>
     </>

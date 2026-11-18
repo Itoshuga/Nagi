@@ -9,6 +9,7 @@ import {
 } from '@nagi/shared';
 import type { NagiDatabase } from './client';
 import type { Json } from './database.types';
+import type { ProfileIdentity } from './profiles';
 import { catalogEntriesById } from './catalog';
 export type Trip = import('./database.types').Database['public']['Tables']['trips']['Row'];
 
@@ -128,11 +129,14 @@ export class TripService {
       throw new Error('Impossible de charger l’itinéraire.', { cause: result.error });
     if (!result.data) return null;
     const { items, days, ...trip } = result.data;
-    const entries = await catalogEntriesById(catalog, [
-      ...new Set(items.map((item) => item.entry_id)),
+    const [entries, people] = await Promise.all([
+      catalogEntriesById(catalog, [...new Set(items.map((item) => item.entry_id))]),
+      this.db.rpc('trip_contributor_cards', { p_trip: tripId }),
     ]);
+    if (people.error) throw new Error('Impossible de charger les collaborateurs.');
     return {
       ...trip,
+      people: people.data as ProfileIdentity[],
       days: sortTripDays(days),
       items: items
         .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
@@ -166,7 +170,13 @@ export class TripService {
   async organizerCards(tripId: string) {
     const { data, error } = await this.db.rpc('trip_organizer_cards', { p_trip: tripId });
     if (error) throw new Error('Impossible de charger les organisateurs.', { cause: error });
-    return data as { id: string; discord_id: string; name: string; avatar: string | null }[];
+    return data as {
+      id: string;
+      discord_id: string;
+      username: string;
+      name: string;
+      avatar: string | null;
+    }[];
   }
   async edit(
     guildId: string,
@@ -190,7 +200,7 @@ export class TripService {
   async author(tripId: string) {
     const { data, error } = await this.db.rpc('trip_author_card', { p_trip_id: tripId });
     if (error) throw new Error('Impossible de charger l’auteur du voyage.');
-    return data;
+    return data as ProfileIdentity | null;
   }
   async items(tripId: string) {
     const { data, error } = await this.db

@@ -1386,3 +1386,261 @@ describe('Periodic guild reconciliation', () => {
     );
   });
 });
+
+describe('Social profiles: verified audiences, identity and private banners', () => {
+  beforeEach(spacesFixture);
+  const read = (viewer = userId, target = otherId) =>
+    `select public.read_social_profile('${viewer}','${target}','${applicationId}') as value`;
+  const values = {
+    profile_title: 'En quête de ramen',
+    bio: 'Bonjour 🍜',
+    accent: '#73a6df',
+    banner_x: 30,
+    banner_y: 65,
+    dream_country_id: null,
+    dream_city_id: null,
+    banner_path: null,
+  };
+  const save = (data: Record<string, unknown> = values, revision = 1, user = userId) =>
+    `select public.save_social_customization('${user}',${revision},'${JSON.stringify(data).replaceAll("'", "''")}') as value`;
+  it('returns a minimal social DTO only to the owner or a freshly verified shared member', async () => {
+    await asService();
+    const own = await scalar<Record<string, unknown>>(read(userId, userId));
+    expect(own.id).toBe(userId);
+    expect(Object.keys(own).sort()).toEqual(
+      [
+        'id',
+        'username',
+        'display_name',
+        'avatar_url',
+        'created_at',
+        'customization',
+        'common_guilds',
+        'dream',
+        'organized_count',
+      ].sort(),
+    );
+    expect((own.customization as Record<string, unknown>).user_id).toBeUndefined();
+    const shared = await scalar<{ id: string; common_guilds: { id: string }[] }>(read());
+    expect(shared.id).toBe(otherId);
+    expect(shared.common_guilds.map((g) => g.id)).toEqual([guildA]);
+    expect(await scalar(read(adminId, userId))).toBeNull();
+    expect(await scalar(read(userId, adminId))).toBeNull();
+    expect(await scalar(read(userId, '99999999-9999-4999-8999-999999999999'))).toBeNull();
+  });
+  it('revokes access when either membership expires, the bot leaves, or bot verification is stale', async () => {
+    await asService();
+    for (const id of [userId, otherId]) {
+      await db.exec('reset role');
+      await db.exec(
+        `update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${id}'`,
+      );
+      await asService();
+      expect(await scalar(read())).toBeNull();
+      await db.exec('reset role');
+      await db.exec(
+        `update private.guild_memberships set expires_at=now()+interval '60 seconds' where user_id='${id}'`,
+      );
+    }
+    await db.exec(`update public.discord_guilds set bot_present=false where id='${guildA}'`);
+    expect(await scalar(read())).toBeNull();
+    await db.exec(
+      `update public.discord_guilds set bot_present=true,last_synced_at=now()-interval '121 seconds' where id='${guildA}'`,
+    );
+    expect(await scalar(read())).toBeNull();
+    expect((await scalar<{ id: string }>(read(userId, userId))).id).toBe(userId);
+  });
+  it('shows actual organizers only, filtering every trip and its metadata by shared guild access', async () => {
+    await asService();
+    await db.exec(`select public.record_discord_memberships('${userId}','${applicationId}','[{"id":"${guildA}","permissions":"8"},{"id":"${guildB}","permissions":"8"}]');
+      insert into public.trips(guild_id,title,created_by) values('${guildB}','SECRET TITLE','${userId}');`);
+    const social = await scalar<{ organized_count: number; common_guilds: { id: string }[] }>(
+      read(otherId, userId),
+    );
+    expect(social.organized_count).toBe(1);
+    expect(social.common_guilds.map((g) => g.id)).toEqual([guildA]);
+    const trips = await scalar<{ id: string; title: string }[]>(
+      `select public.social_profile_trips('${otherId}','${userId}','${applicationId}',0) as value`,
+    );
+    expect(trips.map((t) => t.id)).toEqual([tripA]);
+    expect(JSON.stringify(trips)).not.toContain('SECRET');
+    expect((await scalar<{ organized_count: number }>(read())).organized_count).toBe(0);
+    expect(
+      await scalar(
+        `select public.social_profile_trips('${otherId}','${adminId}','${applicationId}',0) as value`,
+      ),
+    ).toEqual([]);
+    expect(
+      await scalar(
+        `select public.social_profile_trips('${otherId}','${userId}','${applicationId}',12) as value`,
+      ),
+    ).toEqual([]);
+  });
+  it('denies browser writes, service RPC impersonation, other customizations and raw banner access', async () => {
+    await db.exec(
+      `create policy permissive_social_fixture on storage.objects for all to authenticated using(true) with check(true)`,
+    );
+    await asService();
+    await db.exec(
+      `insert into storage.objects(bucket_id,name) values('profile-banners','${userId}/${otherId}.webp')`,
+    );
+    await asUser();
+    expect(
+      await scalar<number>('select count(*)::int as value from public.profile_customizations'),
+    ).toBe(1);
+    await fails(
+      `update public.profile_customizations set bio='intrusion' where user_id='${otherId}'`,
+      /permission denied/,
+    );
+    await fails(save(), /permission denied/);
+    await fails(read(), /permission denied/);
+    await fails(`select public.resolve_social_profile('Other')`, /permission denied/);
+    await fails(
+      `select public.refresh_social_identity('${userId}','111111111111111111','{}')`,
+      /permission denied/,
+    );
+    expect(
+      await scalar<number>(
+        "select count(*)::int as value from storage.objects where bucket_id='profile-banners'",
+      ),
+    ).toBe(0);
+    await fails(
+      `insert into storage.objects(bucket_id,name) values('profile-banners','${otherId}/forged.webp')`,
+      /row.level security/,
+    );
+    await fails('select * from public.profile_banner_garbage', /permission denied/);
+  });
+  it('validates ownership, lengths, palette, destination publication and optimistic concurrency in SQL', async () => {
+    await asService();
+    await fails(save({ ...values, banner_path: `${otherId}/${userId}.webp` }), /check constraint/);
+    await fails(save({ ...values, profile_title: 'a'.repeat(41) }), /check constraint/);
+    await fails(save({ ...values, bio: 'a'.repeat(281) }), /check constraint/);
+    await fails(save({ ...values, accent: 'red' }), /check constraint/);
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true),('France','france','FR',false);
+      insert into public.cities(country_id,name,slug,is_published) select id,'Tokyo','tokyo',true from public.countries where slug='japon'`);
+    const japan = await scalar<string>(
+      "select id as value from public.countries where slug='japon'",
+    );
+    const france = await scalar<string>(
+      "select id as value from public.countries where slug='france'",
+    );
+    const tokyo = await scalar<string>("select id as value from public.cities where slug='tokyo'");
+    await fails(save({ ...values, dream_country_id: france }), /profile_destination/);
+    await db.exec("update public.countries set is_published=true where slug='france'");
+    await fails(
+      save({ ...values, dream_country_id: france, dream_city_id: tokyo }),
+      /profile_destination/,
+    );
+    expect(
+      await scalar<number>(save({ ...values, dream_country_id: japan, dream_city_id: tokyo })),
+    ).toBe(2);
+    await fails(save(), /profile_conflict/);
+    expect((await scalar<{ dream: { city: string } }>(read(userId, userId))).dream.city).toBe(
+      'Tokyo',
+    );
+    await db.exec("update public.cities set is_published=false where slug='tokyo'");
+    expect((await scalar<{ dream: null }>(read(userId, userId))).dream).toBeNull();
+  });
+  it('keeps dream destinations coherent after city moves and country deletion', async () => {
+    await asService();
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true),('France','france','FR',true);
+      insert into public.cities(country_id,name,slug,is_published) select id,'Tokyo','tokyo',true from public.countries where slug='japon'`);
+    const japan = await scalar<string>(
+      "select id as value from public.countries where slug='japon'",
+    );
+    const france = await scalar<string>(
+      "select id as value from public.countries where slug='france'",
+    );
+    const tokyo = await scalar<string>("select id as value from public.cities where slug='tokyo'");
+    await scalar(save({ ...values, dream_country_id: japan, dream_city_id: tokyo }));
+    await fails(
+      `update public.profile_customizations set dream_country_id='${france}' where user_id='${userId}'`,
+      /profile_destination/,
+    );
+    await db.exec(`update public.cities set country_id='${france}' where id='${tokyo}'`);
+    expect(
+      (await scalar<{ dream: { country_id: string } }>(read(userId, userId))).dream.country_id,
+    ).toBe(france);
+    await db.exec(
+      `delete from public.cities where id='${tokyo}'; delete from public.countries where id='${france}'`,
+    );
+    const row = await scalar<{ dream_country_id: null; dream_city_id: null }>(
+      `select to_jsonb(c) as value from public.profile_customizations c where user_id='${userId}'`,
+    );
+    expect(row.dream_country_id).toBeNull();
+    expect(row.dream_city_id).toBeNull();
+  });
+  it('preserves all Nagi personalization across verified identity refresh and OAuth reconnect, retaining old URL aliases', async () => {
+    await asService();
+    const banner = `${userId}/${otherId}.webp`;
+    await scalar(save({ ...values, banner_path: banner }));
+    const before = await scalar<Record<string, unknown>>(
+      `select to_jsonb(c) as value from public.profile_customizations c where user_id='${userId}'`,
+    );
+    await db.exec(
+      `select public.refresh_social_identity('${userId}','111111111111111111','{"username":"new.handle","global_name":"New Name","avatar_url":null}')`,
+    );
+    expect(
+      await scalar<{ id: string; username: string }>(
+        "select public.resolve_social_profile('new.handle') as value",
+      ),
+    ).toMatchObject({ id: userId, username: 'new.handle' });
+    // The original username is resolved even after multiple renames.
+    await db.exec(
+      `select public.refresh_social_identity('${userId}','111111111111111111','{"username":"latest.handle","global_name":"Latest"}')`,
+    );
+    expect(
+      (await scalar<{ id: string }>("select public.resolve_social_profile('new.handle') as value"))
+        .id,
+    ).toBe(userId);
+    await asUser();
+    await db.exec('select public.sync_discord_profile()');
+    await asService();
+    expect(
+      await scalar(
+        `select to_jsonb(c) as value from public.profile_customizations c where user_id='${userId}'`,
+      ),
+    ).toEqual(before);
+    await fails(
+      `select public.refresh_social_identity('${userId}','333333333333333333','{}')`,
+      /identity mismatch/,
+    );
+    // A username reused by a current Discord user takes precedence over an old alias.
+    await db.exec(`update public.profiles set username='new.handle' where id='${otherId}'`);
+    expect(
+      (await scalar<{ id: string }>("select public.resolve_social_profile('new.handle') as value"))
+        .id,
+    ).toBe(otherId);
+  });
+  it('queues only the replaced banner and cancels cleanup for a successfully attached upload', async () => {
+    await asService();
+    const old = `${userId}/${otherId}.webp`,
+      next = `${userId}/${adminId}.webp`;
+    await db.exec(
+      `insert into public.profile_banner_garbage(path,not_before) values('${old}',now()+interval '10 minutes')`,
+    );
+    await scalar(save({ ...values, banner_path: old }));
+    expect(
+      await scalar<number>('select count(*)::int as value from public.profile_banner_garbage'),
+    ).toBe(0);
+    await db.exec(`insert into public.profile_banner_garbage(path) values('${next}')`);
+    await scalar(save({ ...values, banner_path: next }, 2));
+    expect(await scalar<string>('select path as value from public.profile_banner_garbage')).toBe(
+      old,
+    );
+    await scalar(save({ ...values, banner_path: null }, 3));
+    expect(
+      await scalar<number>('select count(*)::int as value from public.profile_banner_garbage'),
+    ).toBe(2);
+  });
+  it('exposes contributor links only within an authorized trip', async () => {
+    await asUser(otherId);
+    const people = await scalar<{ id: string; username: string }[]>(
+      `select public.trip_contributor_cards('${tripA}') as value`,
+    );
+    expect(people).toHaveLength(1);
+    expect(people[0]?.id).toBe(userId);
+    expect(people[0]?.username).toBeTruthy();
+    expect(await scalar(`select public.trip_contributor_cards('${tripB}') as value`)).toEqual([]);
+  });
+});

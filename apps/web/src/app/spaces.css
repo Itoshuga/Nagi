@@ -1,7 +1,7 @@
 @import '@fontsource-variable/manrope';
 .nagi-space {
   font-family: 'Manrope Variable', sans-serif;
-  background: #f8faff;
+  background: var(--background);
   min-height: 100svh;
 }
 .space-title {

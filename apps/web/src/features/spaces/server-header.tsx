@@ -22,7 +22,7 @@ export function ServerHeader({
   guild: DiscordGuild;
   guilds: DiscordGuild[];
   favorite: string | null;
-  viewer: { display_name: string; avatar_url: string | null; role: Role };
+  viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
 }) {
   const pathname = usePathname();
   const [state, action, pending] = useActionState(selectGuild, { error: '' });

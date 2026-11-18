@@ -515,6 +515,68 @@ export type Database = {
           { foreignKeyName: 'neighborhoods_city_id_fkey'; columns: ["city_id"]; isOneToOne: false; referencedRelation: 'cities'; referencedColumns: ["id"]; },
         ];
       };
+      profile_banner_garbage: {
+        Row: {
+          path: string;
+          not_before: string;
+        };
+        Insert: {
+          path: string;
+          not_before?: string;
+        };
+        Update: {
+          path?: string;
+          not_before?: string;
+        };
+        Relationships: [
+        ];
+      };
+      profile_customizations: {
+        Row: {
+          user_id: string;
+          profile_title: string;
+          bio: string;
+          accent: string;
+          banner_path: string | null;
+          banner_x: number;
+          banner_y: number;
+          dream_country_id: string | null;
+          dream_city_id: string | null;
+          revision: number;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          profile_title?: string;
+          bio?: string;
+          accent?: string;
+          banner_path?: string | null;
+          banner_x?: number;
+          banner_y?: number;
+          dream_country_id?: string | null;
+          dream_city_id?: string | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          profile_title?: string;
+          bio?: string;
+          accent?: string;
+          banner_path?: string | null;
+          banner_x?: number;
+          banner_y?: number;
+          dream_country_id?: string | null;
+          dream_city_id?: string | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'profile_customizations_dream_city_id_fkey'; columns: ["dream_city_id"]; isOneToOne: false; referencedRelation: 'cities'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'profile_customizations_dream_country_id_fkey'; columns: ["dream_country_id"]; isOneToOne: false; referencedRelation: 'countries'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'profile_customizations_user_id_fkey'; columns: ["user_id"]; isOneToOne: true; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+        ];
+      };
       profiles: {
         Row: {
           id: string;
@@ -819,16 +881,22 @@ export type Database = {
       is_trip_organizer: { Args: { p_trip_id: string }; Returns: boolean; };
       read_discord_credentials: { Args: { p_user_id: string }; Returns: Json; };
       read_discord_guild_snapshot: { Args: { p_user_id: string; p_application_id: string }; Returns: Json; };
+      read_social_profile: { Args: { p_viewer: string; p_target: string; p_app: string }; Returns: Json; };
       reconcile_discord_guilds: { Args: { p_application_id: string; p_guilds: Json }; Returns: undefined; };
       record_discord_memberships: { Args: { p_user_id: string; p_application_id: string; p_guilds: Json }; Returns: undefined; };
+      refresh_social_identity: { Args: { p_user: string; p_discord: string; p_profile: Json }; Returns: undefined; };
       release_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: undefined; };
       release_discord_refresh: { Args: { p_user_id: string; p_lease: string }; Returns: undefined; };
       renew_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string; p_connected: boolean }; Returns: boolean; };
+      resolve_social_profile: { Args: { p_handle: string }; Returns: Json; };
       revoke_discord_credentials: { Args: { p_user_id: string; p_version: number }; Returns: undefined; };
       save_discord_credentials: { Args: { p_user_id: string; p_discord_id: string; p_profile: Json; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: undefined; };
+      save_social_customization: { Args: { p_user: string; p_revision: number; p_data: Json }; Returns: number; };
       set_discord_guild_presence: { Args: { p_application_id: string; p_guild: Json; p_present: boolean }; Returns: undefined; };
+      social_profile_trips: { Args: { p_viewer: string; p_target: string; p_app: string; p_offset: number }; Returns: Json; };
       sync_discord_profile: { Args: Record<PropertyKey, never>; Returns: Database['public']['Tables']['profiles']['Row']; };
       trip_author_card: { Args: { p_trip_id: string }; Returns: Json; };
+      trip_contributor_cards: { Args: { p_trip: string }; Returns: Json; };
       trip_organizer_cards: { Args: { p_trip: string }; Returns: Json; };
     };
     Enums: {
