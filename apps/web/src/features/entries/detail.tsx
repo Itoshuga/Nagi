@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, Compass, MapPin } from 'lucide-react';
+import { ArrowUpRight, MapPin } from 'lucide-react';
 import { Badge } from '@nagi/ui';
 import {
   listCategoryFields,
@@ -117,7 +117,7 @@ export async function CatalogEntryPage({
             src={entryMediaUrl(cover)}
             alt={cover.alt_text}
             eager
-            className="aspect-[16/9] max-h-[32rem] sm:aspect-[2/1]"
+            className="aspect-[16/9] w-full max-h-[32rem] sm:aspect-[2/1]"
             sizes="(max-width: 768px) 100vw, 1152px"
           />
         )}
@@ -129,14 +129,33 @@ export async function CatalogEntryPage({
             </div>
           )}
           <h1 className="space-title break-words font-display">{entry.title}</h1>
-          {location && (
-            <p className="flex items-start gap-2 text-sm font-medium text-muted-foreground">
-              <MapPin aria-hidden="true" className="size-4 shrink-0" />
-              {location}
-            </p>
+          {(location || coordinates) && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              {location && (
+                <p className="flex min-w-0 items-start gap-2 text-sm font-medium text-muted-foreground">
+                  <MapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary-ink" />
+                  <span className="min-w-0 break-words">{location}</span>
+                </p>
+              )}
+              {coordinates && (
+                <dl
+                  aria-label="Coordonnées géographiques"
+                  className="flex shrink-0 justify-end gap-6 self-end text-right sm:ml-auto sm:self-auto"
+                >
+                  {['Latitude', 'Longitude'].map((label, index) => (
+                    <div key={label}>
+                      <dt className="text-[10px] font-medium text-muted-foreground">{label}</dt>
+                      <dd className="mt-1 select-all text-xs font-semibold tabular-nums">
+                        {coordinates[index]!.toFixed(5)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           )}
           {entry.summary && (
-            <p className="max-w-3xl break-words text-base leading-relaxed text-muted-foreground sm:text-lg">
+            <p className="w-full break-words text-base leading-relaxed text-muted-foreground sm:text-lg">
               {entry.summary}
             </p>
           )}
@@ -157,44 +176,16 @@ export async function CatalogEntryPage({
           )}
         </div>
       </header>
-      {buttonGroups.length > 0 && (
-        <div className="mt-6 space-y-5 rounded-3xl border border-border bg-card p-6 sm:px-8">
-          {buttonGroups.map((group) => (
-            <section key={group.id} aria-labelledby={`buttons-${group.id}`}>
-              <h2 id={`buttons-${group.id}`} className="mb-3 text-sm font-bold">
-                {group.label}
-              </h2>
-              <ul className="flex flex-wrap gap-2.5">
-                {group.buttons.map((button, index) => (
-                  <li key={index} className="max-w-full">
-                    <a
-                      href={safeCatalogUrl(button.url)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-border bg-accent/50 px-5 py-3 text-sm font-semibold text-primary-ink transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    >
-                      <FieldIcon name={group.icon} />
-                      <span className="min-w-0 break-words">{button.label}</span>
-                      <ArrowUpRight className="size-4 shrink-0" />
-                      <span className="sr-only"> (nouvel onglet)</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
-      {(entry.description || metadata.length > 0 || coordinates) && (
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
+      {(entry.description || metadata.length > 0) && (
+        <div className="mt-8 space-y-6">
           {entry.description && (
             <section className="min-w-0 rounded-3xl border border-border bg-card p-6 sm:p-8">
               <h2 className="mb-5 text-xl font-extrabold">À propos</h2>
               <EntryRichText text={entry.description} />
             </section>
           )}
-          {(metadata.length > 0 || coordinates) && (
-            <section className="self-start rounded-3xl border border-border bg-card p-6">
+          {metadata.length > 0 && (
+            <section className="min-w-0 rounded-3xl border border-border bg-card p-6 sm:p-8">
               <h2 className="mb-4 text-lg font-extrabold">Informations pratiques</h2>
               <dl className="space-y-3">
                 {metadata.map(({ label, text, href, icon }, index) => (
@@ -220,15 +211,6 @@ export async function CatalogEntryPage({
                   </div>
                 ))}
               </dl>
-              {coordinates && (
-                <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Compass className="size-4 text-primary-ink" aria-hidden="true" />
-                  <span>
-                    <span className="sr-only">Coordonnées </span>
-                    {coordinates.map((value) => value.toFixed(5)).join(' / ')}
-                  </span>
-                </p>
-              )}
             </section>
           )}
         </div>
@@ -274,6 +256,42 @@ export async function CatalogEntryPage({
           </ul>
         </section>
       ))}
+      {buttonGroups.length > 0 && (
+        <section
+          aria-labelledby="entry-useful-links"
+          className="mt-9 space-y-5 rounded-3xl border border-border bg-card p-6 sm:p-8"
+        >
+          <h2 id="entry-useful-links" className="text-xl font-extrabold">
+            Liens utiles
+          </h2>
+          {buttonGroups.map((group) => (
+            <section key={group.id} aria-labelledby={`buttons-${group.id}`}>
+              <h3 id={`buttons-${group.id}`} className="mb-3 break-words text-sm font-bold">
+                {group.label}
+              </h3>
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {group.buttons.map((button, index) => (
+                  <li key={index} className="min-w-0">
+                    <a
+                      href={safeCatalogUrl(button.url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-full min-h-12 w-full items-center justify-between gap-3 rounded-2xl border border-border bg-accent/50 px-4 py-3 text-sm font-semibold text-primary-ink transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <FieldIcon name={group.icon} />
+                        <span className="min-w-0 break-words">{button.label}</span>
+                      </span>
+                      <ArrowUpRight className="size-4 shrink-0" />
+                      <span className="sr-only"> (nouvel onglet)</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </section>
+      )}
     </article>
   );
 }
