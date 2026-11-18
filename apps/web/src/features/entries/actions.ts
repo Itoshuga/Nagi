@@ -131,14 +131,12 @@ export async function saveEntry(id: string | null, form: FormData): Promise<Cata
   const entry = { ...values, custom_values: customValues };
   const query = current?.data
     ? db.from('entries').update(entry).eq('id', entryId).eq('updated_at', current.data.updated_at)
-    : db
-        .from('entries')
-        .insert({
-          ...entry,
-          id: entryId,
-          slug: catalogEntrySlug(values.title, entryId),
-          created_by: viewer.id,
-        });
+    : db.from('entries').insert({
+        ...entry,
+        id: entryId,
+        slug: catalogEntrySlug(values.title, entryId),
+        created_by: viewer.id,
+      });
   const saved = await query.select('id').maybeSingle();
   if (saved.error)
     return catalogError(saved.error, 'Impossible d’enregistrer la fiche. Vérifiez ses paramètres.');
@@ -151,7 +149,7 @@ export async function saveEntry(id: string | null, form: FormData): Promise<Cata
   return {
     ok: true,
     message: values.published ? 'Fiche publiée.' : 'Brouillon enregistré.',
-    href: id ? undefined : `/admin/entries/${entryId}`,
+    href: id ? undefined : `/admin/entries/${entryId}?onglet=medias`,
   };
 }
 

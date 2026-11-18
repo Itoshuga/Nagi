@@ -13,6 +13,8 @@ export function CatalogPicker<T extends { id: string }>({
   search,
   render,
   disabled = false,
+  inline = false,
+  placeholder = 'Rechercher…',
 }: {
   name: string;
   label: string;
@@ -22,6 +24,8 @@ export function CatalogPicker<T extends { id: string }>({
   search: (query: string) => Promise<T[]>;
   render?: (item: T) => ReactNode;
   disabled?: boolean;
+  inline?: boolean;
+  placeholder?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -35,7 +39,7 @@ export function CatalogPicker<T extends { id: string }>({
     searchRef.current = search;
   }, [search]);
   useEffect(() => {
-    if (!open || value || disabled) return;
+    if ((!open && !inline) || value || disabled) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -50,7 +54,7 @@ export function CatalogPicker<T extends { id: string }>({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [open, query, value, disabled]);
+  }, [open, inline, query, value, disabled]);
 
   function pick(item: T) {
     setOpen(false);
@@ -83,15 +87,17 @@ export function CatalogPicker<T extends { id: string }>({
           id={id}
           role="combobox"
           aria-autocomplete="list"
-          aria-expanded={open && !value}
-          aria-controls={open && !value ? `${id}-options` : undefined}
-          aria-activedescendant={open && matches[active] ? `${id}-option-${active}` : undefined}
+          aria-expanded={(open || inline) && !value}
+          aria-controls={(open || inline) && !value ? `${id}-options` : undefined}
+          aria-activedescendant={
+            (open || inline) && matches[active] ? `${id}-option-${active}` : undefined
+          }
           value={value ? selectedName(value) : query}
           readOnly={Boolean(value)}
           autoComplete="off"
           maxLength={100}
           disabled={disabled}
-          placeholder="Rechercher…"
+          placeholder={placeholder}
           className={value ? 'pl-9 pr-20' : 'pl-9'}
           onFocus={() => {
             if (!value) setOpen(true);
@@ -102,8 +108,9 @@ export function CatalogPicker<T extends { id: string }>({
             setActive(-1);
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && open) {
+            if (event.key === 'Escape' && open && !inline) {
               event.preventDefault();
+              event.stopPropagation();
               setOpen(false);
             }
             if (!value && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
@@ -116,7 +123,7 @@ export function CatalogPicker<T extends { id: string }>({
               setActive(next);
               document.getElementById(`${id}-option-${next}`)?.scrollIntoView({ block: 'nearest' });
             }
-            if (event.key === 'Enter' && open) {
+            if (!value && event.key === 'Enter' && (open || inline)) {
               event.preventDefault();
               const choice = matches[active] ?? matches[0];
               if (choice) pick(choice);
@@ -141,8 +148,14 @@ export function CatalogPicker<T extends { id: string }>({
           </Button>
         )}
       </div>
-      {open && !value && !disabled && (
-        <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-border bg-card shadow-lg">
+      {(open || inline) && !value && !disabled && (
+        <div
+          className={
+            inline
+              ? 'mt-3 overflow-hidden rounded-2xl border border-border bg-muted/25'
+              : 'absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-border bg-card shadow-lg'
+          }
+        >
           <ul
             id={`${id}-options`}
             role="listbox"

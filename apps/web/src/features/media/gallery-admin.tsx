@@ -2,136 +2,117 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { ImagePlus } from 'lucide-react';
-import { Alert, Badge, Button, Card, Input } from '@nagi/ui';
+import {
+  Check,
+  Image as ImageIcon,
+  LoaderCircle,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  toast,
+} from '@nagi/ui';
 import type { EntryMedia } from '@nagi/database';
-import { CatalogForm, ConfirmCatalogDeletion } from '@/features/catalog/admin-form';
 import { SortableCatalog } from '@/features/catalog/sortable';
-import { autoEntryCover, changeEntryImage, orderEntryMedia, uploadEntryImage } from './actions';
+import { autoEntryCover, changeEntryImage, orderEntryMedia } from './actions';
 import { EntryImage } from './image';
 import { entryMediaUrl } from './model';
+import { ImageEditor, type ImageEditorMode } from './image-editor';
+import { UploadGallery } from './upload-gallery';
 
-const imageAccept = 'image/jpeg,image/png,image/webp';
-
-function UploadGallery({ entryId, capacity }: { entryId: string; capacity: number }) {
+type EditImage = (media: EntryMedia, mode: ImageEditorMode, trigger: HTMLElement | null) => void;
+function ImageActions({
+  media,
+  cover,
+  edit,
+  index,
+}: {
+  media: EntryMedia;
+  cover: boolean;
+  edit: EditImage;
+  index: number;
+}) {
   const router = useRouter();
-  const input = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<string>();
+  const trigger = useRef<HTMLButtonElement>(null);
   const [pending, startTransition] = useTransition();
-  function upload(files: FileList | null) {
-    if (!files?.length || pending) return;
-    const selected = Array.from(files);
-    if (selected.length > capacity) {
-      setStatus(`Vous pouvez encore ajouter ${capacity} image(s).`);
-      return;
-    }
-    startTransition(async () => {
-      const errors: string[] = [];
-      let uploaded = 0;
-      for (const file of selected) {
-        setStatus(`Envoi de l’image ${uploaded + errors.length + 1} sur ${selected.length}…`);
-        const data = new FormData();
-        data.append('file', file);
-        try {
-          const result = await uploadEntryImage(entryId, null, null, data);
-          if (result.ok) uploaded++;
-          else errors.push(`${file.name} · ${result.message}`);
-        } catch {
-          errors.push(`${file.name} · Envoi interrompu.`);
-        }
-      }
-      if (input.current) input.current.value = '';
-      setStatus([`${uploaded} image(s) ajoutée(s).`, ...errors].join('\n'));
-      router.refresh();
-    });
-  }
   return (
-    <div>
-      <div
-        className="grid justify-items-center gap-3 rounded-2xl border-2 border-dashed border-border p-5 text-center"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          upload(event.dataTransfer.files);
-        }}
-      >
-        <ImagePlus aria-hidden="true" className="size-7 text-primary-ink" />
-        <p className="text-sm text-muted-foreground">
-          JPEG, PNG ou WebP. Déposez jusqu’à {capacity} image(s) ici.
-        </p>
-        <input
-          ref={input}
-          type="file"
-          accept={imageAccept}
-          multiple
-          hidden
-          onChange={(event) => {
-            upload(event.target.files);
-            event.target.value = '';
-          }}
-        />
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
         <Button
+          ref={trigger}
           type="button"
-          variant="secondary"
-          size="sm"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={`Actions de l’image ${index + 1}`}
           disabled={pending}
-          onClick={() => input.current?.click()}
         >
-          {pending ? 'Envoi en cours…' : 'Choisir des images'}
+          {pending ? (
+            <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <MoreHorizontal className="size-4" />
+          )}
         </Button>
-      </div>
-      {status && <Alert className="mt-3 whitespace-pre-line">{status}</Alert>}
-    </div>
-  );
-}
-
-function ImageSettings({ media, effectiveCover }: { media: EntryMedia; effectiveCover: boolean }) {
-  const change = changeEntryImage.bind(null, media.entry_id, media.id, media.version);
-  return (
-    <details className="min-w-0 flex-1">
-      <summary className="cursor-pointer rounded-md text-sm font-semibold focus-visible:outline-2 focus-visible:outline-ring">
-        Options de l’image
-      </summary>
-      <div className="mt-3 space-y-4">
-        <CatalogForm run={change.bind(null, 'alt')}>
-          <label className="grid gap-2 text-sm">
-            Texte alternatif
-            <Input
-              name="alt_text"
-              maxLength={220}
-              defaultValue={media.alt_text}
-              placeholder="Décrire ce que montre l’image"
-            />
-          </label>
-          <Button type="submit" variant="secondary" size="sm">
-            Enregistrer le texte
-          </Button>
-        </CatalogForm>
-        {!media.is_cover && (
-          <CatalogForm run={change.bind(null, 'cover')}>
-            <Button type="submit" variant="secondary" size="sm">
-              {effectiveCover ? 'Fixer comme couverture' : 'Choisir comme couverture'}
-            </Button>
-          </CatalogForm>
-        )}
-        <CatalogForm
-          run={uploadEntryImage.bind(null, media.entry_id, media.id, media.version)}
-          reset
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="entry-media-menu">
+        <DropdownMenuItem onSelect={() => edit(media, 'alt', trigger.current)}>
+          <Pencil className="size-4" />
+          Modifier la description
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={media.is_cover}
+          onSelect={() =>
+            startTransition(async () => {
+              try {
+                const result = await changeEntryImage(
+                  media.entry_id,
+                  media.id,
+                  media.version,
+                  'cover',
+                  new FormData(),
+                );
+                if (result.ok) {
+                  toast.success('Couverture sélectionnée.');
+                  router.refresh();
+                } else toast.error(result.message);
+              } catch {
+                toast.error('Impossible de choisir cette couverture. Réessayez.');
+              }
+              requestAnimationFrame(() => trigger.current?.focus());
+            })
+          }
         >
-          <input type="hidden" name="alt_text" value={media.alt_text} />
-          <label className="grid gap-2 text-sm">
-            Remplacer le fichier
-            <Input type="file" name="file" accept={imageAccept} required className="h-auto py-2" />
-          </label>
-          <Button type="submit" variant="secondary" size="sm">
-            Remplacer l’image
-          </Button>
-        </CatalogForm>
-        <CatalogForm run={change.bind(null, 'remove')}>
-          <ConfirmCatalogDeletion label="Retirer l’image" />
-        </CatalogForm>
-      </div>
-    </details>
+          {cover ? <Check className="size-4" /> : <Star className="size-4" />}
+          {media.is_cover
+            ? 'Couverture actuelle'
+            : cover
+              ? 'Fixer cette couverture'
+              : 'Choisir comme couverture'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => edit(media, 'replace', trigger.current)}>
+          <RefreshCw className="size-4" />
+          Remplacer le fichier
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-destructive"
+          onSelect={() => edit(media, 'remove', trigger.current)}
+        >
+          <Trash2 className="size-4" />
+          Retirer l’image…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -139,56 +120,146 @@ export function AdminGallery({
   entryId,
   media,
   cover,
+  maxFileSize,
 }: {
   entryId: string;
   media: EntryMedia[];
   cover: string | null;
+  maxFileSize: number;
 }) {
+  const router = useRouter();
+  const restore = useRef<HTMLElement | null>(null);
+  const gallery = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<{ id: string; mode: ImageEditorMode }>();
+  const [pending, startTransition] = useTransition();
+  const selected = media.find((item) => item.id === editing?.id);
+  function edit(item: EntryMedia, mode: ImageEditorMode, trigger: HTMLElement | null) {
+    restore.current = trigger;
+    setEditing({ id: item.id, mode });
+  }
   return (
-    <Card id="medias" className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold">Médias</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          La première image sert de couverture tant qu’aucune autre image n’est sélectionnée.
-        </p>
+    <Card
+      ref={gallery}
+      id="medias"
+      role="region"
+      aria-label="Galerie de la fiche"
+      tabIndex={-1}
+      className="space-y-6 p-5 sm:p-7"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="entry-dialog-label mb-2">L’identité visuelle</p>
+          <h2 className="text-2xl font-extrabold tracking-tight">Votre galerie</h2>
+          <p className="mt-2 max-w-xl text-xs leading-6 text-muted-foreground">
+            Cliquez sur une image pour la décrire. Déplacez les images pour raconter votre fiche
+            dans le bon ordre.
+          </p>
+        </div>
+        <Badge className="gap-2">
+          <ImageIcon className="size-3.5" />
+          {media.length}/20 images
+        </Badge>
       </div>
       {media.length > 0 && (
-        <SortableCatalog
-          items={media}
-          label={(item) => item.alt_text || `Image ${item.sort_order + 1}`}
-          save={orderEntryMedia.bind(null, entryId)}
-          render={(item) => {
-            const url = entryMediaUrl(item);
-            return (
-              <div className="flex min-w-0 flex-wrap items-start gap-3">
-                <div className="w-24 shrink-0">
-                  <EntryImage
-                    src={url}
-                    alt={item.alt_text}
-                    className="aspect-[4/3] rounded-lg"
-                    sizes="96px"
-                  />
-                  {url === cover && (
-                    <Badge className="mt-1 px-2">{item.is_cover ? 'Couverture' : 'Auto'}</Badge>
-                  )}
-                </div>
-                <ImageSettings key={item.version} media={item} effectiveCover={url === cover} />
-              </div>
-            );
-          }}
-        />
-      )}
-      {media.some((item) => item.is_cover) && (
-        <CatalogForm run={autoEntryCover.bind(null, entryId)}>
-          <Button type="submit" variant="secondary" size="sm">
-            Revenir à la couverture automatique
-          </Button>
-        </CatalogForm>
+        <>
+          <SortableCatalog
+            layout="grid"
+            items={media}
+            label={(item) => item.alt_text || `Image ${item.sort_order + 1}`}
+            save={orderEntryMedia.bind(null, entryId)}
+            actions={(item, index) => (
+              <ImageActions
+                media={item}
+                index={index}
+                cover={entryMediaUrl(item) === cover}
+                edit={edit}
+              />
+            )}
+            render={(item, index) => (
+              <button
+                type="button"
+                className="entry-media-tile"
+                aria-label={`Modifier la description de l’image ${index + 1}`}
+                onClick={(event) => edit(item, 'alt', event.currentTarget)}
+              >
+                <EntryImage
+                  src={entryMediaUrl(item)}
+                  alt={item.alt_text}
+                  className="aspect-[4/3]"
+                  sizes="(max-width: 768px) 45vw, 320px"
+                />
+                {entryMediaUrl(item) === cover && (
+                  <span className="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-card/95 px-2.5 py-1.5 text-[10px] font-bold text-foreground shadow-sm">
+                    <Star className="size-3 fill-primary text-primary-ink" />
+                    {item.is_cover ? 'Couverture' : 'Couverture auto'}
+                  </span>
+                )}
+                <span className="entry-media-edit" aria-hidden="true">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-card/95 text-foreground">
+                    <Pencil className="size-4" />
+                  </span>
+                </span>
+              </button>
+            )}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/50 px-4 py-3">
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              {media.some((item) => item.is_cover)
+                ? 'La couverture est choisie manuellement.'
+                : 'La première image est utilisée automatiquement en couverture.'}
+            </p>
+            {media.some((item) => item.is_cover) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  startTransition(async () => {
+                    try {
+                      const result = await autoEntryCover(entryId, new FormData());
+                      if (result.ok) {
+                        toast.success('Couverture automatique activée.');
+                        router.refresh();
+                      } else toast.error(result.message);
+                    } catch {
+                      toast.error('Impossible de modifier la couverture. Réessayez.');
+                    }
+                  })
+                }
+              >
+                {pending && (
+                  <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />
+                )}
+                Passer en automatique
+              </Button>
+            )}
+          </div>
+        </>
       )}
       {media.length < 20 ? (
-        <UploadGallery entryId={entryId} capacity={20 - media.length} />
+        <UploadGallery
+          entryId={entryId}
+          capacity={20 - media.length}
+          maxFileSize={maxFileSize}
+          compact={media.length > 0}
+        />
       ) : (
-        <p className="text-sm text-muted-foreground">La galerie contient 20 images.</p>
+        <Alert>Votre galerie est complète. Retirez une image pour en ajouter une autre.</Alert>
+      )}
+      {selected && editing && (
+        <ImageEditor
+          key={`${selected.id}-${selected.version}-${editing.mode}`}
+          media={selected}
+          mode={editing.mode}
+          cover={entryMediaUrl(selected) === cover}
+          maxFileSize={maxFileSize}
+          onClose={() => setEditing(undefined)}
+          returnFocus={() => {
+            if (restore.current?.isConnected) restore.current.focus();
+            else gallery.current?.focus();
+          }}
+        />
       )}
     </Card>
   );

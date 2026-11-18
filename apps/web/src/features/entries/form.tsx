@@ -1,12 +1,73 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Button, Card, Input, Label } from '@nagi/ui';
 import type { CatalogCategory, CatalogEntryDetail, CategoryField, Json } from '@nagi/database';
 import { CatalogForm, CatalogSelect, CatalogTextarea } from '@/features/catalog/admin-form';
 import { EntryEditor } from './editor';
 import { findEntryFields, saveEntry } from './actions';
 import { EntryLocationFields } from './location';
+import { DeleteEntryButton } from './delete-button';
+import { EntryWorkspace } from './workspace';
+
+function EntryPublication({
+  formId,
+  entry,
+  disabled,
+  pending,
+  feedback,
+  onChange,
+}: {
+  formId: string;
+  entry?: CatalogEntryDetail;
+  disabled: boolean;
+  pending: boolean;
+  feedback: ReactNode;
+  onChange: () => void;
+}) {
+  return (
+    <Card className="space-y-4" onChange={onChange}>
+      <h2 className="text-lg font-bold">Publication</h2>
+      <fieldset disabled={pending} className="min-w-0 space-y-4" aria-busy={pending}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="entry-status">Statut</Label>
+            <CatalogSelect
+              id="entry-status"
+              form={formId}
+              name="published"
+              defaultValue={String(entry?.published ?? false)}
+            >
+              <option value="false">Brouillon</option>
+              <option value="true">Publiée</option>
+            </CatalogSelect>
+          </div>
+          <div>
+            <Label htmlFor="entry-order">Ordre dans la catégorie</Label>
+            <Input
+              id="entry-order"
+              form={formId}
+              name="sort_order"
+              type="number"
+              min={0}
+              defaultValue={entry?.sort_order ?? 0}
+              required
+            />
+          </div>
+        </div>
+        {!entry && (
+          <p className="text-sm text-muted-foreground">
+            La création de la fiche ouvrira ensuite la galerie pour ajouter vos images.
+          </p>
+        )}
+        <Button form={formId} type="submit" disabled={disabled}>
+          {pending ? 'Enregistrement…' : entry ? 'Enregistrer les modifications' : 'Créer la fiche'}
+        </Button>
+      </fieldset>
+      {feedback}
+    </Card>
+  );
+}
 
 function FieldControl({ field, value }: { field: CategoryField; value: Json | undefined }) {
   const name = `field-${field.id}`;
@@ -77,11 +138,20 @@ export function EntryForm({
   entry,
   categories,
   fields,
+  media,
+  relations,
+  mediaCount,
+  relationCount,
 }: {
   entry?: CatalogEntryDetail;
   categories: CatalogCategory[];
   fields: CategoryField[];
+  media?: ReactNode;
+  relations?: ReactNode;
+  mediaCount: number;
+  relationCount: number;
 }) {
+  const formId = useId();
   const [categoryId, setCategory] = useState(entry?.category_id ?? '');
   const [extra, setExtra] = useState<{
     category: string;
@@ -122,7 +192,36 @@ export function EntryForm({
   }, [categoryId, original]);
 
   return (
-    <CatalogForm run={saveEntry.bind(null, entry?.id ?? null)} protect>
+    <CatalogForm
+      id={formId}
+      run={saveEntry.bind(null, entry?.id ?? null)}
+      protect
+      renderLayout={({ form, feedback, pending, markDirty }) => (
+        <EntryWorkspace
+          saved={Boolean(entry)}
+          mediaCount={mediaCount}
+          relationCount={relationCount}
+          content={
+            <div className="space-y-5">
+              {form}
+              {entry && <DeleteEntryButton id={entry.id} title={entry.title} />}
+            </div>
+          }
+          media={media}
+          relations={relations}
+          publication={
+            <EntryPublication
+              formId={formId}
+              entry={entry}
+              disabled={!categoryId || !active || !!active.error}
+              pending={pending}
+              feedback={feedback}
+              onChange={markDirty}
+            />
+          }
+        />
+      )}
+    >
       <input type="hidden" name="updated_at" value={entry?.updated_at ?? ''} />
       <Card className="space-y-4">
         <h2 className="text-lg font-bold">Informations générales</h2>
@@ -256,41 +355,6 @@ export function EntryForm({
             </div>
           </>
         )}
-      </Card>
-      <Card className="space-y-4">
-        <h2 className="text-lg font-bold">Publication</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="entry-status">Statut</Label>
-            <CatalogSelect
-              id="entry-status"
-              name="published"
-              defaultValue={String(entry?.published ?? false)}
-            >
-              <option value="false">Brouillon</option>
-              <option value="true">Publiée</option>
-            </CatalogSelect>
-          </div>
-          <div>
-            <Label htmlFor="entry-order">Ordre dans la catégorie</Label>
-            <Input
-              id="entry-order"
-              name="sort_order"
-              type="number"
-              min={0}
-              defaultValue={entry?.sort_order ?? 0}
-              required
-            />
-          </div>
-        </div>
-        {!entry && (
-          <p className="text-sm text-muted-foreground">
-            Enregistrez la fiche pour ajouter des images et des relations.
-          </p>
-        )}
-        <Button type="submit" disabled={!categoryId || !active || !!active.error}>
-          Enregistrer la fiche
-        </Button>
       </Card>
     </CatalogForm>
   );

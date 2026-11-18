@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useState, useTransition, type ComponentProps, type FormEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  useTransition,
+  type ComponentProps,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, cn, toast } from '@nagi/ui';
 import type { CatalogResult } from './mutations';
@@ -11,12 +18,25 @@ export function CatalogForm({
   className,
   protect = false,
   reset = false,
+  onSuccess,
+  onPendingChange,
+  id,
+  renderLayout,
 }: {
   run: (form: FormData) => Promise<CatalogResult>;
   children: React.ReactNode;
   className?: string;
   protect?: boolean;
   reset?: boolean;
+  onSuccess?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+  id?: string;
+  renderLayout?: (parts: {
+    form: ReactNode;
+    feedback: ReactNode;
+    pending: boolean;
+    markDirty: () => void;
+  }) => ReactNode;
 }) {
   const router = useRouter();
   const [dirty, setDirty] = useState(false);
@@ -66,8 +86,10 @@ export function CatalogForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     const form = event.currentTarget;
     const values = new FormData(form);
+    onPendingChange?.(true);
     startTransition(async () => {
       setResult(undefined);
       try {
@@ -76,6 +98,7 @@ export function CatalogForm({
         if (!saved.ok) return;
         setDirty(false);
         if (reset) form.reset();
+        onSuccess?.();
         if (saved.href) {
           toast.success(saved.message);
           router.push(saved.href);
@@ -83,12 +106,29 @@ export function CatalogForm({
         router.refresh();
       } catch {
         setResult({ ok: false, message: 'La requête a échoué. Réessayez.' });
+      } finally {
+        onPendingChange?.(false);
       }
     });
   }
 
-  return (
+  const feedback = (
+    <>
+      {pending && (
+        <p role="status" className="mt-3 text-sm text-muted-foreground">
+          Enregistrement…
+        </p>
+      )}
+      {result && (
+        <Alert className={cn('mt-3', !result.ok && 'border-destructive/50')}>
+          {result.message}
+        </Alert>
+      )}
+    </>
+  );
+  const form = (
     <form
+      id={id}
       className={className}
       onSubmit={submit}
       onChange={() => setDirty(true)}
@@ -100,18 +140,12 @@ export function CatalogForm({
       <fieldset disabled={pending} className="min-w-0 space-y-4">
         {children}
       </fieldset>
-      {pending && (
-        <p role="status" className="mt-3 text-sm text-muted-foreground">
-          Enregistrement…
-        </p>
-      )}
-      {result && (
-        <Alert className={cn('mt-3', !result.ok && 'border-destructive/50')}>
-          {result.message}
-        </Alert>
-      )}
+      {!renderLayout && feedback}
     </form>
   );
+  return renderLayout
+    ? renderLayout({ form, feedback, pending, markDirty: () => setDirty(true) })
+    : form;
 }
 
 export function CatalogSelect({ className, ...props }: ComponentProps<'select'>) {

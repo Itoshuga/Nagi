@@ -11,11 +11,15 @@ export function SortableCatalog<T extends { id: string }>({
   label,
   render,
   save,
+  layout = 'list',
+  actions,
 }: {
   items: T[];
   label: (item: T) => string;
-  render: (item: T) => ReactNode;
+  render: (item: T, index: number) => ReactNode;
   save: (ids: string[]) => Promise<CatalogResult>;
+  layout?: 'list' | 'grid';
+  actions?: (item: T, index: number) => ReactNode;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<string[]>();
@@ -39,13 +43,23 @@ export function SortableCatalog<T extends { id: string }>({
 
   return (
     <div className="space-y-3">
-      <ol className="space-y-2">
+      <ol
+        className={
+          layout === 'grid'
+            ? 'grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 md:grid-cols-3'
+            : 'space-y-2'
+        }
+      >
         {ids.map((id, index) => {
           const item = byId.get(id)!;
           return (
             <li
               key={id}
-              className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3 sm:flex-nowrap"
+              className={
+                layout === 'grid'
+                  ? 'group min-w-0 overflow-hidden rounded-2xl border border-border bg-card'
+                  : 'flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3 sm:flex-nowrap'
+              }
               onDragOver={(event) => {
                 if (dragging.current) event.preventDefault();
               }}
@@ -55,44 +69,69 @@ export function SortableCatalog<T extends { id: string }>({
                 dragging.current = null;
               }}
             >
-              <span
-                aria-hidden="true"
-                draggable={!pending}
-                title="Glisser pour déplacer"
-                onDragStart={(event) => {
-                  event.dataTransfer.setData('text/plain', id);
-                  event.dataTransfer.effectAllowed = 'move';
-                  dragging.current = id;
-                }}
-                onDragEnd={() => {
-                  dragging.current = null;
-                }}
-                className="hidden cursor-grab text-muted-foreground sm:block"
+              {layout === 'grid' && <div className="min-w-0">{render(item, index)}</div>}
+              <div
+                className={
+                  layout === 'grid'
+                    ? 'flex items-center gap-1 border-t border-border px-2 py-1.5'
+                    : 'contents'
+                }
               >
-                <GripVertical className="size-5" />
-              </span>
-              <div className="min-w-0 flex-1">{render(item)}</div>
-              <div className="ml-auto flex shrink-0 gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={pending || index === 0}
-                  aria-label={`Monter ${label(item)}`}
-                  onClick={() => move(index, index - 1)}
+                <span
+                  aria-hidden="true"
+                  draggable={!pending}
+                  title="Glisser pour déplacer"
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('text/plain', id);
+                    event.dataTransfer.effectAllowed = 'move';
+                    dragging.current = id;
+                  }}
+                  onDragEnd={() => {
+                    dragging.current = null;
+                  }}
+                  className={
+                    layout === 'grid'
+                      ? 'hidden cursor-grab px-1 text-muted-foreground sm:block'
+                      : 'hidden cursor-grab text-muted-foreground sm:block'
+                  }
                 >
-                  <ArrowUp className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={pending || index === ids.length - 1}
-                  aria-label={`Descendre ${label(item)}`}
-                  onClick={() => move(index, index + 1)}
-                >
-                  <ArrowDown className="size-4" />
-                </Button>
+                  <GripVertical className="size-5" />
+                </span>
+                {layout === 'list' ? (
+                  <div className="min-w-0 flex-1">{render(item, index)}</div>
+                ) : (
+                  <span
+                    className="min-w-0 flex-1 truncate text-[11px] font-semibold"
+                    title={label(item)}
+                  >
+                    Image {index + 1}
+                  </span>
+                )}
+                <div className="ml-auto flex shrink-0 gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={layout === 'grid' ? 'size-8' : undefined}
+                    disabled={pending || index === 0}
+                    aria-label={`Monter ${label(item)}`}
+                    onClick={() => move(index, index - 1)}
+                  >
+                    <ArrowUp className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={layout === 'grid' ? 'size-8' : undefined}
+                    disabled={pending || index === ids.length - 1}
+                    aria-label={`Descendre ${label(item)}`}
+                    onClick={() => move(index, index + 1)}
+                  >
+                    <ArrowDown className="size-4" />
+                  </Button>
+                  {actions?.(item, index)}
+                </div>
               </div>
             </li>
           );

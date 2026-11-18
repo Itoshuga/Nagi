@@ -12,16 +12,17 @@ import {
   listRelationTypes,
 } from '@nagi/database';
 import { requireAdmin } from '@/features/auth/session';
-import { CatalogForm, CatalogSelect, ConfirmCatalogDeletion } from '@/features/catalog/admin-form';
+import { CatalogSelect } from '@/features/catalog/admin-form';
 import { firstParam, pageParam, type SearchParams } from '@/features/geography/model';
 import { CatalogPagination } from '@/features/geography/navigation';
 import { AdminGallery } from '@/features/media/gallery-admin';
 import { EntryImage } from '@/features/media/image';
 import { AdminEntryRelations } from '@/features/relations/admin';
 import { sessionDatabase } from '@/lib/supabase/server';
-import { deleteEntry } from './actions';
 import { EntryForm } from './form';
 import { EntryLocationFields } from './location';
+import { maxCoverSize } from '@/features/geography/storage';
+import { ArrowLeft, Eye } from 'lucide-react';
 
 const adminPath = '/admin/entries';
 const date = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeZone: 'Europe/Paris' });
@@ -263,31 +264,39 @@ export async function AdminEntry({ id }: { id?: string }) {
     : [[], [], [], []];
   return (
     <div className="max-w-5xl space-y-5">
-      <header>
+      <header className="entry-editor-header pb-2">
         <Link href={adminPath} className="text-sm font-medium text-primary-ink hover:underline">
-          ← Fiches
+          <span className="inline-flex items-center gap-2 text-xs">
+            <ArrowLeft className="size-3.5" />
+            Retour aux fiches
+          </span>
         </Link>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="display-title break-words font-display">
-            {entry?.title ?? 'Ajouter une fiche'}
-          </h1>
+        <div className="mt-3 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <p className="text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">
+                Catalogue Nagi
+              </p>
+              {entry && <Badge>{entry.published ? 'Publiée' : 'Brouillon'}</Badge>}
+            </div>
+            <h1 className="break-words text-3xl font-extrabold tracking-[-.045em] sm:text-4xl">
+              {entry?.title ?? 'Créer une fiche'}
+            </h1>
+            <p className="mt-3 text-xs leading-6 text-muted-foreground">
+              {entry
+                ? 'Le contenu, les images et les liens de votre fiche, chacun à leur place.'
+                : 'Un lieu, une expérience, une bonne adresse. Commencez par l’essentiel.'}
+            </p>
+          </div>
           {entry && (
             <Button asChild variant="secondary">
-              <Link href={`${adminPath}/${entry.id}/preview`}>Prévisualiser</Link>
+              <Link href={`${adminPath}/${entry.id}/preview`}>
+                <Eye className="size-4" />
+                Prévisualiser
+              </Link>
             </Button>
           )}
         </div>
-        {entry && (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <Badge>{entry.published ? 'Publiée' : 'Brouillon'}</Badge>
-            <a href="#medias" className="text-primary-ink hover:underline">
-              Médias
-            </a>
-            <a href="#relations" className="text-primary-ink hover:underline">
-              Relations
-            </a>
-          </div>
-        )}
       </header>
       {!categories.length ? (
         <EmptyState
@@ -299,28 +308,34 @@ export async function AdminEntry({ id }: { id?: string }) {
           </Button>
         </EmptyState>
       ) : (
-        <EntryForm entry={entry ?? undefined} categories={categories} fields={fields} />
-      )}
-      {entry && (
-        <>
-          <AdminGallery entryId={entry.id} media={media} cover={entry.cover_image_url} />
-          <AdminEntryRelations
-            entryId={entry.id}
-            relations={relations}
-            types={types}
-            categories={categories}
-          />
-          <Card className="space-y-3">
-            <h2 className="text-lg font-bold">Supprimer la fiche</h2>
-            <p className="text-sm text-muted-foreground">
-              Les relations et les images seront retirées. Une fiche utilisée dans un voyage peut
-              être dépubliée.
-            </p>
-            <CatalogForm run={deleteEntry.bind(null, entry.id)}>
-              <ConfirmCatalogDeletion label="Supprimer la fiche" />
-            </CatalogForm>
-          </Card>
-        </>
+        <EntryForm
+          entry={entry ?? undefined}
+          categories={categories}
+          fields={fields}
+          mediaCount={media.length}
+          relationCount={relations.length}
+          media={
+            entry && (
+              <AdminGallery
+                entryId={entry.id}
+                media={media}
+                cover={entry.cover_image_url}
+                maxFileSize={maxCoverSize()}
+              />
+            )
+          }
+          relations={
+            entry && (
+              <AdminEntryRelations
+                entryId={entry.id}
+                title={entry.title}
+                relations={relations}
+                types={types}
+                categories={categories}
+              />
+            )
+          }
+        />
       )}
     </div>
   );

@@ -8,12 +8,14 @@ export function EntryImage({
   className,
   sizes = '(max-width: 640px) 100vw, 420px',
   eager = false,
+  fit = 'cover',
 }: {
   src?: string | null;
   alt?: string;
   className?: string;
   sizes?: string;
   eager?: boolean;
+  fit?: 'cover' | 'contain';
 }) {
   return (
     <div
@@ -30,7 +32,7 @@ export function EntryImage({
           sizes={sizes}
           unoptimized
           loading={eager ? 'eager' : 'lazy'}
-          className="object-cover"
+          className={fit === 'contain' ? 'object-contain' : 'object-cover'}
         />
       ) : (
         <ImageIcon aria-hidden="true" className="size-1/4 max-w-14 text-primary-ink opacity-45" />
