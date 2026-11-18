@@ -11,9 +11,26 @@ export const catalogFieldTypes = [
   'date',
   'select',
   'multi_select',
+  'buttons',
 ] as const;
 export type CatalogFieldType = (typeof catalogFieldTypes)[number];
-export type CatalogValue = string | number | boolean | string[];
+export const catalogButtonsLimit = 12;
+export const catalogButtonsValue = z
+  .array(
+    z
+      .object({
+        label: z.string().trim().min(1).max(80),
+        url: z
+          .string()
+          .trim()
+          .max(2048)
+          .refine((value) => Boolean(safeCatalogUrl(value))),
+      })
+      .strict(),
+  )
+  .max(catalogButtonsLimit);
+export type CatalogButton = z.infer<typeof catalogButtonsValue>[number];
+export type CatalogValue = string | number | boolean | string[] | CatalogButton[];
 
 export const catalogIcons = {
   compass: 'Boussole',
@@ -69,6 +86,13 @@ export const catalogCategoryInput = z.object({
 
 export const catalogFieldInput = z
   .object({
+    icon: z
+      .string()
+      .trim()
+      .max(80)
+      .regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/, 'Choisissez une icône valide.')
+      .optional()
+      .transform((value) => value || null),
     key: slug.pipe(z.string().max(80)),
     label: label(100),
     type: z.enum(catalogFieldTypes),
@@ -152,6 +176,20 @@ export function readCatalogValue(
   published: boolean,
 ): CatalogValue | undefined {
   const value = raw[0]?.trim();
+  if (field.type === 'buttons' && value) {
+    let parsed;
+    try {
+      parsed = value.length <= 28000 ? catalogButtonsValue.safeParse(JSON.parse(value)) : undefined;
+    } catch {
+      // Invalid serialized values follow the same validation path as other fields.
+    }
+    if (!parsed?.success)
+      throw new Error(`Vérifiez les libellés et les liens du champ « ${field.label} ».`);
+    if (parsed.data.length) return parsed.data;
+    if (field.is_required && published)
+      throw new Error(`Ajoutez au moins un bouton dans « ${field.label} » avant de publier.`);
+    return undefined;
+  }
   if (!value) {
     if (field.is_required && published)
       throw new Error(`Renseignez « ${field.label} » avant de publier.`);

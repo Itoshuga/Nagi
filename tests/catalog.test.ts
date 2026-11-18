@@ -52,4 +52,57 @@ describe('Catalog input', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('reads ordered button groups, trims labels and allows empty optional drafts', () => {
+    const field = { type: 'buttons' as const, label: 'Sources', options: [], is_required: true };
+    const buttons = [
+      { label: ' Site officiel ', url: ' https://example.org/lieu ' },
+      { label: 'Article', url: 'https://example.org/source?q=tokyo#histoire' },
+    ];
+    expect(readCatalogValue(field, [JSON.stringify(buttons)], true)).toEqual([
+      { label: 'Site officiel', url: 'https://example.org/lieu' },
+      buttons[1],
+    ]);
+    expect(readCatalogValue(field, ['[]'], false)).toBeUndefined();
+    expect(readCatalogValue({ ...field, is_required: false }, ['[]'], true)).toBeUndefined();
+    expect(() => readCatalogValue(field, ['[]'], true)).toThrow(/au moins un bouton/);
+    expect(() => readCatalogValue(field, [], true)).toThrow(/avant de publier/);
+    expect(
+      catalogFieldInput.parse({
+        key: 'sources',
+        label: 'Sources',
+        type: 'buttons',
+        options: '',
+        sort_order: '0',
+        is_required: 'false',
+      }).type,
+    ).toBe('buttons');
+  });
+
+  it('rejects malformed, oversized or unsafe button groups before saving', () => {
+    const field = { type: 'buttons' as const, label: 'Sources', options: [], is_required: false };
+    const button = { label: 'Source', url: 'https://example.org' };
+    for (const value of [
+      null,
+      {},
+      [null],
+      [{ ...button, label: '' }],
+      [{ ...button, label: 'a'.repeat(81) }],
+      [{ label: 'Source' }],
+      [{ ...button, tracking: true }],
+      Array(13).fill(button),
+      ...[
+        'javascript:alert(1)',
+        'data:text/html,hi',
+        '//example.org',
+        'https://user:pass@example.org',
+        'https://',
+      ].map((url) => [{ ...button, url }]),
+    ]) {
+      expect(() => readCatalogValue(field, [JSON.stringify(value)], false)).toThrow(
+        /libellés et les liens/,
+      );
+    }
+    expect(() => readCatalogValue(field, ['not-json'], false)).toThrow(/libellés et les liens/);
+  });
 });

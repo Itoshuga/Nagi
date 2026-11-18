@@ -1,10 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".env"],
+  "globalDependencies": [".env", "scripts/generate-lucide-icons.mjs"],
   "globalPassThroughEnv": ["NEXT_PUBLIC_*", "SUPABASE_*", "DISCORD_*", "NAGI_*", "NODE_ENV"],
   "tasks": {
     "dev": { "cache": false, "persistent": true },
-    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**", "dist/**"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "public/icons/lucide/**"]
+    },
     "typecheck": { "dependsOn": ["^build"], "outputs": [] }
   }
 }

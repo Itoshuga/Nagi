@@ -9,6 +9,8 @@ import { findEntryFields, saveEntry } from './actions';
 import { EntryLocationFields } from './location';
 import { DeleteEntryButton } from './delete-button';
 import { EntryWorkspace } from './workspace';
+import { EntryButtonLinks } from './button-links';
+import { FieldIcon } from '@/features/icons/field-icon';
 
 function EntryPublication({
   formId,
@@ -70,8 +72,15 @@ function EntryPublication({
 }
 
 function FieldControl({ field, value }: { field: CategoryField; value: Json | undefined }) {
+  if (field.type === 'buttons') return <EntryButtonLinks field={field} value={value} />;
   const name = `field-${field.id}`;
-  const label = `${field.label}${field.is_required ? ' *' : ''}`;
+  const label = (
+    <span className="inline-flex items-center gap-2">
+      <FieldIcon name={field.icon} className="text-primary-ink" />
+      {field.label}
+      {field.is_required ? ' *' : ''}
+    </span>
+  );
   const scalar =
     typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
       ? String(value)
@@ -346,11 +355,12 @@ export function EntryForm({
             )}
             <div key={categoryId} className="grid gap-4 sm:grid-cols-2">
               {active.fields.map((field) => (
-                <FieldControl
+                <div
                   key={field.id}
-                  field={field}
-                  value={original ? custom[field.id] : undefined}
-                />
+                  className={field.type === 'buttons' ? 'min-w-0 sm:col-span-2' : 'min-w-0'}
+                >
+                  <FieldControl field={field} value={original ? custom[field.id] : undefined} />
+                </div>
               ))}
             </div>
           </>

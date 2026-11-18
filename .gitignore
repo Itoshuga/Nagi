@@ -13,3 +13,4 @@ supabase/.branches/
 playwright-report/
 test-results/
 artifacts/
+apps/web/public/icons/lucide/

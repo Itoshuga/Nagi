@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Compass, MapPin } from 'lucide-react';
+import { ArrowUpRight, Compass, MapPin } from 'lucide-react';
 import { Badge } from '@nagi/ui';
 import {
   listCategoryFields,
@@ -9,7 +9,7 @@ import {
   type CatalogRelation,
   type NagiDatabase,
 } from '@nagi/database';
-import { safeCatalogUrl } from '@nagi/shared';
+import { catalogButtonsValue, safeCatalogUrl } from '@nagi/shared';
 import { CategoryIcon } from '@/features/categories/icon';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { withQuery } from '@/features/geography/model';
@@ -18,6 +18,7 @@ import { entryMediaUrl } from '@/features/media/model';
 import { EntryCard, entryHref } from './discovery';
 import { EntryRichText } from './rich-text';
 import { AddPlaceDialog } from '@/features/trips/add-place-dialog';
+import { FieldIcon } from '@/features/icons/field-icon';
 
 function groupRelations(relations: CatalogRelation[]) {
   const groups = new Map<string, { label: string; relations: CatalogRelation[] }>();
@@ -54,19 +55,26 @@ export async function CatalogEntryPage({
       : {};
   const metadata = fields.flatMap((field) => {
     const value = custom[field.id];
+    const heading = { label: field.label, icon: field.icon };
+    if (field.type === 'buttons') return [];
     if (value == null) return [];
     if (typeof value === 'boolean')
-      return [{ label: field.label, text: value ? 'Oui' : 'Non', href: null }];
+      return [{ ...heading, text: value ? 'Oui' : 'Non', href: null }];
     if (typeof value === 'number')
-      return [
-        { label: field.label, text: new Intl.NumberFormat('fr-FR').format(value), href: null },
-      ];
-    if (Array.isArray(value)) return [{ label: field.label, text: value.join(' · '), href: null }];
+      return [{ ...heading, text: new Intl.NumberFormat('fr-FR').format(value), href: null }];
+    if (Array.isArray(value)) return [{ ...heading, text: value.join(' · '), href: null }];
     if (typeof value === 'string') {
       const href = field.type === 'url' ? safeCatalogUrl(value) : null;
-      return [{ label: field.label, text: value, href }];
+      return [{ ...heading, text: value, href }];
     }
     return [];
+  });
+  const buttonGroups = fields.flatMap((field) => {
+    if (field.type !== 'buttons') return [];
+    const parsed = catalogButtonsValue.safeParse(custom[field.id]);
+    return parsed.success && parsed.data.length
+      ? [{ id: field.id, label: field.label, icon: field.icon, buttons: parsed.data }]
+      : [];
   });
   const coordinates =
     entry.latitude !== null && entry.longitude !== null ? [entry.latitude, entry.longitude] : null;
@@ -149,6 +157,34 @@ export async function CatalogEntryPage({
           )}
         </div>
       </header>
+      {buttonGroups.length > 0 && (
+        <div className="mt-6 space-y-5 rounded-3xl border border-border bg-card p-6 sm:px-8">
+          {buttonGroups.map((group) => (
+            <section key={group.id} aria-labelledby={`buttons-${group.id}`}>
+              <h2 id={`buttons-${group.id}`} className="mb-3 text-sm font-bold">
+                {group.label}
+              </h2>
+              <ul className="flex flex-wrap gap-2.5">
+                {group.buttons.map((button, index) => (
+                  <li key={index} className="max-w-full">
+                    <a
+                      href={safeCatalogUrl(button.url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-border bg-accent/50 px-5 py-3 text-sm font-semibold text-primary-ink transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      <FieldIcon name={group.icon} />
+                      <span className="min-w-0 break-words">{button.label}</span>
+                      <ArrowUpRight className="size-4 shrink-0" />
+                      <span className="sr-only"> (nouvel onglet)</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
       {(entry.description || metadata.length > 0 || coordinates) && (
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
           {entry.description && (
@@ -161,9 +197,12 @@ export async function CatalogEntryPage({
             <section className="self-start rounded-3xl border border-border bg-card p-6">
               <h2 className="mb-4 text-lg font-extrabold">Informations pratiques</h2>
               <dl className="space-y-3">
-                {metadata.map(({ label, text, href }, index) => (
+                {metadata.map(({ label, text, href, icon }, index) => (
                   <div key={index} className="border-b border-border pb-3 last:border-0 last:pb-0">
-                    <dt className="text-sm font-semibold">{label}</dt>
+                    <dt className="flex items-center gap-2 text-sm font-semibold">
+                      <FieldIcon name={icon} className="text-primary-ink" />
+                      {label}
+                    </dt>
                     <dd className="mt-1 whitespace-pre-line break-words text-sm text-muted-foreground">
                       {href ? (
                         <a

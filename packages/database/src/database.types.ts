@@ -168,6 +168,7 @@ export type Database = {
           is_required: boolean;
           options: (string)[];
           sort_order: number;
+          icon: string | null;
         };
         Insert: {
           id?: string;
@@ -178,6 +179,7 @@ export type Database = {
           is_required?: boolean;
           options?: (string)[];
           sort_order?: number;
+          icon?: string | null;
         };
         Update: {
           id?: string;
@@ -188,6 +190,7 @@ export type Database = {
           is_required?: boolean;
           options?: (string)[];
           sort_order?: number;
+          icon?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'category_fields_category_id_fkey'; columns: ["category_id"]; isOneToOne: false; referencedRelation: 'categories'; referencedColumns: ["id"]; },
@@ -830,7 +833,7 @@ export type Database = {
     };
     Enums: {
       app_role: "user" | "admin" | "owner";
-      catalog_field_type: "short_text" | "long_text" | "number" | "boolean" | "url" | "date" | "select" | "multi_select";
+      catalog_field_type: "short_text" | "long_text" | "number" | "boolean" | "url" | "date" | "select" | "multi_select" | "buttons";
       trip_collaboration_mode: "all_members" | "organizers_only";
       trip_status: "planned" | "ongoing" | "completed" | "cancelled" | "draft";
     };

@@ -4,6 +4,7 @@ import { catalogCategoryInput, catalogFieldInput, destinationIdSchema } from '@n
 import { requireAdmin } from '@/features/auth/session';
 import { serviceDatabase } from '@/lib/supabase/server';
 import { catalogError, refreshCatalog, type CatalogResult } from '@/features/catalog/mutations';
+import { isLibraryIcon } from '@/features/icons/library';
 
 export async function saveCategory(id: string | null, form: FormData): Promise<CatalogResult> {
   await requireAdmin();
@@ -76,6 +77,8 @@ export async function saveCategoryField(
       ok: false,
       message: parsed.error.issues[0]?.message ?? 'Vérifiez les paramètres du champ.',
     };
+  if (parsed.data.icon && !isLibraryIcon(parsed.data.icon))
+    return { ok: false, message: 'Choisissez une icône dans la bibliothèque.' };
   const db = serviceDatabase();
   const query = fieldId
     ? db.from('category_fields').update(parsed.data).eq('id', fieldId).eq('category_id', categoryId)

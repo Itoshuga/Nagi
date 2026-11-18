@@ -183,6 +183,82 @@ describe('Global catalog phase 3', () => {
     );
   });
 
+  it('validates button groups in PostgreSQL and preserves required and in-use protections', async () => {
+    await db.exec(world);
+    await asService();
+    const field = "(select id from public.category_fields where key='sources')";
+    await db.exec(
+      `insert into public.category_fields(category_id,key,label,type) values (${food},'sources','Sources','buttons')`,
+    );
+    const buttons = [
+      { label: 'Site officiel', url: 'https://example.org/lieu' },
+      { label: 'Source', url: 'https://example.org/?q=tokyo#histoire' },
+    ];
+    await db.query(
+      `update public.entries set custom_values=jsonb_build_object(${field}::text,$1::jsonb) where id=${entry}`,
+      [JSON.stringify(buttons)],
+    );
+    expect(
+      await scalar(
+        `select custom_values->${field}::text as value from public.entries where id=${entry}`,
+      ),
+    ).toEqual(buttons);
+    await db.exec(`update public.category_fields set icon='zodiac-virgo' where id=${field}`);
+    expect(await scalar(`select icon as value from public.category_fields where id=${field}`)).toBe(
+      'zodiac-virgo',
+    );
+    expect(
+      await scalar(
+        `select custom_values->${field}::text as value from public.entries where id=${entry}`,
+      ),
+    ).toEqual(buttons);
+    await fails(
+      `update public.category_fields set icon='../book' where id=${field}`,
+      /check constraint/,
+    );
+    await fails(`update public.category_fields set icon='' where id=${field}`, /check constraint/);
+    await db.exec(`update public.category_fields set icon=null where id=${field}`);
+    for (const value of [
+      null,
+      {},
+      [],
+      [null],
+      [{ label: '', url: 'https://example.org' }],
+      [{ label: 'a'.repeat(81), url: 'https://example.org' }],
+      [{ label: 'Source' }],
+      [{ ...buttons[0], extra: true }],
+      Array(13).fill(buttons[0]),
+      ...[
+        'javascript:alert(1)',
+        '//example.org',
+        'https://user:pass@example.org',
+        'https://',
+        'https://bad host',
+      ].map((url) => [{ label: 'Source', url }]),
+    ]) {
+      const literal = JSON.stringify(value).replaceAll("'", "''");
+      await fails(
+        `update public.entries set custom_values=jsonb_build_object(${field}::text,'${literal}'::jsonb) where id=${entry}`,
+        /catalog_invalid_field/,
+      );
+    }
+    await db.exec(`update public.category_fields set is_required=true where id=${field}`);
+    await fails(
+      `update public.entries set custom_values='{}' where id=${entry}`,
+      /catalog_required_field/,
+    );
+    await fails(
+      `update public.category_fields set type='url' where id=${field}`,
+      /catalog_field_in_use/,
+    );
+    await fails(`delete from public.category_fields where id=${field}`, /catalog_field_in_use/);
+    await db.exec(`update public.entries set published=false,custom_values='{}' where id=${entry}`);
+    await fails(
+      `update public.entries set published=true where id=${entry}`,
+      /catalog_required_field/,
+    );
+  });
+
   it('shows only active, published and geographically visible entries and relations', async () => {
     await db.exec(world);
     await asService();

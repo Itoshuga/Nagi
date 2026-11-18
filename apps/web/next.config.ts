@@ -13,6 +13,10 @@ const config: NextConfig = {
   async headers() {
     return [
       {
+        source: '/icons/lucide/:version/:name.svg',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
