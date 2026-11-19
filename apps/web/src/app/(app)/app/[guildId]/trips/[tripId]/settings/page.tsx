@@ -58,7 +58,9 @@ export default async function EditTripSettings({
         }
         run={saveTripSettings.bind(null, guildId, tripId)}
       />
-      <TripOrganizers guild={guildId} trip={trip} organizers={organizers} />
+      <section id="trip-organizers">
+        <TripOrganizers guild={guildId} trip={trip} organizers={organizers} />
+      </section>
       <TripDeleteForm version={trip.version} run={removeTrip.bind(null, guildId, tripId)} />
     </div>
   );

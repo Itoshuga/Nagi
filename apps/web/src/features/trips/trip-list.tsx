@@ -24,6 +24,7 @@ export const tripStatus: Record<Trip['status'], string> = {
   ongoing: 'En cours',
   completed: 'Terminé',
   cancelled: 'Annulé',
+  archived: 'Archivé',
 };
 
 export function TripList({

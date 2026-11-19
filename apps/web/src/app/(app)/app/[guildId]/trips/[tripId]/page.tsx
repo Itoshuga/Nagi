@@ -12,14 +12,21 @@ export default async function TripPage({
   searchParams,
 }: {
   params: Promise<{ guildId: string; tripId: string }>;
-  searchParams: Promise<{ ajouter?: string }>;
+  searchParams: Promise<{
+    ajouter?: string;
+    vue?: string;
+    jour?: string;
+    mode?: string;
+    etape?: string;
+  }>;
 }) {
   const { guildId, tripId } = await params;
   if (!uuidSchema.safeParse(tripId).success) notFound();
   const { viewer, isAdmin } = await requireGuild(guildId);
   const { trips } = await spaceServices();
   const catalog = publicCatalogDatabase();
-  const selection = uuidSchema.safeParse((await searchParams).ajouter);
+  const query = await searchParams;
+  const selection = uuidSchema.safeParse(query.ajouter);
   const [plan, categories, selected] = await Promise.all([
     trips.plan(guildId, tripId, catalog),
     publishedCatalog.categories(),
@@ -32,11 +39,16 @@ export default async function TripPage({
   return (
     <TripWorkbench
       guild={guildId}
+      viewerId={viewer.id}
       plan={plan}
       categories={categories.map(({ id, name }) => ({ id, name }))}
       canManage={canManage}
       canEdit={canManage || plan.collaboration_mode === 'all_members'}
       initialEntry={selection.success ? selected?.get(selection.data) : undefined}
+      initialView={query.vue}
+      initialDay={query.jour}
+      initialMode={query.mode}
+      initialItem={query.etape}
     />
   );
 }

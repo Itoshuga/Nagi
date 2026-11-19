@@ -11,6 +11,7 @@ import type { NagiDatabase } from './client';
 import type { Json } from './database.types';
 import type { ProfileIdentity } from './profiles';
 import { catalogEntriesById } from './catalog';
+import { tripCatalogLinks } from './trip-catalog';
 export type Trip = import('./database.types').Database['public']['Tables']['trips']['Row'];
 
 export class GuildPreferencesService {
@@ -129,14 +130,16 @@ export class TripService {
       throw new Error('Impossible de charger l’itinéraire.', { cause: result.error });
     if (!result.data) return null;
     const { items, days, ...trip } = result.data;
-    const [entries, people] = await Promise.all([
+    const [entries, people, connections] = await Promise.all([
       catalogEntriesById(catalog, [...new Set(items.map((item) => item.entry_id))]),
       this.db.rpc('trip_contributor_cards', { p_trip: tripId }),
+      tripCatalogLinks(catalog, [...new Set(items.map((item) => item.entry_id))]),
     ]);
     if (people.error) throw new Error('Impossible de charger les collaborateurs.');
     return {
       ...trip,
       people: people.data as ProfileIdentity[],
+      connections,
       days: sortTripDays(days),
       items: items
         .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))

@@ -1039,6 +1039,128 @@ describe('Collaborative planner transactions', () => {
     collaboration_mode: 'all_members',
   };
 
+  it('moves and schedules an event atomically, preserving notes and enforcing both versions', async () => {
+    await catalogAndDays();
+    await asUser();
+    expect(
+      await scalar<number>(
+        operation(0, 'add_item', {
+          id: firstItem,
+          entry: catalogEntry,
+          day: dayOne,
+          repeat: false,
+          start_time: '09:00',
+          duration: 60,
+        }),
+      ),
+    ).toBe(1);
+    const schedule = {
+      id: firstItem,
+      item_version: 0,
+      day: dayTwo,
+      start_time: '11:30',
+      end_time: '13:00',
+      duration: 90,
+    };
+    expect(await scalar<number>(operation(1, 'schedule_item', schedule))).toBe(2);
+    expect(
+      await scalar(
+        `select jsonb_build_object('day',trip_day_id,'time',start_time,'duration',estimated_duration_minutes,'version',version) as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toEqual({ day: dayTwo, time: '11:30:00', duration: 90, version: 1 });
+    await fails(
+      operation(2, 'schedule_item', { ...schedule, start_time: '12:00' }),
+      /trip_conflict/,
+    );
+    await fails(operation(1, 'schedule_item', { ...schedule, item_version: 1 }), /trip_conflict/);
+    await fails(
+      operation(2, 'schedule_item', { ...schedule, item_version: 1, day: plannedTrip }),
+      /trip_day_missing/,
+    );
+    await fails(
+      operation(2, 'schedule_item', { ...schedule, item_version: 1, end_time: '10:00' }),
+      /trip_items_local_times/,
+    );
+    expect(
+      await scalar<string>(
+        `select start_time::text as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe('11:30:00');
+    await db.exec('reset role');
+    await asUser(adminId);
+    await fails(operation(2, 'schedule_item', { ...schedule, item_version: 1 }), /trip_forbidden/);
+  });
+
+  it('only sorts the requested day after an explicit action and keeps the other day intact', async () => {
+    await catalogAndDays();
+    await asUser();
+    await scalar(
+      operation(0, 'add_item', {
+        id: firstItem,
+        entry: catalogEntry,
+        day: dayOne,
+        repeat: false,
+        start_time: '14:00',
+      }),
+    );
+    await scalar(
+      operation(0, 'add_item', {
+        id: secondItem,
+        entry: catalogEntry,
+        day: dayOne,
+        repeat: true,
+        start_time: '09:00',
+      }),
+    );
+    expect(
+      await scalar<string>(
+        `select id as value from public.trip_items where trip_day_id='${dayOne}' order by sort_order limit 1`,
+      ),
+    ).toBe(firstItem);
+    expect(await scalar<number>(operation(2, 'sort_items', { day: dayOne }))).toBe(3);
+    expect(
+      await scalar<string>(
+        `select id as value from public.trip_items where trip_day_id='${dayOne}' order by sort_order limit 1`,
+      ),
+    ).toBe(secondItem);
+    await fails(operation(2, 'sort_items', { day: dayOne }), /trip_conflict/);
+  });
+
+  it('fills missing dates automatically on date changes and preserves existing day identities', async () => {
+    await asUser();
+    expect(await scalar<number>(operation(0, 'settings', settings))).toBe(1);
+    const id = await scalar<string>(
+      `select id as value from public.trip_days where trip_id='${tripA}' and date='2027-07-12'`,
+    );
+    expect(
+      await scalar<number>(operation(1, 'settings', { ...settings, end_date: '2027-07-16' })),
+    ).toBe(2);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_days where trip_id='${tripA}'`,
+      ),
+    ).toBe(5);
+    expect(
+      await scalar<string>(
+        `select id as value from public.trip_days where trip_id='${tripA}' and date='2027-07-12'`,
+      ),
+    ).toBe(id);
+  });
+
+  it('normalizes accents and case while retaining international catalogue names', async () => {
+    expect(
+      await scalar<string>(`select public.catalog_search_key('CAFÉ Pokémon 東京') as value`),
+    ).toBe('cafe pokemon 東京');
+    await catalogAndDays();
+    await db.exec(`update public.entries set title='Café Pokémon 東京' where id='${catalogEntry}'`);
+    await asUser();
+    expect(
+      await scalar<string>(
+        `select id as value from public.entries where search_key like '%cafe pokemon%'`,
+      ),
+    ).toBe(catalogEntry);
+  });
+
   it('initializes dated trips and preserves days when the date range is shortened', async () => {
     await asUser(otherId);
     await db.exec(`insert into public.trips(id,guild_id,title,start_date,end_date,timezone,created_by)

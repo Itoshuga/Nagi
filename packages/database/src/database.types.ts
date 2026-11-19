@@ -346,6 +346,7 @@ export type Database = {
           sort_order: number;
           custom_values: Json;
           cover_image_url: string | null;
+          search_key: string | null;
         };
         Insert: {
           id?: string;
@@ -366,6 +367,7 @@ export type Database = {
           sort_order?: number;
           custom_values?: Json;
           cover_image_url?: string | null;
+          search_key?: string | null;
         };
         Update: {
           id?: string;
@@ -386,6 +388,7 @@ export type Database = {
           sort_order?: number;
           custom_values?: Json;
           cover_image_url?: string | null;
+          search_key?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'entries_category_id_fkey'; columns: ["category_id"]; isOneToOne: false; referencedRelation: 'categories'; referencedColumns: ["id"]; },
@@ -893,6 +896,7 @@ export type Database = {
       catalog_remove_category: { Args: { p_id: string; p_destination: string }; Returns: number; };
       catalog_remove_relation_type: { Args: { p_id: string; p_destination: string; p_expected: string }; Returns: number; };
       catalog_save_relation_type: { Args: { p_id: string; p_data: Json }; Returns: string; };
+      catalog_search_key: { Args: { value: string }; Returns: string; };
       catalog_toggle_relation_type: { Args: { p_id: string; p_enabled: boolean; p_expected: string }; Returns: undefined; };
       claim_bot_sync: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: Database['public']['Tables']['bot_sync_requests']['Row'][]; };
       claim_discord_refresh: { Args: { p_user_id: string; p_version: number; p_lease: string }; Returns: boolean; };
@@ -929,7 +933,7 @@ export type Database = {
       app_role: "user" | "admin" | "owner";
       catalog_field_type: "short_text" | "long_text" | "number" | "boolean" | "url" | "date" | "select" | "multi_select" | "buttons";
       trip_collaboration_mode: "all_members" | "organizers_only";
-      trip_status: "planned" | "ongoing" | "completed" | "cancelled" | "draft";
+      trip_status: "planned" | "ongoing" | "completed" | "cancelled" | "draft" | "archived";
     };
     CompositeTypes: { [_ in never]: never };
   };

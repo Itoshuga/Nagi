@@ -2,9 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { uuidSchema } from '@nagi/shared';
 import { requireGuild } from '@/features/spaces/server';
-import { TripSettingsForm } from '@/features/trips/settings-form';
-import { tripTimezones } from '@/features/trips/timezones';
-import { createPlannedTrip } from '@/features/trips/actions';
+import { CreateTripLink } from '@/features/trips/create-trip-dialog';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
 
 export const metadata = { title: 'Créer un voyage' };
@@ -36,11 +34,12 @@ export default async function NewTrip({
         <ArrowLeft className="size-4" aria-hidden="true" /> Tous les voyages
       </Link>
       <h1 className="space-title">Créer un voyage</h1>
-      <TripSettingsForm
-        guild={guildId}
-        timezones={tripTimezones}
+      <CreateTripLink
+        guildId={guildId}
+        initialOpen
+        entry={place?.data?.id}
         destination={place?.data?.country ?? undefined}
-        run={createPlannedTrip.bind(null, guildId, place?.data?.id ?? null)}
+        dismissTo={`/app/${guildId}/trips`}
       />
     </div>
   );

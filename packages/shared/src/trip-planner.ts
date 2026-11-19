@@ -2,7 +2,14 @@ import { z } from 'zod';
 import { tripInputSchema, uuidSchema } from './collaboration';
 import { snowflakeSchema } from './identifiers';
 
-export const tripStatuses = ['draft', 'planned', 'ongoing', 'completed', 'cancelled'] as const;
+export const tripStatuses = [
+  'draft',
+  'planned',
+  'ongoing',
+  'completed',
+  'cancelled',
+  'archived',
+] as const;
 export const collaborationModes = ['all_members', 'organizers_only'] as const;
 export const tripTimezoneSchema = z
   .string()
@@ -54,6 +61,8 @@ export const tripEditSchema = z.discriminatedUnion('operation', [
       entry: uuidSchema,
       day: uuidSchema.nullable(),
       repeat: z.boolean(),
+      start_time: localTime.optional(),
+      duration: z.number().int().min(1).max(1440).nullable().optional(),
     }),
   }),
   z.object({
@@ -65,6 +74,23 @@ export const tripEditSchema = z.discriminatedUnion('operation', [
     }),
   }),
   z.object({ operation: z.literal('delete_item'), data: z.object({ id: uuidSchema }) }),
+  z.object({ operation: z.literal('sort_items'), data: z.object({ day: uuidSchema.nullable() }) }),
+  z.object({
+    operation: z.literal('schedule_item'),
+    data: z
+      .object({
+        id: uuidSchema,
+        item_version: z.number().int().nonnegative(),
+        day: uuidSchema.nullable(),
+        start_time: localTime,
+        end_time: localTime,
+        duration: z.number().int().min(1).max(1440).nullable(),
+      })
+      .refine(
+        (v) => !v.end_time || Boolean(v.start_time && v.start_time < v.end_time),
+        'L’heure de fin doit suivre le début sur la même journée.',
+      ),
+  }),
   z.object({
     operation: z.literal('edit_item'),
     data: z
@@ -95,6 +121,25 @@ export const tripCatalogSearchSchema = z.object({
   categoryId: uuidSchema.optional(),
 });
 export type TripCatalogSearch = z.input<typeof tripCatalogSearchSchema>;
+
+export const tripPlaceQuery = z.object({
+  mode: z.enum(['search', 'detail', 'locations', 'nearby']).default('search'),
+  q: z.string().trim().max(100).default(''),
+  page: z.coerce.number().int().min(0).max(10000).default(0),
+  day: uuidSchema.optional(),
+  entry: uuidSchema.optional(),
+  category: uuidSchema.optional(),
+  country: uuidSchema.optional(),
+  city: uuidSchema.optional(),
+  neighborhood: uuidSchema.optional(),
+  kind: z.enum(['countries', 'cities', 'neighborhoods']).optional(),
+  parent: uuidSchema.optional(),
+  south: z.coerce.number().min(-90).max(90).optional(),
+  north: z.coerce.number().min(-90).max(90).optional(),
+  west: z.coerce.number().min(-180).max(180).optional(),
+  east: z.coerce.number().min(-180).max(180).optional(),
+});
+export type TripPlaceQuery = z.output<typeof tripPlaceQuery>;
 
 // Only suggest destinations for which one timezone is an unambiguous default.
 const countryTimezones: Record<string, string> = {
@@ -134,8 +179,7 @@ export function suggestedTripZone(countryCode?: string | null) {
 
 export function tripDateLabel(value: string, options?: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'long',
-    ...options,
+    ...(options ?? { dateStyle: 'long' }),
     timeZone: 'UTC',
   }).format(new Date(`${value}T12:00:00Z`));
 }

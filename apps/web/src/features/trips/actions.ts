@@ -239,6 +239,38 @@ export async function editableTripOptions(guild: string) {
   };
 }
 
+export async function archivePlannedTrip(
+  guild: string,
+  trip: string,
+  version: number,
+): Promise<TripResult> {
+  await requireGuild(guild, 'read', true);
+  if (!uuidSchema.safeParse(trip).success || !tripVersionSchema.safeParse(version).success)
+    return { ok: false, error: 'Voyage introuvable.' };
+  const { trips } = await spaceServices();
+  const existing = await trips.get(guild, trip);
+  if (!existing) return { ok: false, error: 'Voyage introuvable.' };
+  try {
+    const revised = await trips.edit(guild, trip, version, {
+      operation: 'settings',
+      data: {
+        title: existing.title,
+        description: existing.description,
+        destination_country_id: existing.destination_country_id,
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+        timezone: existing.timezone,
+        collaboration_mode: existing.collaboration_mode,
+        status: 'archived',
+      },
+    });
+    changed(guild, trip);
+    return { ok: true, version: revised };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function tripCatalogSearch(guild: string, filters: TripCatalogSearch) {
   await requireGuild(guild);
   const query = tripCatalogSearchSchema.parse(filters);

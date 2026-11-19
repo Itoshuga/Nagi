@@ -12,7 +12,7 @@ export type RelationType = Tables['relation_types']['Row'];
 
 export const entryLocationColumns =
   'country:countries!entries_country_id_fkey(id,name,slug),city:cities!entries_city_id_fkey(id,name,slug,has_neighborhoods),neighborhood:neighborhoods(id,name,slug),category:categories(id,name,slug,icon,color)' as const;
-const cardColumns =
+export const cardColumns =
   `id,title,slug,summary,cover_image_url,published,updated_at,latitude,longitude,${entryLocationColumns}` as const;
 
 export type EntryFilters = {
@@ -51,13 +51,14 @@ export async function listCatalogEntries(
 
 export type EntryCardRow = Awaited<ReturnType<typeof listCatalogEntries>>['rows'][number];
 
-export async function catalogEntriesById(db: NagiDatabase, ids: string[]) {
+export async function catalogEntriesById(db: NagiDatabase, ids: string[], signal?: AbortSignal) {
   const entries = new Map<string, EntryCardRow>();
   for (let offset = 0; offset < ids.length; offset += 75) {
-    const { data, error } = await db
+    const query = db
       .from('entries')
       .select(cardColumns)
       .in('id', ids.slice(offset, offset + 75));
+    const { data, error } = await (signal ? query.abortSignal(signal) : query);
     if (error) throw new Error('Impossible de charger les lieux du voyage.', { cause: error });
     for (const entry of data) entries.set(entry.id, entry);
   }
