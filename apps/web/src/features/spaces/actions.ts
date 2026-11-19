@@ -6,6 +6,19 @@ import { DiscordConnectionError } from '@nagi/discord';
 import { requireGuild, discoverSpaces, spaceServices } from './server';
 
 export type FormState = { error: string };
+export async function rememberSelectedGuild(guildId: string): Promise<FormState> {
+  const parsed = snowflakeSchema.safeParse(guildId);
+  if (!parsed.success) return { error: 'Choisissez un espace valide.' };
+  const { viewer } = await requireGuild(parsed.data, 'read', true);
+  try {
+    await (await spaceServices()).preferences.select(viewer.id, parsed.data);
+  } catch {
+    return { error: 'Votre dernier espace n’a pas pu être mémorisé.' };
+  }
+  revalidatePath('/app');
+  return { error: '' };
+}
+
 export async function selectGuild(_previous: FormState, form: FormData): Promise<FormState> {
   const guildId = snowflakeSchema.safeParse(form.get('guildId'));
   if (!guildId.success) return { error: 'Choisissez un espace valide.' };

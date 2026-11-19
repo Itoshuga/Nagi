@@ -10,7 +10,7 @@ export default async function GuildLayout({
   const { guildId } = await params;
   const { guild, guilds, viewer, preferences } = await requireGuild(guildId);
   return (
-    <div key={guildId}>
+    <div key={guildId} className="space-route">
       <ServerHeader
         guild={guild}
         guilds={guilds}

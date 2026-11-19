@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from '@nagi/ui';
+import { SpaceNavigation } from '@/features/spaces/space-navigation';
 import './globals.css';
 export const metadata: Metadata = {
   title: { default: 'Nagi — À votre rythme', template: '%s · Nagi' },
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Aller au contenu
         </a>
-        {children}
+        <SpaceNavigation>{children}</SpaceNavigation>
         <Toaster />
       </body>
     </html>

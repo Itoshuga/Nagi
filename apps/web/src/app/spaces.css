@@ -70,6 +70,38 @@
   outline-offset: 12px;
   border-radius: 1rem;
 }
+.guild-choice {
+  transition: opacity 180ms ease;
+}
+.guild-choice.is-muted {
+  opacity: 0.35;
+}
+.guild-choice.is-opening .guild-bubble {
+  box-shadow:
+    0 0 0 3px #73a6df,
+    0 18px 30px -15px #315f9870;
+}
+.selector-sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  border-radius: 100px;
+  padding: 6px 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  transition:
+    background 150ms,
+    color 150ms;
+}
+.selector-sound-toggle:hover {
+  color: var(--primary-ink);
+  background: var(--accent);
+}
+.selector-sound-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
 .trip-tile {
   transition:
     transform 180ms,
@@ -80,6 +112,11 @@
   box-shadow: 0 12px 30px -20px #315f9860;
 }
 @media (prefers-reduced-motion: reduce) {
+  .guild-choice,
+  .guild-bubble,
+  .selector-sound-toggle {
+    transition: none;
+  }
   .trip-tile:hover {
     transform: none;
   }

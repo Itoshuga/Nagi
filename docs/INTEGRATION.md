@@ -18,6 +18,14 @@ Ces étapes utilisent de vrais comptes et services. Elles restent à exécuter a
 
 Aucune de ces étapes ne demande de coller des secrets dans un fichier versionné, une issue ou les journaux.
 
+## Sélection d’un espace
+
+1. En production, ouvrir `/select-server` avec plusieurs espaces. Seul le favori (ou le premier espace disponible) doit être préchargé d’emblée. Survoler un autre espace, lui donner le focus au clavier et le toucher sur mobile : son lien est préparé sans mémoriser un changement d’espace.
+2. Après une première interaction autorisée par le navigateur, vérifier le son doux au survol et au focus clavier, puis le son distinct au clic ou à Entrée. Balayer rapidement plusieurs espaces : les survols sont espacés pour éviter l’accumulation. Avant cette interaction, le navigateur peut garder le survol silencieux ; aucun son en attente ne doit se déclencher plus tard.
+3. Couper les sons puis recharger la page : le choix reste mémorisé sur cet appareil. Réactiver les sons, puis choisir un espace. La navigation ne doit attendre ni le son, ni une durée d’animation, ni la mémorisation de la préférence. Contrôler aussi le clic avec Ctrl/Cmd pour ouvrir un nouvel onglet normalement.
+4. Vérifier la transition depuis la bulle du serveur jusqu’à l’accueil à 320/390 px et sur desktop. En réduction des animations, la navigation reste directe sans déplacement ni voile. Avec un réseau lent, l’état de chargement reste compréhensible et une navigation interrompue ne doit pas laisser un voile permanent.
+5. Après l’arrivée, recharger et vérifier le dernier espace mémorisé. Le favori existant doit rester inchangé. Retirer le membre ou le bot avant une tentative et vérifier le refus côté serveur ; le préchargement et la navigation directe ne doivent pas contourner les permissions Discord ou RLS.
+
 ## Catalogue mondial
 
 1. Se connecter via Discord comme administrateur global. Créer un pays, une ville sans quartiers, une ville avec quartiers et un quartier. Les publier depuis l’administration.
