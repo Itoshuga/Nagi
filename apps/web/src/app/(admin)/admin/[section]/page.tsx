@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Badge, Card, EmptyState } from '@nagi/ui';
 import { destinationKindSchema } from '@nagi/shared';
 import { requireAdmin } from '@/features/auth/session';
@@ -7,7 +7,7 @@ import { BotPanel } from '@/features/admin/bot-panel';
 import { AdminCategories } from '@/features/categories/pages';
 import { AdminEntries } from '@/features/entries/admin';
 import { RelationTypeAdmin } from '@/features/relations/admin';
-import { listRelationTypes } from '@nagi/database';
+import { listRelationTypeStats } from '@nagi/database';
 import { AdminDestinationList } from '@/features/geography/admin-list';
 import type { SearchParams } from '@/features/geography/model';
 import { sessionDatabase } from '@/lib/supabase/server';
@@ -24,6 +24,7 @@ export default async function AdminSection({
 }) {
   const viewer = await requireAdmin();
   const { section } = await params;
+  if (section === 'relation-types') redirect('/admin/relations');
   const destination = destinationKindSchema.safeParse(section);
   if (destination.success)
     return <AdminDestinationList kind={destination.data} params={await searchParams} />;
@@ -109,7 +110,7 @@ export default async function AdminSection({
   } else if (section === 'categories') content = <AdminCategories />;
   else if (section === 'entries') content = <AdminEntries params={await searchParams} />;
   else if (section === 'relations')
-    content = <RelationTypeAdmin types={await listRelationTypes(await sessionDatabase())} />;
+    content = <RelationTypeAdmin types={await listRelationTypeStats(await sessionDatabase())} />;
   return (
     <>
       <p className="mb-3 text-[10px] uppercase tracking-[.2em] text-primary-ink">Administration</p>

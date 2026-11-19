@@ -186,7 +186,7 @@ function RelatedSuggestions({
       )}
       {related && related.length > 0 && (
         <ul className="mt-2 space-y-3">
-          {related.map(({ id, entry, type, isIncoming }) => (
+          {related.map(({ id, entry, label }) => (
             <li
               key={id}
               className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-2"
@@ -201,9 +201,7 @@ function RelatedSuggestions({
                   sizes="40px"
                 />
                 <span>
-                  <small className="block text-muted-foreground">
-                    {isIncoming ? type.inverse_label : type.forward_label}
-                  </small>
+                  <small className="block text-muted-foreground">{label}</small>
                   {entry.title}
                 </span>
               </Link>

@@ -1,4 +1,4 @@
-import { destinationNamePattern, type DestinationKind } from '@nagi/shared';
+import { destinationNamePattern, relationReading, type DestinationKind } from '@nagi/shared';
 import type { NagiDatabase } from './client';
 import type { Database } from './database.types';
 import { destinationPageSize } from './geography';
@@ -133,7 +133,7 @@ export async function listEntryRelations(db: NagiDatabase, entryId: string) {
   const result = await db
     .from('entry_relations')
     .select(
-      `id,source_id,target_id,type:relation_types(*),source:entries!entry_relations_source_id_fkey(${cardColumns}),target:entries!entry_relations_target_id_fkey(${cardColumns})`,
+      `id,updated_at,created_by,source_id,target_id,type:relation_types(*),source:entries!entry_relations_source_id_fkey(${cardColumns}),target:entries!entry_relations_target_id_fkey(${cardColumns})`,
     )
     .or(`source_id.eq.${entryId},target_id.eq.${entryId}`)
     .order('id');
@@ -141,10 +141,26 @@ export async function listEntryRelations(db: NagiDatabase, entryId: string) {
     throw new Error('Impossible de charger les fiches associées.', { cause: result.error });
   return result.data
     .flatMap((relation) => {
-      const isIncoming = relation.target_id === entryId;
-      const entry = isIncoming ? relation.source : relation.target;
-      return entry && relation.type
-        ? [{ id: relation.id, entry, type: relation.type, isIncoming }]
+      if (!relation.type) return [];
+      const reading = relationReading(
+        entryId,
+        relation.source_id,
+        relation.target_id,
+        relation.type,
+        relation,
+      );
+      return reading?.entry
+        ? [
+            {
+              ...reading,
+              entry: reading.entry,
+              id: relation.id,
+              type: relation.type,
+              updated_at: relation.updated_at,
+              source_id: relation.source_id,
+              target_id: relation.target_id,
+            },
+          ]
         : [];
     })
     .sort(
@@ -157,19 +173,38 @@ export async function listEntryRelations(db: NagiDatabase, entryId: string) {
 
 export type CatalogRelation = Awaited<ReturnType<typeof listEntryRelations>>[number];
 
+export async function listRelationTypeStats(db: NagiDatabase) {
+  const { data, error } = await db
+    .from('relation_types')
+    .select('*,relations:entry_relations(count)')
+    .order('sort_order')
+    .order('name')
+    .order('id');
+  if (error) throw new Error('Impossible de charger les types de relation.');
+  return data.map(({ relations, ...type }) => ({ ...type, usage_count: relations[0]?.count ?? 0 }));
+}
+export type RelationTypeStats = Awaited<ReturnType<typeof listRelationTypeStats>>[number];
+
 export async function searchCatalogEntries(
   db: NagiDatabase,
   search: string,
   exclude: string,
   categoryId?: string,
+  filters: { countryId?: string; page?: number } = {},
 ) {
-  let query = db.from('entries').select(cardColumns).neq('id', exclude);
+  let query = db.from('entries').select(cardColumns, { count: 'exact' }).neq('id', exclude);
   if (categoryId) query = query.eq('category_id', categoryId);
+  if (filters.countryId) query = query.eq('country_id', filters.countryId);
   if (search) query = query.ilike('title', destinationNamePattern(search));
-  const result = await query.order('title').order('id').limit(12);
+  const page = filters.page ?? 0;
+  const result = await query
+    .order('title')
+    .order('id')
+    .range(page * 12, page * 12 + 11);
+  if (result.error?.code === 'PGRST103') return { rows: [], hasMore: false };
   if (result.error)
     throw new Error('Impossible de rechercher des fiches.', { cause: result.error });
-  return result.data;
+  return { rows: result.data, hasMore: (page + 1) * 12 < (result.count ?? 0) };
 }
 
 export type CatalogLocation = {

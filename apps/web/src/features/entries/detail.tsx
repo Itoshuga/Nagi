@@ -6,10 +6,9 @@ import {
   listEntryMedia,
   listEntryRelations,
   type CatalogEntryDetail,
-  type CatalogRelation,
   type NagiDatabase,
 } from '@nagi/database';
-import { catalogButtonsValue, safeCatalogUrl } from '@nagi/shared';
+import { catalogButtonsValue, safeCatalogUrl, groupCatalogRelations } from '@nagi/shared';
 import { CategoryIcon } from '@/features/categories/icon';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { withQuery } from '@/features/geography/model';
@@ -20,18 +19,6 @@ import { EntryRichText } from './rich-text';
 import { AddPlaceDialog } from '@/features/trips/add-place-dialog';
 import { FieldIcon } from '@/features/icons/field-icon';
 import { publishedCatalog } from '@/features/catalog/queries';
-
-function groupRelations(relations: CatalogRelation[]) {
-  const groups = new Map<string, { label: string; relations: CatalogRelation[] }>();
-  for (const relation of relations) {
-    const label = relation.isIncoming ? relation.type.inverse_label : relation.type.forward_label;
-    const key = `${relation.type.id}:${label}`;
-    const current = groups.get(key);
-    if (current) current.relations.push(relation);
-    else groups.set(key, { label, relations: [relation] });
-  }
-  return [...groups.entries()];
-}
 
 export async function CatalogEntryPage({
   db,
@@ -242,9 +229,12 @@ export async function CatalogEntryPage({
           </ul>
         </section>
       )}
-      {groupRelations(relations).map(([key, group]) => (
+      {groupCatalogRelations(relations).map(([key, group]) => (
         <section key={key} className="mt-9">
-          <h2 className="mb-4 break-words font-display text-2xl font-extrabold">{group.label}</h2>
+          <h2 className="mb-4 flex items-center gap-2 break-words font-display text-2xl font-extrabold">
+            <FieldIcon name={group.relations[0]?.type.icon} className="size-5 text-primary-ink" />
+            {group.label}
+          </h2>
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {group.relations.map(({ id, entry: linked }) => (
               <li key={id}>

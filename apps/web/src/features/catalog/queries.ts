@@ -16,6 +16,8 @@ import type { DestinationKind } from '@nagi/shared';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
 
 export const publishedCatalogTag = 'published-catalog';
+export const relationTypesTag = 'catalog-relation-types';
+export const entryContentTag = (id: string) => `catalog-entry-content:${id}`;
 const options = { revalidate: 60, tags: [publishedCatalogTag] };
 
 // These caches only use anonymous RLS. Authenticated/admin clients never enter them.
@@ -72,16 +74,17 @@ export const publishedCatalog = {
     ['published-entry'],
     options,
   ),
-  content: unstable_cache(
-    (id: string, category: string) => {
-      const db = publicCatalogDatabase();
-      return Promise.all([
-        listEntryMedia(db, id),
-        listCategoryFields(db, category),
-        listEntryRelations(db, id),
-      ]);
-    },
-    ['published-entry-content'],
-    options,
-  ),
+  content: (id: string, category: string) =>
+    unstable_cache(
+      () => {
+        const db = publicCatalogDatabase();
+        return Promise.all([
+          listEntryMedia(db, id),
+          listCategoryFields(db, category),
+          listEntryRelations(db, id),
+        ]);
+      },
+      ['published-entry-content-v2', id, category],
+      { revalidate: 60, tags: [publishedCatalogTag, entryContentTag(id), relationTypesTag] },
+    )(),
 };

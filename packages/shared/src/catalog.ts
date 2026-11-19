@@ -145,10 +145,27 @@ export const catalogRelationTypeInput = z
     name: label(100),
     slug,
     forward_label: label(120),
-    inverse_label: label(120),
+    inverse_label: z.string().trim().max(120).default(''),
+    description: z.string().trim().max(1000).default(''),
+    icon: z
+      .string()
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .nullable()
+      .or(z.literal('').transform(() => null))
+      .default(null),
+    is_enabled: flag.default(true),
     is_symmetric: flag,
     is_acyclic: flag,
     sort_order: position,
+  })
+  .transform((type) => ({
+    ...type,
+    inverse_label: type.is_symmetric ? type.forward_label : type.inverse_label,
+  }))
+  .refine((type) => type.is_symmetric || type.inverse_label.length > 0, {
+    path: ['inverse_label'],
+    message: 'Renseignez le libellé inverse.',
   })
   .refine((type) => !(type.is_symmetric && type.is_acyclic), {
     path: ['is_acyclic'],

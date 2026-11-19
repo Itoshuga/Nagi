@@ -8,6 +8,8 @@ const adminId = '22222222-2222-4222-8222-222222222222';
 const otherId = '33333333-3333-4333-8333-333333333333';
 const applicationId = '123456789012345678';
 const scope = 'guild:987654321098765432';
+let legacyRelationsBefore: unknown, legacyRelationsAfter: unknown;
+let legacyTypeBefore: unknown, legacyTypeAfter: unknown;
 async function scalar<T>(sql: string): Promise<T> {
   const result = await db.query<{ value: T }>(sql);
   return result.rows[0]!.value;
@@ -56,7 +58,36 @@ beforeAll(async () => {
   `);
   const directory = new URL('../supabase/migrations/', import.meta.url);
   for (const file of (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort()) {
+    const graphMigration = file.endsWith('_semantic_relations.sql');
+    if (graphMigration) {
+      await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Archive','archive','ZZ',true);
+        insert into public.cities(country_id,name,slug,is_published) select id,'Archive','archive',true from public.countries where slug='archive';
+        insert into public.entries(id,city_id,category_id,title,slug,published) select 'e1000000-1111-4111-8111-111111111111',x.id,k.id,'Ancienne fiche A','archive-a',true from public.cities x,public.categories k where x.slug='archive' and k.slug='tourisme';
+        insert into public.entries(id,city_id,category_id,title,slug,published) select 'f1000000-1111-4111-8111-111111111111',x.id,k.id,'Ancienne fiche B','archive-b',true from public.cities x,public.categories k where x.slug='archive' and k.slug='tourisme';
+        insert into public.relation_types(slug,name,forward_label,inverse_label,is_symmetric) values('archive-link','Ancien type','Associe','Est associé par',false);
+        insert into public.entry_relations(source_id,target_id,relation_type_id,created_at,updated_at) values
+        ('f1000000-1111-4111-8111-111111111111','e1000000-1111-4111-8111-111111111111',(select id from public.relation_types where slug='nearby'),'2020-01-01','2021-01-01'),
+        ('e1000000-1111-4111-8111-111111111111','f1000000-1111-4111-8111-111111111111',(select id from public.relation_types where slug='archive-link'),'2020-01-01','2021-01-01'),
+        ('f1000000-1111-4111-8111-111111111111','e1000000-1111-4111-8111-111111111111',(select id from public.relation_types where slug='archive-link'),'2020-01-01','2021-01-01');`);
+      legacyRelationsBefore = await scalar(
+        'select jsonb_agg(to_jsonb(r) order by id) as value from public.entry_relations r',
+      );
+      legacyTypeBefore = await scalar(
+        "select to_jsonb(t) as value from public.relation_types t where slug='archive-link'",
+      );
+    }
     await db.exec(await readFile(new URL(file, directory), 'utf8'));
+    if (graphMigration) {
+      legacyRelationsAfter = await scalar(
+        "select jsonb_agg(to_jsonb(r)-'created_by' order by id) as value from public.entry_relations r",
+      );
+      legacyTypeAfter = await scalar(
+        "select to_jsonb(t)-'created_at'-'updated_at'-'description'-'icon'-'is_enabled' as value from public.relation_types t where slug='archive-link'",
+      );
+      await db.exec(
+        "delete from public.entries where slug in ('archive-a','archive-b'); delete from public.cities where slug='archive'; delete from public.countries where slug='archive'; delete from public.relation_types where slug='archive-link'",
+      );
+    }
   }
   await db.exec(`insert into auth.users(id,last_sign_in_at,raw_user_meta_data) values
     ('${userId}',now(),'{"sub":"999999999999999999","role":"owner"}'),('${adminId}',now(),'{}'),('${otherId}',now(),'{}');
@@ -142,7 +173,7 @@ describe('Global catalog phase 3', () => {
     ).toBe('Japon');
     expect(
       await scalar<string>(
-        `select source_id as value from public.entry_relations where target_id=${restaurant}`,
+        `select case when source_id=${restaurant} then target_id else source_id end as value from public.entry_relations where source_id=${restaurant} or target_id=${restaurant}`,
       ),
     ).toBe(originalId);
   });
@@ -1768,5 +1799,287 @@ describe('Social profiles: verified audiences, identity and private banners', ()
     expect(people[0]?.id).toBe(userId);
     expect(people[0]?.username).toBeTruthy();
     expect(await scalar(`select public.trip_contributor_cards('${tripB}') as value`)).toEqual([]);
+  });
+});
+
+describe('Semantic relations: transactional orientation and type administration', () => {
+  it('preserves legacy IDs, labels, orientation, timestamps and ambiguous reverse associations through migration', () => {
+    expect(legacyRelationsAfter).toEqual(legacyRelationsBefore);
+    expect(legacyTypeAfter).toEqual(legacyTypeBefore);
+    expect(legacyRelationsAfter).toHaveLength(3);
+  });
+  const a = 'a1000000-1111-4111-8111-111111111111',
+    b = 'b1000000-1111-4111-8111-111111111111',
+    c = 'c1000000-1111-4111-8111-111111111111';
+  const located = "(select id from public.relation_types where slug='located-in')",
+    nearby = "(select id from public.relation_types where slug='nearby')";
+  const literal = (value: unknown) => `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
+  const typeData = {
+    slug: 'custom-hierarchy',
+    name: 'Un lien personnel',
+    forward_label: 'Contient',
+    inverse_label: 'Appartient à',
+    description: 'Sens du lien.',
+    icon: 'map-pin',
+    is_symmetric: false,
+    is_acyclic: true,
+    is_enabled: true,
+    sort_order: 999,
+  };
+  async function admin() {
+    await db.exec('reset role');
+    await asUser(adminId);
+  }
+  async function create(from = a, to = b, type = located, direction = 'forward') {
+    return scalar<{ id: string; entries: string[] }>(
+      `select public.catalog_edit_relation('${from}',null,null,'${to}',${type},'${direction}',false) as value`,
+    );
+  }
+  const stamp = (id: string) => `(select updated_at from public.entry_relations where id='${id}')`;
+  beforeEach(async () => {
+    await asService();
+    await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Japon','japon','JP',true),('France','france','FR',true);
+   insert into public.cities(country_id,name,slug,is_published) select id,'Tokyo','tokyo',true from public.countries where slug='japon';
+   insert into public.cities(country_id,name,slug,is_published) select id,'Paris','paris',true from public.countries where slug='france';
+   insert into public.entries(id,city_id,category_id,title,slug,published) select '${a}',x.id,k.id,'Pokémon Center','pokemon-center',true from public.cities x,public.categories k where x.slug='tokyo' and k.slug='adresses';
+   insert into public.entries(id,city_id,category_id,title,slug,published) select '${b}',x.id,k.id,'Shibuya PARCO','shibuya-parco',true from public.cities x,public.categories k where x.slug='tokyo' and k.slug='tourisme';
+   insert into public.entries(id,city_id,category_id,title,slug,published) select '${c}',x.id,k.id,'Une autre destination','autre-destination',true from public.cities x,public.categories k where x.slug='paris' and k.slug='tourisme';`);
+    await admin();
+  });
+  it('creates one canonical association from either reading and rejects its inverse duplicate', async () => {
+    const edge = await create(b, a, located, 'inverse');
+    expect(edge.entries.sort()).toEqual([a, b]);
+    expect(
+      await scalar(`select source_id as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(a);
+    expect(
+      await scalar(`select target_id as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(b);
+    expect(
+      await scalar(`select created_by as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(adminId);
+    await fails(
+      `select public.catalog_edit_relation('${a}',null,null,'${b}',${located},'forward',false)`,
+      /unique/,
+    );
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      1,
+    );
+  });
+  it('normalizes symmetric endpoints and permits genuinely different relation types', async () => {
+    const edge = await create(b, a, nearby, 'inverse');
+    expect(
+      await scalar(`select source_id as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(a);
+    await fails(
+      `select public.catalog_edit_relation('${a}',null,null,'${b}',${nearby},'forward',false)`,
+      /unique/,
+    );
+    await create(a, b, located);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      2,
+    );
+  });
+  it('retargets and inverts from the incoming end while retaining the ID and reporting all affected entries', async () => {
+    const edge = await create();
+    const changed = await scalar<{ id: string; entries: string[] }>(
+      `select public.catalog_edit_relation('${b}','${edge.id}',${stamp(edge.id)},'${c}',${located},'forward',false) as value`,
+    );
+    expect(changed.id).toBe(edge.id);
+    expect(changed.entries.sort()).toEqual([a, b, c]);
+    expect(
+      await scalar(`select source_id as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(b);
+    expect(
+      await scalar(`select target_id as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(c);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.entry_relations where source_id='${a}' or target_id='${a}'`,
+      ),
+    ).toBe(0);
+    await fails(
+      `select public.catalog_edit_relation('${a}','${edge.id}',${stamp(edge.id)},'${c}',${located},'forward',false)`,
+      /catalog_relation_missing/,
+    );
+    const deleted = await scalar<{ entries: string[] }>(
+      `select public.catalog_edit_relation('${c}','${edge.id}',${stamp(edge.id)},null,null,'forward',true) as value`,
+    );
+    expect(deleted.entries.sort()).toEqual([b, c]);
+    expect(await scalar<number>('select count(*)::int as value from public.entries')).toBe(3);
+  });
+  it('rejects stale changes, self links, invalid references and direct or indirect hierarchy cycles', async () => {
+    const edge = await create();
+    await fails(
+      `select public.catalog_edit_relation('${a}','${edge.id}','2000-01-01',null,null,'forward',true)`,
+      /catalog_relation_changed/,
+    );
+    await fails(
+      `select public.catalog_edit_relation('${a}',null,null,'${a}',${located},'forward',false)`,
+      /catalog_relation_invalid/,
+    );
+    await fails(
+      `select public.catalog_edit_relation('${a}',null,null,'99999999-9999-4999-8999-999999999999',${located},'forward',false)`,
+      /foreign key/,
+    );
+    await fails(
+      `select public.catalog_edit_relation('${b}',null,null,'${a}',${located},'forward',false)`,
+      /catalog_relation_cycle/,
+    );
+    await create(b, c);
+    await fails(
+      `select public.catalog_edit_relation('${c}',null,null,'${a}',${located},'forward',false)`,
+      /catalog_relation_cycle/,
+    );
+    const nonHierarchy = "(select id from public.relation_types where slug='organizes')";
+    await create(a, b, nonHierarchy);
+    await create(b, c, nonHierarchy);
+    await create(c, a, nonHierarchy);
+  });
+  it('keeps inactive associations readable while preventing new ones in SQL, including direct writes', async () => {
+    const edge = await create();
+    await db.exec(
+      `select public.catalog_toggle_relation_type(${located},false,(select updated_at from public.relation_types where id=${located}))`,
+    );
+    await fails(
+      `select public.catalog_edit_relation('${b}',null,null,'${c}',${located},'forward',false)`,
+      /catalog_relation_type_disabled/,
+    );
+    await fails(
+      `update public.entry_relations set target_id='${c}' where id='${edge.id}'`,
+      /catalog_relation_type_disabled/,
+    );
+    await db.exec('reset role');
+    await asUser(otherId);
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      1,
+    );
+    await admin();
+    await scalar(
+      `select public.catalog_edit_relation('${b}','${edge.id}',${stamp(edge.id)},null,null,'forward',true) as value`,
+    );
+  });
+  it('creates custom types, synchronizes symmetric labels, locks keys and propagates label edits without copying them', async () => {
+    const type = await scalar<string>(
+      `select public.catalog_save_relation_type(null,${literal(typeData)}) as value`,
+    );
+    await create(a, b, `'${type}'`);
+    await db.exec(
+      `select public.catalog_save_relation_type('${type}',${literal({ ...typeData, forward_label: 'Est inclus dans', inverse_label: 'Inclut' })} || jsonb_build_object('updated_at',(select updated_at from public.relation_types where id='${type}')))`,
+    );
+    expect(
+      await scalar(
+        `select t.inverse_label as value from public.entry_relations r join public.relation_types t on t.id=r.relation_type_id where r.target_id='${b}'`,
+      ),
+    ).toBe('Inclut');
+    await fails(
+      `select public.catalog_save_relation_type('${type}',${literal({ ...typeData, is_symmetric: true, is_acyclic: false })} || jsonb_build_object('updated_at',(select updated_at from public.relation_types where id='${type}')))`,
+      /catalog_relation_type_in_use/,
+    );
+    await asService();
+    await fails(
+      `update public.relation_types set slug='other-key' where id='${type}'`,
+      /catalog_relation_key_immutable/,
+    );
+    await admin();
+    const symmetric = await scalar<string>(
+      `select public.catalog_save_relation_type(null,${literal({ ...typeData, slug: 'custom-symmetric', is_symmetric: true, is_acyclic: false, forward_label: 'Correspond à', inverse_label: 'Ignored' })}) as value`,
+    );
+    expect(
+      await scalar(
+        `select inverse_label as value from public.relation_types where id='${symmetric}'`,
+      ),
+    ).toBe('Correspond à');
+  });
+  it('protects type deletion and reassigns compatible associations atomically, preserving IDs', async () => {
+    const edge = await create();
+    const target = await scalar<string>(
+      `select public.catalog_save_relation_type(null,${literal(typeData)}) as value`,
+    );
+    const expected = `(select updated_at from public.relation_types where id=${located})`;
+    await fails(
+      `select public.catalog_remove_relation_type(${located},null,${expected})`,
+      /catalog_relation_type_in_use/,
+    );
+    await fails(
+      `select public.catalog_remove_relation_type(${located},${nearby},${expected})`,
+      /catalog_relation_reassign/,
+    );
+    expect(
+      await scalar<number>(
+        `select public.catalog_remove_relation_type(${located},'${target}',${expected}) as value`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar(
+        `select relation_type_id as value from public.entry_relations where id='${edge.id}'`,
+      ),
+    ).toBe(target);
+    expect(
+      await scalar(`select created_by as value from public.entry_relations where id='${edge.id}'`),
+    ).toBe(adminId);
+  });
+  it('rolls back a type reassignment that would create duplicate edges or a merged cycle', async () => {
+    await create();
+    const target = await scalar<string>(
+      `select public.catalog_save_relation_type(null,${literal(typeData)}) as value`,
+    );
+    await create(a, b, `'${target}'`);
+    const expected = `(select updated_at from public.relation_types where id=${located})`;
+    await fails(
+      `select public.catalog_remove_relation_type(${located},'${target}',${expected})`,
+      /unique/,
+    );
+    expect(await scalar<number>('select count(*)::int as value from public.entry_relations')).toBe(
+      2,
+    );
+    await db.exec(`delete from public.entry_relations where relation_type_id='${target}'`);
+    await create(b, a, `'${target}'`);
+    await fails(
+      `select public.catalog_remove_relation_type(${located},'${target}',${expected})`,
+      /catalog_relation_cycle/,
+    );
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.relation_types where id=${located}`,
+      ),
+    ).toBe(1);
+  });
+  it('validates complete reorder snapshots and rejects non-admin RPC and direct table mutations', async () => {
+    const ids = await scalar<string[]>(
+      'select array_agg(id order by sort_order desc) as value from public.relation_types',
+    );
+    await db.query('select public.catalog_order_relation_types($1::uuid[])', [ids]);
+    expect(
+      await scalar(`select id as value from public.relation_types order by sort_order limit 1`),
+    ).toBe(ids[0]);
+    await fails(
+      `select public.catalog_order_relation_types(array[${located},${located}])`,
+      /catalog_order_changed/,
+    );
+    await fails('select public.catalog_order_relation_types(null)', /catalog_order_changed/);
+    await db.exec('reset role');
+    await asUser(otherId);
+    await fails(
+      `select public.catalog_edit_relation('${a}',null,null,'${b}',${located},'forward',false)`,
+      /catalog_forbidden/,
+    );
+    await fails(
+      `select public.catalog_save_relation_type(null,${literal(typeData)})`,
+      /catalog_forbidden/,
+    );
+    await fails(`select public.catalog_order_relation_types(array[]::uuid[])`, /catalog_forbidden/);
+    await fails(
+      `select public.catalog_toggle_relation_type(${located},false,now())`,
+      /catalog_forbidden/,
+    );
+    await fails(
+      `select public.catalog_remove_relation_type(${located},null,now())`,
+      /catalog_forbidden/,
+    );
+    await fails(
+      `insert into public.entry_relations(source_id,target_id,relation_type_id) values('${a}','${b}',${located})`,
+      /permission denied|row.level security/,
+    );
   });
 });

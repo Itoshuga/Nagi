@@ -30,6 +30,11 @@ export function IconBrowser({
   return (
     <DialogContent
       className="entry-editor-dialog max-w-3xl"
+      onEscapeKeyDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         search.current?.focus();

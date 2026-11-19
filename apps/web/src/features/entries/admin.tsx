@@ -266,6 +266,17 @@ export async function AdminEntry({ id }: { id?: string }) {
   if (mediaCount?.error || relationCount?.error)
     throw new Error('Impossible de charger les compteurs.');
   const refreshKey = crypto.randomUUID();
+  const current = entry
+    ? {
+        id: entry.id,
+        title: entry.title,
+        cover_image_url: entry.cover_image_url,
+        category: entry.category,
+        country: entry.country,
+        city: entry.city,
+        neighborhood: entry.neighborhood,
+      }
+    : null;
   return (
     <div className="max-w-5xl space-y-5">
       <header className="entry-editor-header pb-2">
@@ -322,8 +333,7 @@ export async function AdminEntry({ id }: { id?: string }) {
             entry && (
               <DeferredEntryPanel
                 kind="medias"
-                entryId={entry.id}
-                title={entry.title}
+                current={current!}
                 categories={categories}
                 maxFileSize={maxCoverSize()}
                 refreshKey={refreshKey}
@@ -334,8 +344,7 @@ export async function AdminEntry({ id }: { id?: string }) {
             entry && (
               <DeferredEntryPanel
                 kind="relations"
-                entryId={entry.id}
-                title={entry.title}
+                current={current!}
                 categories={categories}
                 maxFileSize={maxCoverSize()}
                 refreshKey={refreshKey}

@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import { ArrowDown, ArrowLeftRight, ArrowUpRight, Link2, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ArrowUpRight,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -12,77 +20,26 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Label,
   toast,
 } from '@nagi/ui';
 import type { CatalogCategory, CatalogRelation, EntryCardRow, RelationType } from '@nagi/database';
+import { groupCatalogRelations, relationOptions, type RelationDirection } from '@nagi/shared';
 import { CatalogForm, CatalogSelect } from '@/features/catalog/admin-form';
-import { CatalogPicker } from '@/features/catalog/picker';
-import { EntryImage } from '@/features/media/image';
-import { deleteEntryRelation, findRelationEntries, saveEntryRelation } from './actions';
+import { FieldIcon } from '@/features/icons/field-icon';
+import { deleteEntryRelation, saveEntryRelation } from './actions';
+import { RelatedEntry, RelationEntrySearch, type RelationEntry } from './entry-search';
+import { RelationPreview } from './preview';
+import './relations.css';
 
-function RelatedEntry({ entry, compact = false }: { entry: EntryCardRow; compact?: boolean }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <EntryImage
-        src={entry.cover_image_url}
-        className={`${compact ? 'h-10 w-12' : 'h-14 w-16'} shrink-0 rounded-xl`}
-        sizes="64px"
-      />
-      <div className="min-w-0">
-        <span className="block break-words text-sm font-bold leading-6">{entry.title}</span>
-        <span className="block break-words text-[11px] leading-5 text-muted-foreground">
-          {[entry.category?.name, entry.city?.name, entry.country?.name]
-            .filter(Boolean)
-            .join(' · ')}
-        </span>
-      </div>
-    </div>
-  );
-}
-function RelationshipPreview({
-  title,
-  target,
-  type,
-  incoming = false,
-}: {
-  title: string;
-  target?: EntryCardRow;
-  type?: RelationType;
-  incoming?: boolean;
-}) {
-  return (
-    <div className="entry-relation-preview" aria-live="polite">
-      <p className="entry-dialog-label">Aperçu du lien</p>
-      <p className="break-words text-sm font-bold">{title}</p>
-      <div className="flex items-center gap-2 text-xs font-semibold leading-6 text-primary-ink">
-        {type?.is_symmetric ? (
-          <ArrowLeftRight className="size-4 shrink-0" />
-        ) : (
-          <ArrowDown className="size-4 shrink-0" />
-        )}
-        <span>
-          {type
-            ? incoming
-              ? type.inverse_label
-              : type.forward_label
-            : 'Choisissez un type de relation'}
-        </span>
-      </div>
-      {target ? (
-        <RelatedEntry entry={target} compact />
-      ) : (
-        <p className="text-xs leading-6 text-muted-foreground">
-          Sélectionnez une fiche pour visualiser la relation.
-        </p>
-      )}
-    </div>
-  );
-}
-
+const dialogClasses =
+  'entry-editor-dialog relation-dialog translate-x-0 translate-y-0 sm:-translate-x-1/2 sm:-translate-y-1/2';
 function RelationDialog({
-  entryId,
-  title,
+  current,
   types,
   categories,
   relations,
@@ -90,8 +47,7 @@ function RelationDialog({
   onClose,
   returnFocus,
 }: {
-  entryId: string;
-  title: string;
+  current: RelationEntry;
   types: RelationType[];
   categories: CatalogCategory[];
   relations: CatalogRelation[];
@@ -99,20 +55,23 @@ function RelationDialog({
   onClose: () => void;
   returnFocus: () => void;
 }) {
-  const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<EntryCardRow | undefined>(relation?.entry);
-  const [typeId, setTypeId] = useState(relation?.type.id ?? '');
+  const [choice, setChoice] = useState(relation ? `${relation.type.id}:${relation.direction}` : '');
   const [pending, setPending] = useState(false);
-  const type = types.find((item) => item.id === typeId);
+  const available = types.filter((t) => t.is_enabled || t.id === relation?.type.id);
+  const options = relationOptions(available);
+  const option = options.find((o) => o.value === choice);
+  const direction: RelationDirection = option?.direction ?? 'forward';
+  const type = option?.type;
   const duplicate =
     selected &&
     type &&
     relations.some(
-      (item) =>
-        item.id !== relation?.id &&
-        item.entry.id === selected.id &&
-        item.type.id === type.id &&
-        (type.is_symmetric || item.isIncoming === (relation?.isIncoming ?? false)),
+      (r) =>
+        r.id !== relation?.id &&
+        r.entry.id === selected.id &&
+        r.type.id === type.id &&
+        (type.is_symmetric || r.direction === direction),
     );
   return (
     <Dialog
@@ -123,122 +82,121 @@ function RelationDialog({
     >
       <DialogContent
         closeDisabled={pending}
-        className={`entry-editor-dialog ${relation ? 'max-w-xl' : 'max-w-4xl'}`}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
+        className={`${dialogClasses} max-w-4xl`}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
           returnFocus();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (pending) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (pending) e.preventDefault();
         }}
       >
         <div className="entry-dialog-heading">
-          <DialogTitle>{relation ? 'Modifier cette relation' : 'Relier une fiche'}</DialogTitle>
+          <DialogTitle>{relation ? 'Modifier la relation' : 'Ajouter une relation'}</DialogTitle>
           <DialogDescription>
-            {relation
-              ? 'Ajustez le lien tout en conservant les deux fiches.'
-              : 'Associez un lieu, une expérience ou une adresse du catalogue à votre fiche.'}
+            Un seul lien, deux façons de le lire. Choisissez ce que chaque fiche dira de l’autre.
           </DialogDescription>
         </div>
         <CatalogForm
-          run={saveEntryRelation.bind(null, entryId, relation?.id ?? null)}
+          run={saveEntryRelation.bind(null, current.id, relation?.id ?? null)}
           onPendingChange={setPending}
           onSuccess={() => {
             toast.success(
-              relation ? 'Relation mise à jour.' : 'Les fiches sont maintenant reliées.',
+              relation
+                ? 'Relation mise à jour sur les deux fiches.'
+                : 'Les deux fiches sont maintenant reliées.',
             );
             onClose();
           }}
-          className="[&>div[role=status]]:mx-5 [&>div[role=status]]:mb-5"
         >
-          <div
-            className={`entry-dialog-body grid gap-7 ${!relation ? 'md:grid-cols-[1.1fr_1fr]' : ''}`}
-          >
-            {!relation && (
-              <section className="min-w-0 space-y-4" aria-label="Choisir la fiche associée">
-                <p className="entry-dialog-label">01 · Choisir une fiche</p>
+          <input type="hidden" name="updated_at" value={relation?.updated_at ?? ''} />
+          <input type="hidden" name="type" value={type?.id ?? ''} />
+          <input type="hidden" name="direction" value={direction} />
+          <div className="entry-dialog-body space-y-6">
+            <div className="grid min-w-0 gap-6 md:grid-cols-2">
+              <section className="min-w-0 space-y-5">
                 <div>
-                  <Label htmlFor="relation-category" className="text-xs">
-                    Catégorie
-                  </Label>
+                  <p className="entry-dialog-label mb-3">La fiche actuelle</p>
+                  <RelatedEntry entry={current} />
+                </div>
+                <div>
+                  <Label htmlFor="relation-orientation">Depuis {current.title}</Label>
                   <CatalogSelect
-                    id="relation-category"
-                    value={filter}
-                    onChange={(event) => {
-                      setFilter(event.target.value);
-                      setSelected(undefined);
-                    }}
+                    id="relation-orientation"
+                    value={choice}
+                    required
+                    onChange={(e) => setChoice(e.target.value)}
                   >
-                    <option value="">Toutes les catégories</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
+                    <option value="" disabled>
+                      Choisir le sens de la relation…
+                    </option>
+                    {available.map((t) => (
+                      <optgroup key={t.id} label={`${t.name}${!t.is_enabled ? ' · Inactif' : ''}`}>
+                        {options
+                          .filter((o) => o.type.id === t.id)
+                          .map((o) => (
+                            <option key={o.value} value={o.value} disabled={!t.is_enabled}>
+                              {o.label}
+                            </option>
+                          ))}
+                      </optgroup>
                     ))}
                   </CatalogSelect>
+                  {type?.description && (
+                    <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                      {type.description}
+                    </p>
+                  )}
+                  {type && !type.is_symmetric && (
+                    <button
+                      type="button"
+                      className="relation-invert"
+                      onClick={() =>
+                        setChoice(`${type.id}:${direction === 'forward' ? 'inverse' : 'forward'}`)
+                      }
+                    >
+                      <ArrowLeftRight className="size-3.5" />
+                      Inverser le sens
+                    </button>
+                  )}
+                  {type && !type.is_enabled && (
+                    <Alert className="mt-3">
+                      Ce type est inactif. La relation reste visible ; choisissez un type actif pour
+                      la modifier.
+                    </Alert>
+                  )}
                 </div>
-                <CatalogPicker
-                  key={filter}
-                  inline
-                  disabled={pending}
-                  name="target"
-                  label="Fiche à associer"
-                  placeholder="Rechercher un lieu ou une expérience…"
-                  value={selected}
-                  selectedName={(entry) => entry.title}
-                  onSelect={setSelected}
-                  search={(query) => findRelationEntries(query, entryId, filter || undefined)}
-                  render={(entry) => <RelatedEntry entry={entry} compact />}
-                />
-                {selected && (
-                  <div className="rounded-2xl border border-border p-4">
-                    <RelatedEntry entry={selected} />
-                    {!selected.published && <Badge className="mt-3">Brouillon</Badge>}
-                  </div>
-                )}
               </section>
+              <section className="min-w-0">
+                <RelationEntrySearch
+                  current={current.id}
+                  categories={categories}
+                  value={selected}
+                  onSelect={setSelected}
+                  disabled={pending}
+                />
+              </section>
+            </div>
+            <RelationPreview
+              current={current.title}
+              other={selected?.title}
+              type={type}
+              direction={direction}
+            />
+            {duplicate && (
+              <Alert role="alert">
+                Cette association existe déjà. Elle est visible depuis les deux fiches.
+              </Alert>
             )}
-            <section className="min-w-0 space-y-5" aria-label="Définir le lien">
-              <p className="entry-dialog-label">
-                {relation ? 'La relation entre les fiches' : '02 · Définir le lien'}
-              </p>
-              <div>
-                <Label htmlFor="relation-type">Type de relation</Label>
-                <CatalogSelect
-                  id="relation-type"
-                  name="type"
-                  value={typeId}
-                  onChange={(event) => setTypeId(event.target.value)}
-                  required
-                >
-                  <option value="" disabled>
-                    Quel lien entre ces fiches ?
-                  </option>
-                  {types.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {relation?.isIncoming ? item.inverse_label : item.forward_label}
-                    </option>
-                  ))}
-                </CatalogSelect>
-                {type && (
-                  <p className="mt-2 text-[11px] leading-6 text-muted-foreground">
-                    {type.is_symmetric
-                      ? 'Ce lien est partagé dans les deux sens.'
-                      : 'Le libellé inverse sera affiché sur la fiche associée.'}
-                  </p>
-                )}
-              </div>
-              <RelationshipPreview
-                title={title}
-                target={selected}
-                type={type}
-                incoming={relation?.isIncoming}
-              />
-              {duplicate && <Alert>Cette relation existe déjà entre ces fiches.</Alert>}
-            </section>
           </div>
           <div className="entry-dialog-footer">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
               Annuler
             </Button>
-            <Button type="submit" disabled={!selected || !type || Boolean(duplicate)}>
+            <Button type="submit" disabled={!selected || !type?.is_enabled || Boolean(duplicate)}>
               <Link2 className="size-4" />
               {pending
                 ? 'Enregistrement…'
@@ -253,17 +211,18 @@ function RelationDialog({
   );
 }
 function RemoveRelation({
-  entryId,
+  current,
   relation,
   onClose,
   returnFocus,
 }: {
-  entryId: string;
+  current: RelationEntry;
   relation: CatalogRelation;
   onClose: () => void;
   returnFocus: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
@@ -273,37 +232,52 @@ function RemoveRelation({
     >
       <DialogContent
         closeDisabled={pending}
-        className="entry-editor-dialog max-w-md"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
+        className={`${dialogClasses} max-w-md`}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          cancel.current?.focus();
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
           returnFocus();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (pending) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (pending) e.preventDefault();
         }}
       >
         <div className="entry-dialog-heading">
-          <DialogTitle>Retirer cette relation ?</DialogTitle>
+          <DialogTitle>Supprimer cette relation ?</DialogTitle>
           <DialogDescription>
-            Les deux fiches seront conservées dans le catalogue. Seul leur lien sera supprimé.
+            Le lien sera supprimé des deux fiches. Les fiches elles-mêmes seront conservées.
           </DialogDescription>
         </div>
         <CatalogForm
-          run={deleteEntryRelation.bind(null, entryId, relation.id)}
+          run={deleteEntryRelation.bind(null, current.id, relation.id)}
           onPendingChange={setPending}
           onSuccess={() => {
-            toast.success('Relation retirée.');
+            toast.success('Relation supprimée des deux fiches.');
             onClose();
           }}
-          className="[&>div[role=status]]:mx-5 [&>div[role=status]]:mb-5"
         >
+          <input type="hidden" name="confirm" value="yes" />
+          <input type="hidden" name="updated_at" value={relation.updated_at} />
           <div className="entry-dialog-body">
+            <p className="mb-4 break-words text-sm leading-6">
+              Supprimer le lien entre <strong>{current.title}</strong> et{' '}
+              <strong>{relation.entry.title}</strong> ?
+            </p>
             <RelatedEntry entry={relation.entry} />
           </div>
           <div className="entry-dialog-footer">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button ref={cancel} type="button" variant="ghost" disabled={pending} onClick={onClose}>
               Annuler
             </Button>
             <Button type="submit" variant="destructive">
               <Trash2 className="size-4" />
-              {pending ? 'Retrait…' : 'Retirer la relation'}
+              {pending ? 'Suppression…' : 'Supprimer la relation'}
             </Button>
           </div>
         </CatalogForm>
@@ -311,43 +285,37 @@ function RemoveRelation({
     </Dialog>
   );
 }
-
 export function AdminEntryRelations({
-  entryId,
-  title,
+  current,
   relations,
   types,
   categories,
 }: {
-  entryId: string;
-  title: string;
+  current: RelationEntry;
   relations: CatalogRelation[];
   types: RelationType[];
   categories: CatalogCategory[];
 }) {
-  const add = useRef<HTMLButtonElement>(null);
-  const restore = useRef<HTMLElement | null>(null);
+  const add = useRef<HTMLButtonElement>(null),
+    restore = useRef<HTMLElement | null>(null);
+  const [dialog, setDialog] = useState<{ mode: 'create' | 'edit' | 'remove'; id?: string }>();
+  const selected = relations.find((r) => r.id === dialog?.id);
   function returnFocus() {
     if (restore.current?.isConnected) restore.current.focus();
     else add.current?.focus();
   }
-  const [dialog, setDialog] = useState<{ mode: 'create' | 'edit' | 'remove'; id?: string }>();
-  const selected = relations.find((item) => item.id === dialog?.id);
-  const groups = new Map<string, CatalogRelation[]>();
-  for (const relation of relations)
-    groups.set(relation.type.name, [...(groups.get(relation.type.name) ?? []), relation]);
+  const active = types.some((t) => t.is_enabled);
   return (
     <Card id="relations" className="space-y-6 p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="entry-dialog-label mb-2">Enrichir la découverte</p>
+          <p className="entry-dialog-label mb-2">Les bonnes connexions</p>
           <h2 className="text-2xl font-extrabold tracking-tight">Les fiches associées</h2>
           <p className="mt-2 max-w-xl text-xs leading-6 text-muted-foreground">
-            Reliez les idées qui vont ensemble : un plat et son restaurant, un lieu et les
-            expériences à proximité.
+            Un lieu qui en abrite un autre, une spécialité à déguster, une découverte à proximité.
           </p>
         </div>
-        {types.length > 0 && (
+        {active && (
           <Button
             ref={add}
             type="button"
@@ -363,92 +331,84 @@ export function AdminEntryRelations({
           </Button>
         )}
       </div>
-      {!types.length ? (
+      {!active && (
         <Alert>
-          Créez d’abord un{' '}
+          Activez ou créez un{' '}
           <Link className="font-semibold text-primary-ink underline" href="/admin/relations">
             type de relation
           </Link>{' '}
-          pour associer vos fiches.
+          pour associer de nouvelles fiches.
         </Alert>
-      ) : !relations.length ? (
-        <div className="grid min-h-60 justify-items-center content-center gap-4 rounded-2xl border border-dashed border-border bg-muted/25 p-7 text-center">
-          <span className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card text-primary-ink">
-            <Link2 className="size-5" strokeWidth={1.6} />
-          </span>
-          <div>
-            <h3 className="text-sm font-bold">Chaque fiche a ses bonnes connexions.</h3>
-            <p className="mt-2 max-w-sm text-xs leading-6 text-muted-foreground">
-              Associez une autre fiche du catalogue pour guider vos lecteurs vers de nouvelles
-              découvertes.
-            </p>
-          </div>
+      )}
+      {!relations.length ? (
+        <div className="grid min-h-48 content-center justify-items-center gap-3 rounded-2xl border border-dashed border-border bg-muted/25 p-6 text-center">
+          <Link2 className="size-6 text-primary-ink" />
+          <h3 className="text-sm font-bold">Chaque fiche a ses bonnes connexions.</h3>
+          <p className="max-w-sm text-xs leading-6 text-muted-foreground">
+            Ajoutez une relation : elle apparaîtra automatiquement sur les deux fiches.
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
-          {[...groups].map(([name, items]) => (
-            <section key={name} className="space-y-3">
+          {groupCatalogRelations(relations).map(([key, group]) => (
+            <section key={key} className="space-y-3">
               <h3 className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                {name}
-                <span className="text-[10px] font-normal">{items.length}</span>
+                <FieldIcon name={group.relations[0]?.type.icon} />
+                {group.label}
+                <span className="text-[10px] font-normal">{group.relations.length}</span>
               </h3>
-              {items.map((relation) => (
+              {group.relations.map((relation) => (
                 <div key={relation.id} className="entry-relation-row">
                   <div className="min-w-0 flex-1">
-                    <p className="mb-2 text-[10px] font-bold text-primary-ink">
-                      {relation.isIncoming
-                        ? relation.type.inverse_label
-                        : relation.type.forward_label}
-                    </p>
                     <Link
+                      prefetch={false}
                       href={`/admin/entries/${relation.entry.id}`}
                       className="block rounded-xl hover:text-primary-ink"
                     >
                       <RelatedEntry entry={relation.entry} />
                     </Link>
-                    {!relation.entry.published && <Badge className="mt-2">Brouillon</Badge>}
+                    <div className="mt-2 flex gap-2">
+                      {!relation.entry.published && <Badge>Brouillon</Badge>}
+                      {!relation.type.is_enabled && <Badge>Type inactif</Badge>}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      aria-label={`Modifier la relation avec ${relation.entry.title}`}
-                      onClick={(event) => {
-                        restore.current = event.currentTarget;
-                        setDialog({ mode: 'edit', id: relation.id });
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      aria-label={`Retirer la relation avec ${relation.entry.title}`}
-                      onClick={(event) => {
-                        restore.current = event.currentTarget;
-                        setDialog({ mode: 'remove', id: relation.id });
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                    <Button
-                      asChild
-                      variant="ghost"
-                      size="icon"
-                      className="hidden size-8 sm:inline-flex"
-                    >
-                      <Link
-                        href={`/admin/entries/${relation.entry.id}`}
-                        aria-label={`Ouvrir ${relation.entry.title}`}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-9"
+                        aria-label={`Options de la relation avec ${relation.entry.title}`}
+                        onClick={(e) => {
+                          restore.current = e.currentTarget;
+                        }}
                       >
-                        <ArrowUpRight className="size-3.5" />
-                      </Link>
-                    </Button>
-                  </div>
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="entry-media-menu">
+                      <DropdownMenuItem asChild>
+                        <Link prefetch={false} href={`/admin/entries/${relation.entry.id}`}>
+                          <ArrowUpRight className="size-4" />
+                          Consulter la fiche
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => setDialog({ mode: 'edit', id: relation.id })}
+                      >
+                        <Pencil className="size-4" />
+                        Modifier la relation
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onSelect={() => setDialog({ mode: 'remove', id: relation.id })}
+                      >
+                        <Trash2 className="size-4" />
+                        Supprimer la relation
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               ))}
             </section>
@@ -457,8 +417,7 @@ export function AdminEntryRelations({
       )}
       {dialog?.mode === 'create' && (
         <RelationDialog
-          entryId={entryId}
-          title={title}
+          current={current}
           types={types}
           categories={categories}
           relations={relations}
@@ -466,11 +425,9 @@ export function AdminEntryRelations({
           returnFocus={returnFocus}
         />
       )}
-      {selected && dialog?.mode === 'edit' && (
+      {dialog?.mode === 'edit' && selected && (
         <RelationDialog
-          key={selected.id}
-          entryId={entryId}
-          title={title}
+          current={current}
           types={types}
           categories={categories}
           relations={relations}
@@ -479,9 +436,9 @@ export function AdminEntryRelations({
           returnFocus={returnFocus}
         />
       )}
-      {selected && dialog?.mode === 'remove' && (
+      {dialog?.mode === 'remove' && selected && (
         <RemoveRelation
-          entryId={entryId}
+          current={current}
           relation={selected}
           onClose={() => setDialog(undefined)}
           returnFocus={returnFocus}

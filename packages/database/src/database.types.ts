@@ -441,6 +441,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           relation_type_id: string;
+          created_by: string | null;
         };
         Insert: {
           id?: string;
@@ -451,6 +452,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           relation_type_id: string;
+          created_by?: string | null;
         };
         Update: {
           id?: string;
@@ -461,8 +463,10 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           relation_type_id?: string;
+          created_by?: string | null;
         };
         Relationships: [
+          { foreignKeyName: 'entry_relations_created_by_fkey'; columns: ["created_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
           { foreignKeyName: 'entry_relations_relation_type_id_fkey'; columns: ["relation_type_id"]; isOneToOne: false; referencedRelation: 'relation_types'; referencedColumns: ["id"]; },
           { foreignKeyName: 'entry_relations_source_id_fkey'; columns: ["source_id"]; isOneToOne: false; referencedRelation: 'entries'; referencedColumns: ["id"]; },
           { foreignKeyName: 'entry_relations_target_id_fkey'; columns: ["target_id"]; isOneToOne: false; referencedRelation: 'entries'; referencedColumns: ["id"]; },
@@ -642,6 +646,11 @@ export type Database = {
           is_symmetric: boolean;
           is_acyclic: boolean;
           sort_order: number;
+          description: string;
+          icon: string | null;
+          is_enabled: boolean;
+          created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -652,6 +661,11 @@ export type Database = {
           is_symmetric?: boolean;
           is_acyclic?: boolean;
           sort_order?: number;
+          description?: string;
+          icon?: string | null;
+          is_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -662,6 +676,11 @@ export type Database = {
           is_symmetric?: boolean;
           is_acyclic?: boolean;
           sort_order?: number;
+          description?: string;
+          icon?: string | null;
+          is_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [
         ];
@@ -868,8 +887,13 @@ export type Database = {
       can_read_profile_banner: { Args: { p_viewer: string; p_target: string; p_app: string; p_path: string }; Returns: boolean; };
       catalog_categories_at: { Args: { p_city: string; p_neighborhood: string }; Returns: Database['public']['Tables']['categories']['Row'][]; };
       catalog_edit_media: { Args: { p_entry: string; p_operation: string; p_data: Json }; Returns: undefined; };
+      catalog_edit_relation: { Args: { p_entry: string; p_id: string; p_expected: string; p_other: string; p_type: string; p_direction: string; p_delete: boolean }; Returns: Json; };
       catalog_order_categories: { Args: { p_ids: (string)[] }; Returns: undefined; };
+      catalog_order_relation_types: { Args: { p_ids: (string)[] }; Returns: undefined; };
       catalog_remove_category: { Args: { p_id: string; p_destination: string }; Returns: number; };
+      catalog_remove_relation_type: { Args: { p_id: string; p_destination: string; p_expected: string }; Returns: number; };
+      catalog_save_relation_type: { Args: { p_id: string; p_data: Json }; Returns: string; };
+      catalog_toggle_relation_type: { Args: { p_id: string; p_enabled: boolean; p_expected: string }; Returns: undefined; };
       claim_bot_sync: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: Database['public']['Tables']['bot_sync_requests']['Row'][]; };
       claim_discord_refresh: { Args: { p_user_id: string; p_version: number; p_lease: string }; Returns: boolean; };
       configure_owners: { Args: { p_ids: (string)[] }; Returns: undefined; };

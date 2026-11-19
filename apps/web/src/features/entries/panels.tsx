@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, LoadingState } from '@nagi/ui';
 import type { CatalogCategory } from '@nagi/database';
 import { loadEntryPanel } from './actions';
+import type { RelationEntry } from '@/features/relations/entry-search';
 
 const AdminGallery = dynamic(() =>
   import('@/features/media/gallery-admin').then((module) => module.AdminGallery),
@@ -15,19 +16,18 @@ const AdminEntryRelations = dynamic(() =>
 
 export function DeferredEntryPanel({
   kind,
-  entryId,
-  title,
+  current,
   categories,
   maxFileSize,
   refreshKey,
 }: {
   kind: 'medias' | 'relations';
-  entryId: string;
-  title: string;
+  current: RelationEntry;
   categories: CatalogCategory[];
   maxFileSize: number;
   refreshKey: string;
 }) {
+  const { id: entryId } = current;
   const [data, setData] = useState<Awaited<ReturnType<typeof loadEntryPanel>>>();
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -76,8 +76,7 @@ export function DeferredEntryPanel({
     );
   return (
     <AdminEntryRelations
-      entryId={entryId}
-      title={title}
+      current={current}
       categories={categories}
       relations={data.relations}
       types={data.types}

@@ -32,19 +32,30 @@ const IconBrowser = dynamic(() => import('./browser').then((module) => module.Ic
 export function IconPicker({
   value,
   onChange,
+  label = 'Icône du champ',
+  onOpenChange,
+  open: controlledOpen,
 }: {
+  open?: boolean;
+  label?: string;
+  onOpenChange?: (open: boolean) => void;
   value: string | null;
   onChange: (name: string | null) => void;
 }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const [localOpen, setOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  function changeOpen(next: boolean) {
+    setOpen(next);
+    onOpenChange?.(next);
+  }
   return (
     <div className="space-y-2">
       <input type="hidden" name="icon" value={value ?? ''} />
       <Label htmlFor={`${id}-trigger`} className="mb-0">
-        Icône du champ
+        {label}
       </Label>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={changeOpen}>
         <DialogTrigger asChild>
           <Button
             id={`${id}-trigger`}
@@ -68,9 +79,9 @@ export function IconPicker({
             value={value}
             onSelect={(name) => {
               onChange(name);
-              setOpen(false);
+              changeOpen(false);
             }}
-            onClose={() => setOpen(false)}
+            onClose={() => changeOpen(false)}
           />
         )}
       </Dialog>
