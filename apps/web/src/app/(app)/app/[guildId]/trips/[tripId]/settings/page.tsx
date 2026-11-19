@@ -1,12 +1,11 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { uuidSchema } from '@nagi/shared';
 import { requireGuild, spaceServices } from '@/features/spaces/server';
-import { TripSettingsForm, TripDeleteForm, TripOrganizers } from '@/features/trips/settings-form';
+import { TripSettingsForm } from '@/features/trips/settings-form';
 import { tripTimezones } from '@/features/trips/timezones';
 import { removeTrip, saveTripSettings } from '@/features/trips/actions';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
+import { maxCoverSize } from '@/features/geography/storage';
 
 export const metadata = { title: 'Paramètres du voyage' };
 export default async function EditTripSettings({
@@ -28,40 +27,28 @@ export default async function EditTripSettings({
     trip.destination_country_id
       ? publicCatalogDatabase()
           .from('countries')
-          .select('id,name,iso_code')
+          .select('id,name,iso_code,cover_image_url')
           .eq('id', trip.destination_country_id)
           .maybeSingle()
       : null,
   ]);
   if (destination?.error) throw destination.error;
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <Link
-        href={`/app/${guildId}/trips/${tripId}`}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:underline"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" /> Retour à l’itinéraire
-      </Link>
-      <header>
-        <h1 className="space-title">Paramètres du voyage</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{trip.title}</p>
-      </header>
-      <TripSettingsForm
-        guild={guildId}
-        timezones={tripTimezones}
-        trip={trip}
-        destination={
-          destination?.data ??
-          (trip.destination_country_id
-            ? { id: trip.destination_country_id, name: 'Destination indisponible' }
-            : undefined)
-        }
-        run={saveTripSettings.bind(null, guildId, tripId)}
-      />
-      <section id="trip-organizers">
-        <TripOrganizers guild={guildId} trip={trip} organizers={organizers} />
-      </section>
-      <TripDeleteForm version={trip.version} run={removeTrip.bind(null, guildId, tripId)} />
-    </div>
+    <TripSettingsForm
+      guild={guildId}
+      timezones={tripTimezones}
+      trip={trip}
+      organizers={organizers}
+      maxCoverBytes={maxCoverSize()}
+      destinationCover={destination?.data?.cover_image_url}
+      destination={
+        destination?.data ??
+        (trip.destination_country_id
+          ? { id: trip.destination_country_id, name: 'Destination indisponible' }
+          : undefined)
+      }
+      run={saveTripSettings.bind(null, guildId, tripId)}
+      remove={removeTrip.bind(null, guildId, tripId)}
+    />
   );
 }
