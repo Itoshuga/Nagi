@@ -103,7 +103,8 @@ export function CatalogForm({
           toast.success(saved.message);
           router.push(saved.href);
         }
-        router.refresh();
+        // Catalog actions already revalidate the route and return its updated UI.
+        // A second refresh prolongs this transition after the save has succeeded.
       } catch {
         setResult({ ok: false, message: 'La requête a échoué. Réessayez.' });
       } finally {
