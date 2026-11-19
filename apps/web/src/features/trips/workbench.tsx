@@ -5,15 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
-  PointerSensor,
-  pointerWithin,
-  rectIntersection,
+  MouseSensor,
+  TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
-  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   Archive,
@@ -51,12 +48,13 @@ import {
   PopoverTrigger,
   cn,
 } from '@nagi/ui';
-import type { EntryCardRow, TripPlan, TripPlanItem } from '@nagi/database';
+import type { EntryCardRow, TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
 import type { TripEdit, TripResult } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import { UserIdentity } from '@/features/profiles/identity';
 import { archivePlannedTrip, editTrip, removeTrip } from './actions';
 import { TripItinerary } from './itinerary';
+import { TripDragOverlay } from './drag-overlay';
 import { TripDayEditor } from './plan-dialogs';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
@@ -65,13 +63,19 @@ import {
   optimisticTripItems,
   unavailableTripEntry,
   type DaySelection,
-  type LanePosition,
   type PlaceAdder,
   type PlanMutation,
   type WorkspaceViewProps,
 } from './planner-model';
 import { tripDates, tripStatus } from './trip-list';
 import './workspace.css';
+import {
+  isActivityDrop,
+  isStopDrop,
+  tripCollision,
+  tripDragSource,
+  tripDropChange,
+} from './planner-dnd';
 
 const TripMap = dynamic(() => import('./map'), { ssr: false, loading: () => <LoadingState /> });
 const TripCalendar = dynamic(() => import('./calendar').then((m) => m.TripCalendar), {
@@ -82,18 +86,6 @@ const tabs = [
   { id: 'calendar', label: 'Calendrier', icon: CalendarDays },
   { id: 'map', label: 'Carte', icon: MapPin },
 ] as const;
-const collision: CollisionDetection = (args) => {
-  const hits = pointerWithin(args);
-  return hits.length
-    ? hits.sort(
-        (a, b) =>
-          Number(b.id.toString().startsWith('before:')) -
-          Number(a.id.toString().startsWith('before:')),
-      )
-    : args.pointerCoordinates
-      ? []
-      : rectIntersection(args);
-};
 function DayNav({
   id,
   active,
@@ -206,14 +198,17 @@ export function TripWorkbench({
     [panel, setPanel] = useState<'catalog' | 'detail' | null>(initialItem ? 'detail' : null);
   const [selectedId, setSelectedId] = useState(initialItem),
     [preview, setPreview] = useState<EntryCardRow>();
-  const [picker, setPicker] = useState<{ day: string | null; time?: string } | null>(
-    initialEntry ? { day: null } : null,
-  );
+  const [previewParent, setPreviewParent] = useState<string>();
+  const [picker, setPicker] = useState<{
+    day: string | null;
+    time?: string;
+    parent?: string;
+  } | null>(initialEntry ? { day: null } : null);
   const [deleteOpen, setDeleteOpen] = useState(false),
     [error, setError] = useState(''),
     [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false),
-    [dragged, setDragged] = useState<TripPlanItem>();
+    [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
   const [draft, setDraft] = useState<{ base: number; version?: number; items: TripPlanItem[] }>();
   const displayed =
     draft &&
@@ -234,7 +229,8 @@ export function TripWorkbench({
   const lastTrigger = useRef<HTMLElement | null>(null),
     panelRef = useRef<HTMLElement>(null);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
   useTripLive(guild, plan.id, plan.version);
@@ -276,6 +272,7 @@ export function TripWorkbench({
           trip_day_id: change.data.day,
           entry_id: entry.id,
           entry,
+          stops: [],
           added_by: viewerId,
           notes: '',
           sort_order: 0,
@@ -288,12 +285,56 @@ export function TripWorkbench({
         },
       ];
     }
+    if (change.operation === 'add_stop' && entry) {
+      const now = new Date().toISOString();
+      items = items.map((item) =>
+        item.id === change.data.parent
+          ? {
+              ...item,
+              stops: [
+                ...(item.stops ?? []),
+                {
+                  id: change.data.id,
+                  trip_item_id: item.id,
+                  entry_id: entry.id,
+                  entry,
+                  added_by: viewerId,
+                  duration_minutes: change.data.duration,
+                  notes: '',
+                  sort_order: 0,
+                  version: 0,
+                  created_at: now,
+                  updated_at: now,
+                },
+              ],
+            }
+          : item,
+      );
+    }
     setDraft({ base: plan.version, items });
     try {
       const result = await editTrip(guild, plan.id, version, change);
       if (result.ok) {
         setDraft({ base: plan.version, version: result.version, items });
         setFeedback('Modifications enregistrées');
+        if (change.operation === 'nest_item') {
+          if (selectedId === change.data.id) setSelectedId(change.data.parent);
+          requestAnimationFrame(() =>
+            document
+              .querySelector<HTMLElement>(
+                `[data-activity-id="${change.data.parent}"] .trip-step-main`,
+              )
+              ?.focus(),
+          );
+        }
+        if (change.operation === 'relocate_stop') {
+          const id = change.data.kind === 'activity' ? change.data.id : change.data.parent;
+          requestAnimationFrame(() =>
+            document
+              .querySelector<HTMLElement>(`[data-activity-id="${id}"] .trip-step-main`)
+              ?.focus(),
+          );
+        }
       } else {
         setDraft(undefined);
         setFeedback('');
@@ -316,22 +357,29 @@ export function TripWorkbench({
     }
   }
   const mutate: PlanMutation = execute;
-  const add: PlaceAdder = async (entry, targetDay, time, repeat = false) => {
-    const key = `${entry.id}:${targetDay ?? ''}:${time ?? ''}:${repeat}`;
+  const add: PlaceAdder = async (entry, targetDay, time, repeat = false, parent) => {
+    if (parent && !displayed.items.some((item) => item.id === parent))
+      return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
+    const key = `${entry.id}:${targetDay ?? ''}:${time ?? ''}:${repeat}:${parent ?? ''}`;
     const id = addReceipt.current?.key === key ? addReceipt.current.id : crypto.randomUUID();
     addReceipt.current = { key, id };
     const result = await execute(
-      {
-        operation: 'add_item',
-        data: {
-          id,
-          entry: entry.id,
-          day: targetDay,
-          repeat,
-          start_time: time ?? null,
-          duration: null,
-        },
-      },
+      parent
+        ? {
+            operation: 'add_stop',
+            data: { id, parent, entry: entry.id, repeat, duration: null },
+          }
+        : {
+            operation: 'add_item',
+            data: {
+              id,
+              entry: entry.id,
+              day: targetDay,
+              repeat,
+              start_time: time ?? null,
+              duration: null,
+            },
+          },
       displayed.version,
       entry,
     );
@@ -346,11 +394,13 @@ export function TripWorkbench({
     lastTrigger.current = document.activeElement as HTMLElement;
     setSelectedId(item.id);
     setPreview(undefined);
+    setPreviewParent(undefined);
     setPanel('detail');
   }
   function closePanel() {
     setPanel(null);
     setPreview(undefined);
+    setPreviewParent(undefined);
     setSelectedId(undefined);
     returnFocus();
   }
@@ -374,9 +424,21 @@ export function TripWorkbench({
       : document.querySelector<HTMLElement>('.trip-primary-add, .trip-day-nav-item.is-active');
     target?.focus();
   }
-  function previewEntry(entry: EntryCardRow) {
+  function openStopPicker(parent: string) {
+    if (displayed.stopsAvailable === false) return;
+    const item = displayed.items.find((i) => i.id === parent);
+    if (!item) return;
+    lastTrigger.current = document.activeElement as HTMLElement;
+    if (!lastTrigger.current?.closest('.trip-activity-stops'))
+      lastTrigger.current =
+        document.querySelector<HTMLElement>(`[data-activity-id="${parent}"] .trip-step-main`) ??
+        lastTrigger.current;
+    setPicker({ day: item.trip_day_id, parent });
+  }
+  function previewEntry(entry: EntryCardRow, parent?: string) {
     setPicker(null);
     setPreview(entry);
+    setPreviewParent(parent);
     setSelectedId(undefined);
     setPanel('detail');
   }
@@ -392,35 +454,43 @@ export function TripWorkbench({
     onItinerary: () => setView('itinerary'),
     onDetails: details,
     onAdd: openPicker,
+    onAddStop: openStopPicker,
   };
   const organizers = plan.people.filter((p) => plan.organizers.some((o) => o.user_id === p.id));
   return (
     <DndContext
       id={prefix}
       sensors={sensors}
-      collisionDetection={collision}
+      collisionDetection={tripCollision}
       onDragStart={({ active }) => {
         dragVersion.current = displayed.version;
-        setDragged(displayed.items.find((i) => i.id === active.id));
+        setDragged(tripDragSource(displayed.items, active.data.current, active.id)?.card);
       }}
       onDragCancel={() => setDragged(undefined)}
       onDragEnd={({ active, over }) => {
         setDragged(undefined);
-        const target = over?.data.current as LanePosition | undefined;
-        if (target && target.before !== active.id)
-          void mutate(
-            { operation: 'move_item', data: { id: String(active.id), ...target } },
-            dragVersion.current,
-          );
+        const target = over?.data.current as Parameters<typeof tripDropChange>[2] | undefined;
+        const source = tripDragSource(displayed.items, active.data.current, active.id);
+        if (!target || !source) return;
+        const result = tripDropChange(displayed.items, source, target);
+        if (result.error) setError(result.error);
+        else if (result.change) void mutate(result.change, dragVersion.current);
       }}
       accessibility={{
         screenReaderInstructions: {
           draggable:
-            'Espace pour saisir. Utilisez les flèches ou le menu de l’étape pour déplacer et réorganiser.',
+            'Maintenez une carte pour la glisser. Au clavier, Espace sur la poignée pour saisir, puis les flèches et Espace pour déposer. Les menus permettent aussi de déplacer les étapes et de sortir les arrêts.',
         },
         announcements: {
           onDragStart: () => 'Étape saisie.',
-          onDragOver: ({ over }) => (over ? 'Destination disponible.' : 'Aucune destination.'),
+          onDragOver: ({ active, over }) =>
+            isActivityDrop(over?.data.current) || isStopDrop(over?.data.current)
+              ? `Déposer pour ajouter un arrêt dans ${over.data.current.title}.`
+              : over
+                ? active.data.current?.type === 'stop'
+                  ? 'Déposer pour remettre cet arrêt en activité.'
+                  : 'Destination disponible.'
+                : 'Aucune destination.',
           onDragEnd: ({ over }) =>
             over ? 'Enregistrement du déplacement.' : 'Déplacement annulé.',
           onDragCancel: () => 'Déplacement annulé.',
@@ -779,7 +849,9 @@ export function TripWorkbench({
                     mutate={mutate}
                     add={add}
                     onClose={closePanel}
-                    onPreview={previewEntry}
+                    onPreview={(entry) => previewEntry(entry, preview ? previewParent : undefined)}
+                    parentId={preview ? previewParent : undefined}
+                    onAddStop={openStopPicker}
                   />
                 ) : (
                   <div className="p-5">
@@ -800,6 +872,7 @@ export function TripWorkbench({
             categories={categories}
             initialDay={picker.day}
             initialTime={picker.time}
+            parentId={picker.parent}
             initialEntry={initialEntry}
             add={add}
             mutate={mutate}
@@ -813,25 +886,14 @@ export function TripWorkbench({
                 window.history.replaceState(null, '', url);
               }
             }}
-            onPreview={previewEntry}
+            onPreview={(entry) => previewEntry(entry, picker.parent)}
           />
         )}
         {deleteOpen && (
           <DeleteTripDialog guild={guild} plan={displayed} onClose={() => setDeleteOpen(false)} />
         )}
       </div>
-      <DragOverlay dropAnimation={reduced ? null : { duration: 150, easing: 'ease-out' }}>
-        {dragged && (
-          <div className="trip-drag-preview">
-            <EntryImage
-              src={dragged.entry?.cover_image_url}
-              className="size-10 shrink-0 rounded-lg"
-              sizes="40px"
-            />
-            <span>{dragged.entry?.title ?? 'Étape'}</span>
-          </div>
-        )}
-      </DragOverlay>
+      <TripDragOverlay item={dragged} reduced={reduced} />
     </DndContext>
   );
 }

@@ -1,8 +1,16 @@
 'use client';
 import { useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { ArrowDown, ArrowUp, GripVertical, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
+import {
+  ArrowDown,
+  ArrowUp,
+  CornerDownRight,
+  GripVertical,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+} from 'lucide-react';
 import {
   Button,
   DropdownMenu,
@@ -14,11 +22,16 @@ import {
 } from '@nagi/ui';
 import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
 import { isOutsideTrip, overlappingTripItems, tripDateLabel } from '@nagi/shared';
-import { EntryImage } from '@/features/media/image';
+import { ActivityCardCopy } from './activity-card';
+import { ActivityNestingDialog } from './activity-nesting';
 import { TripDayEditor } from './plan-dialogs';
 import { QuickStepEditor } from './step-editor';
+import { ActivityStops } from './activity-stops';
+import { useTripCardDrag } from './card-drag';
+import { tripDragSource } from './planner-dnd';
 import {
   itemDuration,
+  activityNestingIssue,
   stepLocation,
   visibleTripItems,
   type LanePosition,
@@ -31,12 +44,16 @@ export function TripDropTarget({
   children,
   className,
 }: LanePosition & { children?: React.ReactNode; className?: string }) {
+  const { active } = useDndContext();
   const { setNodeRef, isOver } = useDroppable({
     id: before ? `before:${before}` : `lane:${day ?? 'pending'}`,
     data: { day, before },
   });
   return (
     <div ref={setNodeRef} className={cn('trip-drop-target', className, isOver && 'is-over')}>
+      {isOver && active?.data.current?.type === 'stop' && (
+        <span className="trip-drop-label">Remettre en activité</span>
+      )}
       {children}
     </div>
   );
@@ -54,20 +71,30 @@ export function TripStep({
 }) {
   const { canEdit, busy, mutate, plan, onDetails, selectedItem } = props;
   const reducedMotion = useReducedMotion();
+  const [nesting, setNesting] = useState(false);
+  const { active } = useDndContext();
+  const source = tripDragSource(plan.items, active?.data.current, active?.id)?.card;
+  const nestingIssue = source ? activityNestingIssue(source, item) : null;
   const title = item.entry?.title ?? 'Fiche indisponible';
   const connection = plan.connections.find(
     (c) =>
       c.fromId === item.entry_id &&
       plan.items.some((other) => other.entry_id === c.entry.id && other.id !== item.id),
   );
-  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
-    id: item.id,
-    disabled: !canEdit || busy,
-  });
+  const { setNodeRef, attributes, listeners, cardListeners, isDragging } = useTripCardDrag(
+    item.id,
+    { type: 'item', id: item.id },
+    !canEdit || busy,
+  );
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `step:${item.id}`,
     data: { day: item.trip_day_id, before: item.id },
     disabled: !canEdit || busy,
+  });
+  const { setNodeRef: setNestRef, isOver: isNestOver } = useDroppable({
+    id: `activity:${item.id}`,
+    data: { type: 'activity', parent: item.id, title },
+    disabled: !canEdit || busy || plan.stopsAvailable === false,
   });
   const index = items.findIndex((i) => i.id === item.id);
   const sameTime = (other?: TripPlanItem) =>
@@ -88,6 +115,8 @@ export function TripStep({
     });
   return (
     <motion.li
+      {...cardListeners}
+      data-activity-id={item.id}
       layout="position"
       initial={reducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: isDragging ? 0.3 : 1 }}
@@ -98,8 +127,10 @@ export function TripStep({
       }}
       className={cn(
         'trip-step',
+        canEdit && !busy && 'trip-card-can-drag',
         isDragging && 'is-dragging',
-        isOver && !isDragging && 'is-drop-over',
+        isOver && !isDragging && !isNestOver && 'is-drop-over',
+        isNestOver && !isDragging && (nestingIssue ? 'is-nesting-blocked' : 'is-nesting-over'),
         selectedItem === item.id && 'is-selected',
       )}
     >
@@ -129,28 +160,27 @@ export function TripStep({
         </button>
       )}
       <button
+        ref={setNestRef}
         type="button"
         className="trip-step-main"
         onClick={() => onDetails(item)}
         aria-label={`Détails de ${title}`}
       >
-        <EntryImage src={item.entry?.cover_image_url} className="trip-step-photo" sizes="56px" />
-        <span className="trip-step-copy">
-          <strong>{title}</strong>
-          <small>
-            {[item.entry?.category?.name, item.entry?.neighborhood?.name ?? item.entry?.city?.name]
-              .filter(Boolean)
-              .join(' · ')}
-          </small>
-          {item.notes && <span className="trip-step-note">{item.notes}</span>}
+        <ActivityCardCopy entry={item.entry} notes={item.notes}>
           {connection && (
             <span className="trip-step-note">
               {connection.label} · {connection.entry.title}
             </span>
           )}
           {conflict && <span className="trip-time-conflict">Chevauchement d’horaire</span>}
-        </span>
+        </ActivityCardCopy>
       </button>
+      {isNestOver && !isDragging && (
+        <span className="trip-nesting-hint" role="status">
+          <CornerDownRight className="size-3.5" aria-hidden="true" />
+          {nestingIssue ?? `Ajouter un arrêt dans ${title}`}
+        </span>
+      )}
       {canEdit && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -166,6 +196,19 @@ export function TripStep({
             <DropdownMenuItem onSelect={() => onDetails(item)}>
               <Pencil className="size-3.5" /> Détails et notes
             </DropdownMenuItem>
+            {plan.stopsAvailable !== false && (
+              <DropdownMenuItem disabled={busy} onSelect={() => props.onAddStop(item.id)}>
+                <Plus className="size-3.5" /> Ajouter à cette activité
+              </DropdownMenuItem>
+            )}
+            {plan.stopsAvailable !== false && (
+              <DropdownMenuItem
+                disabled={busy || !!item.stops?.length}
+                onSelect={() => setNesting(true)}
+              >
+                <CornerDownRight className="size-3.5" /> Intégrer à une activité…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               disabled={busy || !sameTime(items[index - 1])}
               onSelect={() => move(-1)}
@@ -183,6 +226,16 @@ export function TripStep({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+      )}
+      {nesting && (
+        <ActivityNestingDialog
+          item={item}
+          items={plan.items}
+          days={plan.days}
+          busy={busy}
+          mutate={mutate}
+          onClose={() => setNesting(false)}
+        />
       )}
     </motion.li>
   );
@@ -294,6 +347,11 @@ function DayTimeline({
   props: WorkspaceViewProps;
   search?: string;
 }) {
+  const { setNodeRef } = useDroppable({
+    id: `day-background:${day?.id ?? 'pending'}`,
+    data: { day: day?.id ?? null, before: null },
+    disabled: !props.canEdit || props.busy,
+  });
   const items = visibleTripItems(props.plan, day?.id ?? 'pending');
   const visible = search
     ? items.filter((i) =>
@@ -304,7 +362,7 @@ function DayTimeline({
     : items;
   const conflicts = overlappingTripItems(items);
   return (
-    <section className="trip-day-timeline">
+    <section ref={setNodeRef} className="trip-day-timeline">
       {day ? (
         <DayHeading day={day} props={props} count={items.length} />
       ) : (
@@ -324,6 +382,14 @@ function DayTimeline({
             <ol>
               <TripStep item={item} items={items} props={props} conflict={conflicts.has(item.id)} />
             </ol>
+            <ActivityStops
+              item={item}
+              plan={props.plan}
+              canEdit={props.canEdit}
+              busy={props.busy}
+              mutate={props.mutate}
+              onAdd={() => props.onAddStop(item.id)}
+            />
           </li>
         ))}
       </ol>

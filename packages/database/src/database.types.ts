@@ -723,6 +723,49 @@ export type Database = {
           { foreignKeyName: 'trip_days_trip_id_fkey'; columns: ["trip_id"]; isOneToOne: false; referencedRelation: 'trips'; referencedColumns: ["id"]; },
         ];
       };
+      trip_item_stops: {
+        Row: {
+          id: string;
+          trip_item_id: string;
+          entry_id: string;
+          added_by: string | null;
+          notes: string;
+          duration_minutes: number | null;
+          sort_order: number;
+          version: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_item_id: string;
+          entry_id: string;
+          added_by?: string | null;
+          notes?: string;
+          duration_minutes?: number | null;
+          sort_order?: number;
+          version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          trip_item_id?: string;
+          entry_id?: string;
+          added_by?: string | null;
+          notes?: string;
+          duration_minutes?: number | null;
+          sort_order?: number;
+          version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'trip_item_stops_added_by_fkey'; columns: ["added_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'trip_item_stops_entry_id_fkey'; columns: ["entry_id"]; isOneToOne: false; referencedRelation: 'entries'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'trip_item_stops_trip_item_id_fkey'; columns: ["trip_item_id"]; isOneToOne: false; referencedRelation: 'trip_items'; referencedColumns: ["id"]; },
+        ];
+      };
       trip_items: {
         Row: {
           id: string;

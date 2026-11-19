@@ -379,6 +379,19 @@
 .trip-step.is-dragging {
   opacity: 0.3;
 }
+.trip-card-can-drag {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.trip-card-can-drag,
+.trip-card-can-drag .trip-step-main {
+  cursor: grab;
+}
+html:has(.trip-workspace.is-sorting),
+html:has(.trip-workspace.is-sorting) * {
+  cursor: grabbing !important;
+}
 .trip-step-time {
   display: flex;
   flex-direction: column;
@@ -509,8 +522,27 @@
   color: var(--primary-ink);
 }
 .trip-drop-target {
+  position: relative;
   min-height: 4px;
   border-radius: 6px;
+}
+.trip-drop-label {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  bottom: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--primary-ink);
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.trip-activity-stops.is-stop-drop-over {
+  outline: 1px dashed var(--primary);
+  outline-offset: 4px;
+  border-radius: 10px;
 }
 .trip-drop-target.is-over {
   box-shadow: 0 -2px var(--primary);
@@ -599,10 +631,14 @@
   font-size: 12px;
 }
 .trip-drag-preview {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 260px;
+  max-width: calc(100vw - 24px);
   padding: 12px;
   border: 1px solid var(--primary);
   border-radius: 14px;
@@ -610,6 +646,13 @@
   box-shadow: 0 12px 30px #142b4825;
   font-size: 12px;
   font-weight: 650;
+  font-family: 'Manrope Variable', sans-serif;
+}
+.trip-drag-preview > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .trip-context-panel {
   display: flex;
@@ -1972,6 +2015,59 @@
 .trip-step.is-drop-over {
   box-shadow: 0 -2px var(--primary);
   background: var(--muted);
+}
+.trip-step.is-nesting-over {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  background: var(--accent);
+}
+.trip-step.is-nesting-blocked {
+  outline: 1px dashed var(--destructive);
+  outline-offset: 2px;
+}
+.trip-nesting-hint {
+  position: absolute;
+  z-index: 4;
+  left: 88px;
+  right: 8px;
+  bottom: -8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100% - 96px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: var(--card);
+  color: var(--primary-ink);
+  font-size: 10px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.is-nesting-blocked .trip-nesting-hint {
+  color: var(--destructive);
+}
+.trip-nesting-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+.trip-nesting-choices {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.trip-nesting-choices > button {
+  justify-content: space-between;
+  white-space: normal;
+  height: auto;
+  min-height: 44px;
+  text-align: left;
+}
+.trip-nesting-choices small {
+  margin-left: 12px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
 }
 .trip-information {
   width: min(340px, calc(100vw - 24px));

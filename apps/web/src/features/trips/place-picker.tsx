@@ -33,6 +33,7 @@ export function TripPlacePicker({
   onPreview,
   panel = false,
   canAdd = true,
+  parentId,
 }: {
   guild: string;
   plan: TripPlan;
@@ -47,6 +48,7 @@ export function TripPlacePicker({
   onPreview: (entry: EntryCardRow) => void;
   panel?: boolean;
   canAdd?: boolean;
+  parentId?: string;
 }) {
   const [day, setDay] = useState(initialDay ?? ''),
     [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
@@ -73,6 +75,11 @@ export function TripPlacePicker({
     id = useId(),
     adding = useRef(false);
   const [viewport, setViewport] = useState<{ height: number; bottom: number }>();
+  const parent = plan.items.find((item) => item.id === parentId);
+  const alreadyHere = (entryId: string) =>
+    parentId
+      ? !!parent?.stops.some((stop) => stop.entry_id === entryId)
+      : plan.items.some((item) => item.entry_id === entryId && item.trip_day_id === (day || null));
   useEffect(() => {
     const visual = window.visualViewport;
     const update = () => {
@@ -93,7 +100,16 @@ export function TripPlacePicker({
       window.removeEventListener('resize', update);
     };
   }, []);
-  const key = JSON.stringify([query.trim(), category, country?.id, city?.id, area?.id, day, retry]);
+  const key = JSON.stringify([
+    query.trim(),
+    category,
+    country?.id,
+    city?.id,
+    area?.id,
+    day,
+    parentId,
+    retry,
+  ]);
   const sourceIds = plan.items
     .filter((i) => !day || i.trip_day_id === day)
     .map((i) => i.entry_id)
@@ -108,6 +124,7 @@ export function TripPlacePicker({
       async () => {
         const p = new URLSearchParams({ q: query.trim(), page: String(page) });
         if (day) p.set('day', day);
+        if (parentId) p.set('activity', parentId);
         if (category) p.set('category', category);
         if (country) p.set('country', country.id);
         if (city) p.set('city', city.id);
@@ -153,13 +170,23 @@ export function TripPlacePicker({
     // Only catalogue criteria and real itinerary changes refresh the search, never unrelated UI state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guild, plan.id, key, page, sourceIds]);
-  const rows = ready?.rows ?? [];
+  const rows = (ready?.rows ?? []).filter((entry) => !parentId || entry.id !== parent?.entry_id);
   async function insert(entry: EntryCardRow, repeat = false) {
     if (adding.current || busy || !canAdd) return;
+    if (parentId && !parent) {
+      setError('Cette activité ne fait plus partie du voyage.');
+      return;
+    }
     adding.current = true;
     setError('');
     try {
-      const result = await add(entry, day || null, initialTime, repeat);
+      const result = await add(
+        entry,
+        parentId ? parent!.trip_day_id : day || null,
+        initialTime,
+        repeat,
+        parentId,
+      );
       if (result.ok && result.id) setReceipt({ id: result.id, title: entry.title });
       else if (!result.ok) setError(result.error);
     } finally {
@@ -167,11 +194,19 @@ export function TripPlacePicker({
     }
   }
   const target = plan.days.find((d) => d.id === day),
-    title = target ? dayLabel(target, plan.days) : 'À organiser';
+    title = parentId
+      ? (parent?.entry?.title ?? 'Activité indisponible')
+      : target
+        ? dayLabel(target, plan.days)
+        : 'À organiser';
   const heading = (
     <div className="trip-picker-heading">
       <div>
-        {panel ? <h2>Explorer le catalogue</h2> : <DialogTitle>Ajouter un lieu</DialogTitle>}
+        {panel ? (
+          <h2>Explorer le catalogue</h2>
+        ) : (
+          <DialogTitle>{parentId ? 'Ajouter à cette activité' : 'Ajouter un lieu'}</DialogTitle>
+        )}
         {panel ? (
           <p>
             {canAdd ? title : 'Catalogue mondial'}
@@ -233,14 +268,8 @@ export function TripPlacePicker({
                 onPreview(rows[active]);
                 return;
               }
-              if (
-                plan.items.some(
-                  (i) => i.entry_id === rows[active]!.id && i.trip_day_id === (day || null),
-                )
-              )
-                setError(
-                  'Ce lieu est déjà dans cette journée. Utilisez Revisiter pour une autre visite.',
-                );
+              if (alreadyHere(rows[active]!.id))
+                setError('Ce lieu est déjà prévu ici. Utilisez Revisiter pour une autre visite.');
               else void insert(rows[active]);
             }
           }}
@@ -381,7 +410,7 @@ export function TripPlacePicker({
           )}
         </div>
       )}
-      {canAdd && (
+      {canAdd && !parentId && (
         <div className="trip-picker-target">
           <label htmlFor={`${id}-target`}>Ajouter à</label>
           <TripDaySelect
@@ -397,14 +426,25 @@ export function TripPlacePicker({
       )}
       <div className="trip-picker-results">
         <p className="trip-section-caption">
-          {ready?.suggested ? 'Pour votre voyage' : 'Catalogue mondial'}
+          {ready?.suggested
+            ? parentId
+              ? 'Fiches liées à cette activité et lieux proches'
+              : 'Pour votre voyage'
+            : 'Catalogue mondial'}
         </p>
         <ul role="listbox" aria-label="Lieux du catalogue" id={`${id}-results`}>
           {rows.map((entry, i) => {
-            const same = plan.items.some(
-              (item) => item.entry_id === entry.id && item.trip_day_id === (day || null),
+            const same = alreadyHere(entry.id);
+            const elsewhere =
+              !same &&
+              plan.items.some(
+                (item) =>
+                  item.entry_id === entry.id ||
+                  item.stops.some((stop) => stop.entry_id === entry.id),
+              );
+            const inside = plan.items.find((item) =>
+              item.stops.some((stop) => stop.entry_id === entry.id),
             );
-            const elsewhere = !same && plan.items.some((item) => item.entry_id === entry.id);
             const relation = ready?.links.find((l) => l.entry.id === entry.id);
             return (
               <li
@@ -443,7 +483,15 @@ export function TripPlacePicker({
                       </em>
                     )}
                     {same ? (
-                      <em>{day ? 'Déjà dans cette journée' : 'Déjà à organiser'}</em>
+                      <em>
+                        {parentId
+                          ? 'Déjà dans cette activité'
+                          : day
+                            ? 'Déjà dans cette journée'
+                            : 'Déjà à organiser'}
+                      </em>
+                    ) : inside ? (
+                      <em>Dans {inside.entry?.title ?? 'une activité du voyage'}</em>
                     ) : elsewhere ? (
                       <em>
                         {plan.items.some((i) => i.entry_id === entry.id && !i.trip_day_id)
@@ -457,7 +505,7 @@ export function TripPlacePicker({
                   <button
                     type="button"
                     className="trip-picker-add"
-                    disabled={busy}
+                    disabled={busy || (!!parentId && !parent)}
                     aria-label={
                       same ? `Ajouter une autre visite de ${entry.title}` : `Ajouter ${entry.title}`
                     }
@@ -514,7 +562,10 @@ export function TripPlacePicker({
                 type="button"
                 disabled={busy}
                 onClick={async () => {
-                  const r = await mutate({ operation: 'delete_item', data: { id: receipt.id } });
+                  const r = await mutate({
+                    operation: parentId ? 'delete_stop' : 'delete_item',
+                    data: { id: receipt.id },
+                  });
                   if (r.ok) setReceipt(undefined);
                   else setError(r.error);
                 }}
@@ -525,7 +576,9 @@ export function TripPlacePicker({
           ) : (
             <span>
               {canAdd
-                ? 'Plusieurs lieux, sans quitter votre voyage.'
+                ? parentId
+                  ? 'Ajoutez plusieurs arrêts à cette activité.'
+                  : 'Plusieurs lieux, sans quitter votre voyage.'
                 : 'Le catalogue, sans quitter votre voyage.'}
             </span>
           )}

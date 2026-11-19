@@ -121,29 +121,61 @@ export class TripService {
     const result = await this.db
       .from('trips')
       .select(
-        '*,destination:countries(id,name,is_published,cover_image_url,iso_code),days:trip_days(*),items:trip_items(*),organizers:trip_organizers(user_id)',
+        '*,destination:countries(id,name,is_published,cover_image_url,iso_code),days:trip_days(*),items:trip_items(*,stops:trip_item_stops(*)),organizers:trip_organizers(user_id)',
       )
       .eq('guild_id', guildId)
       .eq('id', tripId)
       .maybeSingle();
-    if (result.error)
-      throw new Error('Impossible de charger l’itinéraire.', { cause: result.error });
-    if (!result.data) return null;
-    const { items, days, ...trip } = result.data;
+    let data = result.data;
+    let stopsAvailable = true;
+    if (result.error) {
+      if (result.error.code !== 'PGRST200' || !result.error.message.includes('trip_item_stops'))
+        throw new Error('Impossible de charger l’itinéraire.', { cause: result.error });
+      // Keep the existing planner usable while the additive migration is pending.
+      const previous = await this.db
+        .from('trips')
+        .select(
+          '*,destination:countries(id,name,is_published,cover_image_url,iso_code),days:trip_days(*),items:trip_items(*),organizers:trip_organizers(user_id)',
+        )
+        .eq('guild_id', guildId)
+        .eq('id', tripId)
+        .maybeSingle();
+      if (previous.error)
+        throw new Error('Impossible de charger l’itinéraire.', { cause: previous.error });
+      stopsAvailable = false;
+      data = previous.data
+        ? { ...previous.data, items: previous.data.items.map((item) => ({ ...item, stops: [] })) }
+        : null;
+    }
+    if (!data) return null;
+    const { items, days, ...trip } = data;
+    const entryIds = [
+      ...new Set([
+        ...items.map((item) => item.entry_id),
+        ...items.flatMap((item) => item.stops.map((stop) => stop.entry_id)),
+      ]),
+    ];
     const [entries, people, connections] = await Promise.all([
-      catalogEntriesById(catalog, [...new Set(items.map((item) => item.entry_id))]),
+      catalogEntriesById(catalog, entryIds),
       this.db.rpc('trip_contributor_cards', { p_trip: tripId }),
-      tripCatalogLinks(catalog, [...new Set(items.map((item) => item.entry_id))]),
+      tripCatalogLinks(catalog, entryIds),
     ]);
     if (people.error) throw new Error('Impossible de charger les collaborateurs.');
     return {
       ...trip,
+      stopsAvailable,
       people: people.data as ProfileIdentity[],
       connections,
       days: sortTripDays(days),
       items: items
         .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
-        .map((item) => ({ ...item, entry: entries.get(item.entry_id) ?? null })),
+        .map((item) => ({
+          ...item,
+          entry: entries.get(item.entry_id) ?? null,
+          stops: item.stops
+            .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+            .map((stop) => ({ ...stop, entry: entries.get(stop.entry_id) ?? null })),
+        })),
     };
   }
   async editableTrips(guildId: string, userId: string, isGuildAdmin = false) {
@@ -219,5 +251,6 @@ export class TripService {
 export type TripCard = Awaited<ReturnType<TripService['cards']>>['rows'][number];
 export type TripPlan = NonNullable<Awaited<ReturnType<TripService['plan']>>>;
 export type TripPlanItem = TripPlan['items'][number];
+export type TripPlanStop = TripPlanItem['stops'][number];
 export type TripPlannerDay = TripPlan['days'][number];
 export type EditableTrip = Awaited<ReturnType<TripService['editableTrips']>>[number];

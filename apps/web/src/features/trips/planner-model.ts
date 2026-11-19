@@ -1,4 +1,4 @@
-import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
+import type { TripPlanItem, TripPlanStop, TripPlannerDay } from '@nagi/database';
 import type { TripEdit, TripResult } from '@nagi/shared';
 import type { TripPlan, EntryCardRow } from '@nagi/database';
 
@@ -17,12 +17,14 @@ export type WorkspaceViewProps = {
   onItinerary: () => void;
   onDetails: (item: TripPlanItem) => void;
   onAdd: (day: string | null, time?: string) => void;
+  onAddStop: (parent: string) => void;
 };
 export type PlaceAdder = (
   entry: EntryCardRow,
   day: string | null,
   time?: string,
   repeat?: boolean,
+  parent?: string,
 ) => Promise<TripResult & { id?: string }>;
 export type TripDetailEntry = Omit<EntryCardRow, 'country' | 'city' | 'category'> & {
   country: EntryCardRow['country'] | null;
@@ -76,8 +78,170 @@ export function itemDuration(item: TripPlanItem) {
     : item.estimated_duration_minutes;
 }
 
+export function activityStops(item: TripPlanItem) {
+  let elapsed: number | null = 0;
+  return (item.stops ?? []).map((stop) => {
+    const start =
+      item.start_time && elapsed !== null ? timeMinutes(item.start_time) + elapsed : null;
+    const time = start !== null && start < 1440 ? minuteTime(start) : null;
+    elapsed =
+      elapsed === null || stop.duration_minutes === null ? null : elapsed + stop.duration_minutes;
+    return { stop, time };
+  });
+}
+
+export function activityBudget(item: TripPlanItem) {
+  const stops = item.stops ?? [];
+  const used = stops.reduce((sum, stop) => sum + (stop.duration_minutes ?? 0), 0);
+  const available = itemDuration(item);
+  return {
+    used,
+    available,
+    unknown: stops.filter((stop) => stop.duration_minutes === null).length,
+    overflow: available === null ? 0 : Math.max(0, used - available),
+    canExtend:
+      used > 0 && used <= 1440 && (!item.start_time || timeMinutes(item.start_time) + used <= 1440),
+  };
+}
+
+export function activityNestingIssue(
+  source: Pick<TripPlanItem, 'id' | 'entry_id'> & { stops?: TripPlanStop[] },
+  parent: TripPlanItem,
+) {
+  if (source.id === parent.id || source.entry_id === parent.entry_id)
+    return 'Choisissez un autre lieu que l’activité principale.';
+  if (source.stops?.length)
+    return 'Cette activité contient déjà des arrêts. Sortez-les avant de l’intégrer à une autre activité.';
+  if (
+    !parent.stops?.some((stop) => stop.id === source.id) &&
+    parent.stops?.some((stop) => stop.entry_id === source.entry_id)
+  )
+    return 'Ce lieu figure déjà parmi les arrêts de cette activité.';
+  return null;
+}
+
+function changeStops(
+  items: TripPlanItem[],
+  id: string,
+  change: (stops: TripPlanStop[]) => TripPlanStop[],
+) {
+  return items.map((item) =>
+    (item.stops ?? []).some((stop) => stop.id === id)
+      ? { ...item, stops: change(item.stops) }
+      : item,
+  );
+}
+
 export function optimisticTripItems(items: TripPlanItem[], change: TripEdit) {
   switch (change.operation) {
+    case 'nest_item': {
+      const source = items.find((item) => item.id === change.data.id);
+      const parent = items.find((item) => item.id === change.data.parent);
+      if (!source || !parent || activityNestingIssue(source, parent)) return items;
+      const stop: TripPlanStop = {
+        id: source.id,
+        trip_item_id: parent.id,
+        entry_id: source.entry_id,
+        entry: source.entry,
+        added_by: source.added_by,
+        notes: source.notes,
+        duration_minutes: itemDuration(source),
+        sort_order: (parent.stops?.at(-1)?.sort_order ?? 0) + 1024,
+        version: source.version + (change.data.before && change.data.before !== source.id ? 1 : 0),
+        created_at: source.created_at,
+        updated_at: source.updated_at,
+      };
+      const stops = [...(parent.stops ?? [])];
+      const before = stops.findIndex((candidate) => candidate.id === change.data.before);
+      stops.splice(before < 0 ? stops.length : before, 0, stop);
+      return items
+        .filter((item) => item.id !== source.id)
+        .map((item) => (item.id === parent.id ? { ...item, stops } : item));
+    }
+    case 'relocate_stop': {
+      const origin = items.find((item) => item.stops?.some((stop) => stop.id === change.data.id));
+      const found = origin && activityStops(origin).find(({ stop }) => stop.id === change.data.id);
+      if (!origin || !found) return items;
+      const { stop, time } = found;
+      const destination = change.data;
+      if (destination.kind === 'stop') {
+        const parent = items.find((item) => item.id === destination.parent);
+        if (!parent || activityNestingIssue(stop, parent) || destination.before === stop.id)
+          return items;
+        const next = items.map((item) => ({
+          ...item,
+          stops: item.stops.filter((s) => s.id !== stop.id),
+        }));
+        return next.map((item) => {
+          if (item.id !== parent.id) return item;
+          const stops = [...item.stops];
+          const before = stops.findIndex((s) => s.id === destination.before);
+          stops.splice(before < 0 ? stops.length : before, 0, {
+            ...stop,
+            trip_item_id: parent.id,
+            version: stop.version + 1,
+          });
+          return { ...item, stops };
+        });
+      }
+      const detached: TripPlanItem = {
+        ...stop,
+        trip_id: origin.trip_id,
+        trip_day_id: destination.day,
+        start_time: time,
+        end_time: null,
+        estimated_duration_minutes: stop.duration_minutes,
+        version: 0,
+        stops: [],
+      };
+      const next = changeStops(items, stop.id, (stops) => stops.filter((s) => s.id !== stop.id));
+      const before = next.findIndex(
+        (item) => item.id === destination.before && item.trip_day_id === destination.day,
+      );
+      next.splice(before < 0 ? next.length : before, 0, detached);
+      return next;
+    }
+    case 'edit_stop':
+      return changeStops(items, change.data.id, (stops) =>
+        stops.map((stop) =>
+          stop.id === change.data.id
+            ? { ...stop, duration_minutes: change.data.duration, notes: change.data.notes }
+            : stop,
+        ),
+      );
+    case 'delete_stop':
+      return changeStops(items, change.data.id, (stops) =>
+        stops.filter((stop) => stop.id !== change.data.id),
+      );
+    case 'move_stop':
+      return changeStops(items, change.data.id, (stops) => {
+        if (change.data.before === change.data.id) return stops;
+        const stop = stops.find((s) => s.id === change.data.id)!;
+        const next = stops.filter((s) => s.id !== stop.id);
+        const index = next.findIndex((s) => s.id === change.data.before);
+        if (index >= 0) next.splice(index, 0, stop);
+        else next.push(stop);
+        return next;
+      });
+    case 'detach_stop': {
+      const parent = items.find((item) => (item.stops ?? []).some((s) => s.id === change.data.id));
+      const found = parent && activityStops(parent).find(({ stop }) => stop.id === change.data.id);
+      if (!parent || !found) return items;
+      const { stop, time } = found;
+      const detached: TripPlanItem = {
+        ...stop,
+        trip_id: parent.trip_id,
+        trip_day_id: parent.trip_day_id,
+        start_time: time,
+        end_time: null,
+        estimated_duration_minutes: stop.duration_minutes,
+        version: 0,
+        stops: [],
+      };
+      const next = changeStops(items, stop.id, (stops) => stops.filter((s) => s.id !== stop.id));
+      next.splice(next.findIndex((item) => item.id === parent.id) + 1, 0, detached);
+      return next;
+    }
     case 'schedule_item': {
       const previous = items.find((item) => item.id === change.data.id);
       const updated = items.map((item) =>

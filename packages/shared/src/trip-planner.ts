@@ -74,6 +74,56 @@ export const tripEditSchema = z.discriminatedUnion('operation', [
     }),
   }),
   z.object({ operation: z.literal('delete_item'), data: z.object({ id: uuidSchema }) }),
+  z.object({
+    operation: z.literal('nest_item'),
+    data: z.object({
+      id: uuidSchema,
+      parent: uuidSchema,
+      before: uuidSchema.nullable().optional(),
+    }),
+  }),
+  z.object({
+    operation: z.literal('relocate_stop'),
+    data: z.discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('stop'),
+        id: uuidSchema,
+        parent: uuidSchema,
+        before: uuidSchema.nullable(),
+      }),
+      z.object({
+        kind: z.literal('activity'),
+        id: uuidSchema,
+        day: uuidSchema.nullable(),
+        before: uuidSchema.nullable(),
+      }),
+    ]),
+  }),
+  z.object({
+    operation: z.literal('add_stop'),
+    data: z.object({
+      id: uuidSchema,
+      parent: uuidSchema,
+      entry: uuidSchema,
+      repeat: z.boolean(),
+      duration: z.number().int().min(1).max(1440).nullable(),
+    }),
+  }),
+  z.object({
+    operation: z.literal('edit_stop'),
+    data: z.object({
+      id: uuidSchema,
+      stop_version: z.number().int().nonnegative(),
+      duration: z.number().int().min(1).max(1440).nullable(),
+      notes: z.string().trim().max(4000),
+    }),
+  }),
+  z.object({
+    operation: z.literal('move_stop'),
+    data: z.object({ id: uuidSchema, before: uuidSchema.nullable() }),
+  }),
+  z.object({ operation: z.literal('delete_stop'), data: z.object({ id: uuidSchema }) }),
+  z.object({ operation: z.literal('detach_stop'), data: z.object({ id: uuidSchema }) }),
   z.object({ operation: z.literal('sort_items'), data: z.object({ day: uuidSchema.nullable() }) }),
   z.object({
     operation: z.literal('schedule_item'),
@@ -128,6 +178,7 @@ export const tripPlaceQuery = z.object({
   page: z.coerce.number().int().min(0).max(10000).default(0),
   day: uuidSchema.optional(),
   entry: uuidSchema.optional(),
+  activity: uuidSchema.optional(),
   category: uuidSchema.optional(),
   country: uuidSchema.optional(),
   city: uuidSchema.optional(),

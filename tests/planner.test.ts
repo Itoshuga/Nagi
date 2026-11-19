@@ -141,6 +141,7 @@ describe('Trip planner model', () => {
       estimated_duration_minutes: null,
       version: 0,
       entry: null,
+      stops: [],
     });
     const items = [item('old', null), item('anchor', 'day')];
     const moved = movedTripItems(items, 'old', { day: 'day', before: 'anchor' });

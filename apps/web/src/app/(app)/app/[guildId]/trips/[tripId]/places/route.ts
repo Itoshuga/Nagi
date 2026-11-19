@@ -72,6 +72,19 @@ export async function GET(
         { headers },
       );
     }
+    let activityEntry: string | undefined;
+    if (v.activity) {
+      const activity = await db
+        .from('trip_items')
+        .select('entry_id')
+        .eq('trip_id', tripId)
+        .eq('id', v.activity)
+        .abortSignal(signal)
+        .maybeSingle();
+      if (activity.error) throw activity.error;
+      if (!activity.data) return new Response(null, { status: 404, headers });
+      activityEntry = activity.data.entry_id;
+    }
     if (v.q || v.category || v.country || v.city || v.neighborhood || v.page > 0)
       return Response.json(
         await searchTripPlaces(
@@ -79,7 +92,20 @@ export async function GET(
           v,
           {
             country: trip.destination_country_id,
-            entries: [],
+            entries: activityEntry ? [activityEntry] : [],
+          },
+          signal,
+        ),
+        { headers },
+      );
+    if (activityEntry)
+      return Response.json(
+        await searchTripPlaces(
+          catalog,
+          v,
+          {
+            country: trip.destination_country_id,
+            entries: [activityEntry],
           },
           signal,
         ),

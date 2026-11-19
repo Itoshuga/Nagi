@@ -30,6 +30,7 @@ import { EntryRichText } from '@/features/entries/rich-text';
 import { entryHref } from '@/features/entries/links';
 import { UserIdentity } from '@/features/profiles/identity';
 import { TripDaySelect } from './add-place-dialog';
+import { ActivityStops } from './activity-stops';
 import {
   itemDuration,
   minuteTime,
@@ -183,6 +184,8 @@ export function TripPlaceDetails({
   onClose,
   onPreview,
   defaultDay = null,
+  parentId,
+  onAddStop,
 }: {
   guild: string;
   plan: TripPlan;
@@ -195,6 +198,8 @@ export function TripPlaceDetails({
   onClose: () => void;
   onPreview: (entry: EntryCardRow) => void;
   defaultDay?: string | null;
+  parentId?: string;
+  onAddStop?: (parent: string) => void;
 }) {
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
@@ -219,7 +224,8 @@ export function TripPlaceDetails({
       }
     }
   }, [plan.version, latestNotes, latestVersion]);
-  const targetDay = item ? item.trip_day_id : defaultDay;
+  const parent = plan.items.find((activity) => activity.id === parentId);
+  const targetDay = item ? item.trip_day_id : parentId ? (parent?.trip_day_id ?? null) : defaultDay;
   const fullEntry =
     entry.country && entry.city && entry.category
       ? {
@@ -231,9 +237,11 @@ export function TripPlaceDetails({
       : undefined;
   const [added, setAdded] = useState(false);
   const present = (id: string) =>
-    plan.items.some((i) => i.entry_id === id && i.trip_day_id === targetDay);
+    parentId
+      ? !!parent?.stops.some((stop) => stop.entry_id === id)
+      : plan.items.some((i) => i.entry_id === id && i.trip_day_id === targetDay);
   async function addEntry(place: EntryCardRow) {
-    const result = await add(place, targetDay, undefined, present(place.id));
+    const result = await add(place, targetDay, undefined, present(place.id), parentId);
     if (result.ok) {
       setError('');
       setAdded(true);
@@ -308,6 +316,20 @@ export function TripPlaceDetails({
             {item.start_time?.slice(0, 5) ?? 'Horaire libre'}
             {itemDuration(item) ? ` · ${itemDuration(item)} min` : ''}
           </p>
+        )}
+        {parentId && (
+          <p className="trip-stop-help">Ajout dans {parent?.entry?.title ?? 'cette activité'}.</p>
+        )}
+        {item && (
+          <ActivityStops
+            item={item}
+            plan={plan}
+            canEdit={canEdit}
+            busy={busy}
+            mutate={mutate}
+            onAdd={onAddStop ? () => onAddStop(item.id) : undefined}
+            always
+          />
         )}
         {item && (
           <section className="trip-detail-section">
@@ -493,12 +515,16 @@ export function TripPlaceDetails({
         )}
         {!item && canEdit && fullEntry && (
           <Button disabled={busy} onClick={() => void addEntry(fullEntry)}>
-            {present(entry.id) ? 'Ajouter une autre visite' : 'Ajouter au voyage'}
+            {present(entry.id)
+              ? 'Ajouter une autre visite'
+              : parentId
+                ? 'Ajouter à cette activité'
+                : 'Ajouter au voyage'}
           </Button>
         )}
         {added && (
           <p role="status" className="text-xs text-muted-foreground">
-            Lieu ajouté au voyage.
+            {parentId ? 'Arrêt ajouté à cette activité.' : 'Lieu ajouté au voyage.'}
           </p>
         )}
         {item && canEdit && (
@@ -536,6 +562,10 @@ export function TripPlaceDetails({
           <DialogTitle>Retirer cette étape ?</DialogTitle>
           <DialogDescription>
             Les notes et horaires de cette visite seront retirés du voyage.
+            {!!item?.stops.length &&
+              (item.stops.length === 1
+                ? ' Son arrêt et ses notes seront également retirés.'
+                : ` Ses ${item.stops.length} arrêts et leurs notes seront également retirés.`)}
           </DialogDescription>
           <div className="trip-dialog-actions">
             <Button variant="ghost" disabled={busy} onClick={() => setConfirm(false)}>

@@ -151,7 +151,18 @@ function Event({
           {item.start_time?.slice(0, 5)}
           {duration ? ` · ${duration} min` : ' · Durée libre'}
         </span>
-        {duration && duration >= 60 && <small>{item.entry?.category?.name}</small>}
+        {duration && duration >= 60 && (
+          <small>
+            {[
+              item.entry?.category?.name,
+              item.stops?.length
+                ? `${item.stops.length} arrêt${item.stops.length > 1 ? 's' : ''}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </small>
+        )}
       </button>
       {props.canEdit && (
         <button

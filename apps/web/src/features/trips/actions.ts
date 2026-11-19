@@ -79,6 +79,11 @@ function failure(error: unknown): Failure {
     trip_forbidden: 'Vous ne disposez plus des droits nécessaires sur ce voyage.',
     trip_entry_hidden: 'Cette fiche n’est plus disponible dans le catalogue.',
     trip_day_missing: 'Cette journée ne fait plus partie du voyage.',
+    trip_activity_missing: 'Cette activité ne fait plus partie du voyage.',
+    trip_stop_self: 'Choisissez un autre lieu que l’activité principale.',
+    trip_activity_has_stops:
+      'Cette activité contient déjà des arrêts. Sortez-les avant de l’intégrer à une autre activité.',
+    trip_stop_duplicate: 'Ce lieu figure déjà parmi les arrêts de cette activité.',
     trip_day_date: 'Choisissez une date libre dans la période du voyage.',
     trip_dates_required: 'Renseignez les dates de début et de fin du voyage.',
     trip_day_order: 'Les journées datées sont classées par date.',

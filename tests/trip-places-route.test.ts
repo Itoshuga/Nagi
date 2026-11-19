@@ -86,6 +86,39 @@ describe('Guild-scoped travel catalogue endpoint', () => {
       ).status,
     ).toBe(400);
   });
+  it('uses only the requested activity in this trip for contextual stop suggestions', async () => {
+    const activityId = '77777777-7777-4777-8777-777777777777';
+    const query = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      abortSignal: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { entry_id: entry }, error: null }),
+    };
+    const from = vi.fn().mockReturnValue(query);
+    mocks.services.mockResolvedValue({ trips: { get: mocks.get }, db: { from } });
+    const req = request({ activity: activityId });
+    expect((await GET(req, context)).status).toBe(200);
+    expect(from).toHaveBeenCalledExactlyOnceWith('trip_items');
+    expect(query.eq.mock.calls).toEqual([
+      ['trip_id', trip],
+      ['id', activityId],
+    ]);
+    expect(query.abortSignal).toHaveBeenCalledWith(req.signal);
+    expect(mocks.search).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ activity: activityId }),
+      { country: 'jp', entries: [entry] },
+      req.signal,
+    );
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    mocks.search.mockClear();
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.search).not.toHaveBeenCalled();
+  });
+  it('rejects a malformed activity identifier before querying the trip', async () => {
+    expect((await GET(request({ activity: 'foreign-or-invalid' }), context)).status).toBe(400);
+    expect(mocks.services).not.toHaveBeenCalled();
+  });
   it('does not disclose unavailable catalogue entries', async () => {
     mocks.detail.mockResolvedValue(null);
     expect((await GET(request({ mode: 'detail', entry }), context)).status).toBe(404);

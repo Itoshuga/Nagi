@@ -1039,6 +1039,658 @@ describe('Collaborative planner transactions', () => {
     collaboration_mode: 'all_members',
   };
 
+  const stopEntry = 'fd8d2495-426a-4486-9c55-bb3296926d7a';
+  const stopOne = '1356563b-e45d-448a-a931-d2aac73fc7dc';
+  const stopTwo = '4d351d51-727d-45a8-9b8a-49ea963d10ec';
+  const stopThree = '7701d6ab-5334-42be-90ed-c8dd4cdb8243';
+  async function activityFixture() {
+    await catalogAndDays();
+    await db.exec(`insert into public.entries(id,city_id,category_id,title,slug,published)
+      select '${stopEntry}',city_id,category_id,'Nintendo','nintendo',true from public.entries where id='${catalogEntry}';`);
+    await asUser();
+    await scalar(
+      operation(0, 'add_item', {
+        id: firstItem,
+        entry: catalogEntry,
+        day: dayOne,
+        repeat: false,
+        start_time: '14:00',
+        duration: 120,
+      }),
+    );
+    await scalar(
+      operation(1, 'add_stop', {
+        id: stopOne,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: false,
+        duration: 40,
+      }),
+    );
+  }
+
+  it('atomically nests an existing activity with its identity, notes, author and clock duration intact', async () => {
+    await activityFixture();
+    await scalar(operation(2, 'delete_stop', { id: stopOne }));
+    await scalar(
+      operation(3, 'add_item', {
+        id: secondItem,
+        entry: stopEntry,
+        day: dayTwo,
+        repeat: false,
+        duration: 20,
+      }),
+    );
+    await scalar(
+      operation(4, 'edit_item', {
+        id: secondItem,
+        item_version: 0,
+        start_time: '10:00',
+        end_time: '10:45',
+        duration: 20,
+        notes: 'Billet Nintendo · étage 6',
+      }),
+    );
+    const original = await scalar(
+      `select jsonb_build_object('author',added_by,'created',created_at,'version',version) as value from public.trip_items where id='${secondItem}'`,
+    );
+    expect(
+      await scalar<number>(operation(5, 'nest_item', { id: secondItem, parent: firstItem })),
+    ).toBe(6);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where trip_id='${tripA}'`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar(
+        `select jsonb_build_object('author',added_by,'created',created_at,'version',version) as value from public.trip_item_stops where id='${secondItem}'`,
+      ),
+    ).toEqual(original);
+    expect(
+      await scalar(
+        `select jsonb_build_object('parent',trip_item_id,'notes',notes,'duration',duration_minutes) as value from public.trip_item_stops where id='${secondItem}'`,
+      ),
+    ).toEqual({ parent: firstItem, notes: 'Billet Nintendo · étage 6', duration: 45 });
+    expect(
+      await scalar<number>(
+        `select estimated_duration_minutes as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(120);
+    await fails(operation(5, 'nest_item', { id: secondItem, parent: firstItem }), /trip_conflict/);
+    // Retrying the original insertion must not recreate a root alongside the stop.
+    expect(
+      await scalar<number>(
+        operation(0, 'add_item', { id: secondItem, entry: stopEntry, day: dayTwo, repeat: false }),
+      ),
+    ).toBe(6);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toBe(0);
+    await scalar(operation(6, 'detach_stop', { id: secondItem }));
+    expect(
+      await scalar(
+        `select jsonb_build_object('day',trip_day_id,'time',start_time,'duration',estimated_duration_minutes,'notes',notes) as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toEqual({ day: dayOne, time: '14:00:00', duration: 45, notes: 'Billet Nintendo · étage 6' });
+  });
+
+  it('rejects nesting into self, duplicates, nested groups and another trip without deleting activities', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'add_item', { id: secondItem, entry: stopEntry, day: dayOne, repeat: false }),
+    );
+    await fails(
+      operation(3, 'nest_item', { id: secondItem, parent: firstItem }),
+      /trip_stop_duplicate/,
+    );
+    await fails(operation(3, 'nest_item', { id: firstItem, parent: firstItem }), /trip_stop_self/);
+    await fails(
+      operation(3, 'nest_item', { id: firstItem, parent: secondItem }),
+      /trip_activity_has_stops/,
+    );
+    await fails(
+      operation(3, 'nest_item', { id: secondItem, parent: stopOne }),
+      /trip_activity_missing/,
+    );
+    await db.exec('reset role');
+    await db.exec(
+      `insert into public.trip_items(id,trip_id,entry_id) values('${stopThree}','${tripB}','${catalogEntry}')`,
+    );
+    await asUser();
+    await fails(
+      operation(3, 'nest_item', { id: secondItem, parent: stopThree }),
+      /trip_activity_missing/,
+    );
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where trip_id='${tripA}'`,
+      ),
+    ).toBe(2);
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(1);
+    await fails(
+      `select private.edit_trip_plan_stops('${guildA}','${tripA}',3,'delete_item','{"id":"${firstItem}"}')`,
+      /permission denied/,
+    );
+  });
+
+  it('applies the same membership and organizer rules to activity nesting', async () => {
+    await activityFixture();
+    await scalar(operation(2, 'delete_stop', { id: stopOne }));
+    await scalar(
+      operation(3, 'add_item', { id: secondItem, entry: stopEntry, day: dayTwo, repeat: false }),
+    );
+    await asUser(adminId);
+    await fails(operation(4, 'nest_item', { id: secondItem, parent: firstItem }), /trip_forbidden/);
+    await db.exec(
+      `reset role; update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+    );
+    await asUser(otherId);
+    await fails(operation(5, 'nest_item', { id: secondItem, parent: firstItem }), /trip_forbidden/);
+    await asUser();
+    expect(
+      await scalar<number>(operation(5, 'nest_item', { id: secondItem, parent: firstItem })),
+    ).toBe(6);
+  });
+
+  it('transfers a stop to another activity without changing its identity, notes, duration or author', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'edit_stop', {
+        id: stopOne,
+        stop_version: 0,
+        duration: 50,
+        notes: 'Billet Nintendo',
+      }),
+    );
+    await scalar(
+      operation(3, 'add_item', {
+        id: secondItem,
+        entry: catalogEntry,
+        day: dayTwo,
+        repeat: true,
+        start_time: '16:00',
+        duration: 90,
+      }),
+    );
+    const before = await scalar(
+      `select jsonb_build_object('id',id,'entry',entry_id,'author',added_by,'created',created_at,'notes',notes,'duration',duration_minutes) as value from public.trip_item_stops where id='${stopOne}'`,
+    );
+    expect(
+      await scalar<number>(
+        operation(4, 'relocate_stop', {
+          kind: 'stop',
+          id: stopOne,
+          parent: secondItem,
+          before: null,
+        }),
+      ),
+    ).toBe(5);
+    expect(
+      await scalar(
+        `select jsonb_build_object('id',id,'entry',entry_id,'author',added_by,'created',created_at,'notes',notes,'duration',duration_minutes) as value from public.trip_item_stops where id='${stopOne}'`,
+      ),
+    ).toEqual(before);
+    expect(
+      await scalar(
+        `select trip_item_id as value from public.trip_item_stops where id='${stopOne}'`,
+      ),
+    ).toBe(secondItem);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_item_stops where trip_item_id='${firstItem}'`,
+      ),
+    ).toBe(0);
+    expect(
+      await scalar<number>(
+        `select estimated_duration_minutes as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(120);
+    await fails(
+      operation(4, 'relocate_stop', { kind: 'stop', id: stopOne, parent: firstItem, before: null }),
+      /trip_conflict/,
+    );
+  });
+
+  it('detaches a stop onto the selected day and position, retaining derived time and notes', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'add_stop', {
+        id: stopTwo,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: 25,
+      }),
+    );
+    await scalar(
+      operation(3, 'edit_stop', {
+        id: stopTwo,
+        stop_version: 0,
+        duration: 25,
+        notes: 'Réservation',
+      }),
+    );
+    expect(
+      await scalar<number>(
+        operation(4, 'relocate_stop', {
+          kind: 'activity',
+          id: stopTwo,
+          day: dayOne,
+          before: firstItem,
+        }),
+      ),
+    ).toBe(5);
+    expect(
+      await scalar(
+        `select jsonb_build_object('day',trip_day_id,'time',start_time,'duration',estimated_duration_minutes,'notes',notes) as value from public.trip_items where id='${stopTwo}'`,
+      ),
+    ).toEqual({ day: dayOne, time: '14:40:00', duration: 25, notes: 'Réservation' });
+    expect(
+      await scalar(
+        `select jsonb_agg(id order by sort_order,id) as value from public.trip_items where trip_id='${tripA}'`,
+      ),
+    ).toEqual([stopTwo, firstItem]);
+    await scalar(
+      operation(5, 'relocate_stop', { kind: 'activity', id: stopOne, day: dayTwo, before: null }),
+    );
+    expect(
+      await scalar(`select trip_day_id as value from public.trip_items where id='${stopOne}'`),
+    ).toBe(dayTwo);
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(0);
+  });
+
+  it('reorders existing duplicate stops but rejects foreign destinations and new duplicates atomically', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'add_item', { id: secondItem, entry: catalogEntry, day: dayTwo, repeat: true }),
+    );
+    await scalar(
+      operation(3, 'add_stop', {
+        id: stopTwo,
+        parent: secondItem,
+        entry: stopEntry,
+        repeat: false,
+        duration: null,
+      }),
+    );
+    await fails(
+      operation(4, 'relocate_stop', {
+        kind: 'stop',
+        id: stopOne,
+        parent: secondItem,
+        before: null,
+      }),
+      /trip_stop_duplicate/,
+    );
+    await fails(
+      operation(4, 'relocate_stop', {
+        kind: 'stop',
+        id: stopOne,
+        parent: firstItem,
+        before: stopTwo,
+      }),
+      /trip_conflict/,
+    );
+    await fails(
+      operation(4, 'relocate_stop', { kind: 'stop', id: stopOne, parent: stopThree, before: null }),
+      /trip_activity_missing/,
+    );
+    await fails(
+      operation(4, 'relocate_stop', {
+        kind: 'activity',
+        id: stopOne,
+        day: stopThree,
+        before: null,
+      }),
+      /trip_day_missing/,
+    );
+    await fails(
+      operation(4, 'relocate_stop', {
+        kind: 'activity',
+        id: stopOne,
+        day: dayOne,
+        before: secondItem,
+      }),
+      /trip_conflict/,
+    );
+    expect(
+      await scalar(
+        `select trip_item_id as value from public.trip_item_stops where id='${stopOne}'`,
+      ),
+    ).toBe(firstItem);
+    await scalar(
+      operation(4, 'add_stop', {
+        id: stopThree,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: null,
+      }),
+    );
+    expect(
+      await scalar<number>(
+        operation(5, 'relocate_stop', {
+          kind: 'stop',
+          id: stopThree,
+          parent: firstItem,
+          before: stopOne,
+        }),
+      ),
+    ).toBe(6);
+    expect(
+      await scalar(
+        `select jsonb_agg(id order by sort_order,id) as value from public.trip_item_stops where trip_item_id='${firstItem}'`,
+      ),
+    ).toEqual([stopThree, stopOne]);
+  });
+
+  it('keeps permissions and row isolation when dragging a stop out of its activity', async () => {
+    await activityFixture();
+    const drop = { kind: 'activity', id: stopOne, day: dayTwo, before: null };
+    await asUser(adminId);
+    await fails(operation(2, 'relocate_stop', drop), /trip_forbidden/);
+    await db.exec(
+      `reset role; update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+    );
+    await asUser(otherId);
+    await fails(operation(3, 'relocate_stop', drop), /trip_forbidden/);
+    await asUser();
+    await fails(
+      `select private.edit_trip_plan_nesting('${guildA}','${tripA}',3,'delete_stop','{"id":"${stopOne}"}')`,
+      /permission denied/,
+    );
+    expect(await scalar<number>(operation(3, 'relocate_stop', drop))).toBe(4);
+  });
+
+  it('inserts an existing activity before a chosen stop and rolls back an invalid nested drop', async () => {
+    await activityFixture();
+    await asService();
+    await db.exec(
+      `insert into public.entries(id,city_id,category_id,title,slug,published) select '${stopThree}',city_id,category_id,'SEGA','sega',true from public.entries where id='${catalogEntry}'`,
+    );
+    await asUser();
+    await scalar(
+      operation(2, 'add_item', { id: secondItem, entry: stopThree, day: dayOne, repeat: false }),
+    );
+    await fails(
+      operation(3, 'nest_item', { id: secondItem, parent: firstItem, before: stopTwo }),
+      /trip_conflict/,
+    );
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar<number>(
+        operation(3, 'nest_item', { id: secondItem, parent: firstItem, before: stopOne }),
+      ),
+    ).toBe(5);
+    expect(
+      await scalar(
+        `select jsonb_agg(id order by sort_order,id) as value from public.trip_item_stops where trip_item_id='${firstItem}'`,
+      ),
+    ).toEqual([secondItem, stopOne]);
+  });
+
+  it('keeps stops in their parent when moving and scheduling the single calendar activity', async () => {
+    await activityFixture();
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where trip_id='${tripA}'`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar<number>(operation(2, 'move_item', { id: firstItem, day: dayTwo, before: null })),
+    ).toBe(3);
+    expect(
+      await scalar<number>(
+        operation(3, 'schedule_item', {
+          id: firstItem,
+          item_version: 1,
+          day: dayTwo,
+          start_time: '15:30',
+          end_time: '17:30',
+          duration: 120,
+        }),
+      ),
+    ).toBe(4);
+    expect(
+      await scalar(`select jsonb_build_object('day',i.trip_day_id,'start',i.start_time,'parentDuration',i.estimated_duration_minutes,'stopDuration',s.duration_minutes) as value
+      from public.trip_item_stops s join public.trip_items i on i.id=s.trip_item_id where s.id='${stopOne}'`),
+    ).toEqual({ day: dayTwo, start: '15:30:00', parentDuration: 120, stopDuration: 40 });
+  });
+
+  it('bounds insertion receipts to a visible entry and a root activity in the same trip', async () => {
+    await activityFixture();
+    const add = { id: stopOne, parent: firstItem, entry: stopEntry, repeat: false, duration: 40 };
+    expect(await scalar<number>(operation(0, 'add_stop', add))).toBe(2);
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(1);
+    await fails(operation(2, 'add_stop', { ...add, id: stopTwo }), /trip_duplicate/);
+    await fails(
+      operation(2, 'add_stop', { ...add, id: stopTwo, entry: catalogEntry }),
+      /trip_stop_self/,
+    );
+    await fails(
+      operation(2, 'add_stop', { ...add, id: stopTwo, parent: stopOne }),
+      /trip_activity_missing/,
+    );
+    await fails(
+      `insert into public.trip_item_stops(trip_item_id,entry_id) values('${firstItem}','${stopEntry}')`,
+      /permission denied/,
+    );
+    await fails(
+      `select private.edit_trip_plan_roots('${guildA}','${tripA}',2,'delete_trip','{}')`,
+      /permission denied/,
+    );
+    await db.exec('reset role');
+    await db.exec(
+      `insert into public.trip_items(id,trip_id,entry_id) values('${secondItem}','${tripB}','${catalogEntry}');`,
+    );
+    await asUser();
+    await fails(
+      operation(2, 'add_stop', { ...add, id: stopTwo, parent: secondItem }),
+      /trip_activity_missing/,
+    );
+    await db.exec('reset role');
+    await asService();
+    await db.exec(`update public.entries set published=false where id='${stopEntry}'`);
+    await asUser();
+    await fails(
+      operation(2, 'add_stop', { ...add, id: stopTwo, repeat: true }),
+      /trip_entry_hidden/,
+    );
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(1);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.entries where id='${stopEntry}'`,
+      ),
+    ).toBe(0);
+  });
+
+  it('protects stop notes with versions and reorders only within the same activity', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'add_stop', {
+        id: stopTwo,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: 20,
+      }),
+    );
+    const edit = { id: stopOne, stop_version: 0, duration: 50, notes: 'Billet, étage 6' };
+    expect(await scalar<number>(operation(3, 'edit_stop', edit))).toBe(4);
+    await fails(operation(4, 'edit_stop', edit), /trip_conflict/);
+    await fails(operation(3, 'edit_stop', { ...edit, stop_version: 1 }), /trip_conflict/);
+    expect(await scalar<number>(operation(4, 'move_stop', { id: stopTwo, before: stopOne }))).toBe(
+      5,
+    );
+    expect(
+      await scalar(
+        `select jsonb_agg(id order by sort_order,id) as value from public.trip_item_stops where trip_item_id='${firstItem}'`,
+      ),
+    ).toEqual([stopTwo, stopOne]);
+    expect(
+      await scalar(`select notes as value from public.trip_item_stops where id='${stopOne}'`),
+    ).toBe('Billet, étage 6');
+    await scalar(
+      operation(5, 'add_item', { id: secondItem, entry: catalogEntry, day: dayOne, repeat: true }),
+    );
+    await scalar(
+      operation(6, 'add_stop', {
+        id: stopThree,
+        parent: secondItem,
+        entry: stopEntry,
+        repeat: false,
+        duration: null,
+      }),
+    );
+    await fails(operation(7, 'move_stop', { id: stopOne, before: stopThree }), /trip_conflict/);
+    expect(
+      await scalar<number>(
+        `select estimated_duration_minutes as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(120);
+  });
+
+  it('detaches an existing stop without losing notes or resurrecting deleted groups on retry', async () => {
+    await activityFixture();
+    await scalar(
+      operation(2, 'add_stop', {
+        id: stopTwo,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: 20,
+      }),
+    );
+    await scalar(
+      operation(3, 'edit_stop', {
+        id: stopTwo,
+        stop_version: 0,
+        duration: 20,
+        notes: 'Réservation',
+      }),
+    );
+    expect(await scalar<number>(operation(4, 'detach_stop', { id: stopTwo }))).toBe(5);
+    expect(
+      await scalar(
+        `select jsonb_build_object('day',trip_day_id,'start',start_time,'duration',estimated_duration_minutes,'notes',notes) as value from public.trip_items where id='${stopTwo}'`,
+      ),
+    ).toEqual({ day: dayOne, start: '14:40:00', duration: 20, notes: 'Réservation' });
+    expect(
+      await scalar<number>(
+        operation(0, 'add_stop', {
+          id: stopTwo,
+          parent: firstItem,
+          entry: stopEntry,
+          repeat: true,
+          duration: 20,
+        }),
+      ),
+    ).toBe(5);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_item_stops where id='${stopTwo}'`,
+      ),
+    ).toBe(0);
+    expect(await scalar<number>(operation(5, 'delete_item', { id: firstItem }))).toBe(6);
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(0);
+    expect(
+      await scalar<number>(
+        operation(0, 'add_stop', {
+          id: stopOne,
+          parent: firstItem,
+          entry: stopEntry,
+          repeat: false,
+          duration: 40,
+        }),
+      ),
+    ).toBe(6);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where id='${stopTwo}'`,
+      ),
+    ).toBe(1);
+  });
+
+  it('enforces collaboration settings, expired membership and guild isolation for stops', async () => {
+    await activityFixture();
+    await asUser(otherId);
+    await scalar(
+      operation(2, 'add_stop', {
+        id: stopTwo,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: null,
+      }),
+    );
+    expect(
+      await scalar<boolean>(
+        `select public.trip_contributor_cards('${tripA}') @> '[{"id":"${otherId}"}]'::jsonb as value`,
+      ),
+    ).toBe(true);
+    await db.exec('reset role');
+    await db.exec(
+      `update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+    );
+    await asUser(otherId);
+    await fails(
+      operation(4, 'edit_stop', { id: stopTwo, stop_version: 0, duration: 15, notes: '' }),
+      /trip_forbidden/,
+    );
+    await asUser(adminId);
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(0);
+    await fails(operation(4, 'delete_stop', { id: stopOne }), /trip_forbidden/);
+    await db.exec('reset role');
+    await db.exec(
+      `update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${userId}' and guild_id='${guildA}'`,
+    );
+    await asUser();
+    expect(
+      await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
+    ).toBe(0);
+    await fails(operation(4, 'delete_stop', { id: stopOne }), /trip_forbidden/);
+  });
+
+  it('keeps shared stops after account deletion while removing private insertion receipts', async () => {
+    await activityFixture();
+    await db.exec('reset role');
+    await db.exec(`delete from auth.users where id='${userId}'`);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_item_stops where added_by is null`,
+      ),
+    ).toBe(1);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from private.trip_stop_add_requests where user_id='${userId}'`,
+      ),
+    ).toBe(0);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(1);
+  });
+
   it('moves and schedules an event atomically, preserving notes and enforcing both versions', async () => {
     await catalogAndDays();
     await asUser();
