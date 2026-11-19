@@ -49,7 +49,7 @@ import { EntryImage } from '@/features/media/image';
 import { UserIdentity } from '@/features/profiles/identity';
 import { editTrip, tripPlaceOptions, type TripFormState } from './actions';
 import { tripStatus } from './trip-list';
-import './settings.css';
+import '../settings/settings.css';
 
 const tabs = [
   { id: 'trip-general', label: 'Général', description: 'Destination & dates', icon: Settings2 },
@@ -72,7 +72,7 @@ function selectTab(tab: SettingsTab) {
 }
 function SectionHeading({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <header className="trip-settings-section-heading">
+    <header className="settings-section-heading">
       <h2>{title}</h2>
       <p>{children}</p>
     </header>
@@ -224,23 +224,23 @@ export function TripSettingsForm({
     });
   }
   return (
-    <div className="trip-settings-page">
-      <Link href={path} className="trip-settings-back">
+    <div className="settings-page">
+      <Link href={path} className="settings-back">
         <ArrowLeft className="size-4" aria-hidden="true" />
         Retour au voyage
       </Link>
-      <header className="trip-settings-heading">
+      <header className="settings-heading">
         <div>
-          <p className="trip-settings-eyebrow">À votre façon</p>
+          <p className="settings-eyebrow">À votre façon</p>
           <h1>Paramètres du voyage</h1>
           <p>Les détails qui donnent le ton. L’organisation qui vous ressemble.</p>
         </div>
-        <span className="trip-settings-status">{tripStatus[draft.status]}</span>
+        <span className="settings-status">{tripStatus[draft.status]}</span>
       </header>
-      <div className="trip-settings-layout">
-        <aside className="trip-settings-sidebar">
-          <div className="trip-settings-trip">
-            <EntryImage src={cover} className="trip-settings-thumb" sizes="48px" />
+      <div className="settings-layout">
+        <aside className="settings-sidebar">
+          <div className="settings-trip">
+            <EntryImage src={cover} className="settings-thumb" sizes="48px" />
             <div>
               <strong>{draft.title.trim() || 'Votre voyage'}</strong>
               <span>{country?.name ?? 'Destination libre'}</span>
@@ -250,7 +250,7 @@ export function TripSettingsForm({
             role="tablist"
             aria-label="Paramètres du voyage"
             aria-orientation="vertical"
-            className="trip-settings-tabs"
+            className="settings-tabs"
           >
             {tabs.map(({ id, label, description, icon: Icon }, index) => (
               <button
@@ -292,7 +292,7 @@ export function TripSettingsForm({
         <form
           id={`${prefix}-form`}
           action={action}
-          className="trip-settings-form"
+          className="settings-form"
           aria-busy={busy}
           onReset={(event) => event.preventDefault()}
           onInvalidCapture={(event) => {
@@ -315,12 +315,12 @@ export function TripSettingsForm({
               role="tabpanel"
               aria-labelledby={`${prefix}-trip-general-tab`}
               hidden={tab !== 'trip-general'}
-              className="trip-settings-panel"
+              className="settings-panel"
             >
               <SectionHeading title="Les grandes lignes">
                 Une destination, un nom et quelques dates pour poser le décor.
               </SectionHeading>
-              <div className="trip-settings-fields">
+              <div className="settings-fields">
                 <div>
                   <Label htmlFor={`${prefix}-title`}>Nom du voyage</Label>
                   <Input
@@ -333,7 +333,7 @@ export function TripSettingsForm({
                     placeholder="Japon, à notre rythme"
                   />
                 </div>
-                <div className="trip-settings-columns">
+                <div className="settings-columns">
                   <CatalogPicker
                     name="destination_country_id"
                     label="Destination principale"
@@ -363,7 +363,7 @@ export function TripSettingsForm({
                   </div>
                 </div>
                 <div>
-                  <div className="trip-settings-label-row">
+                  <div className="settings-label-row">
                     <Label htmlFor={`${prefix}-description`}>Quelques mots sur le voyage</Label>
                     <span>Facultatif</span>
                   </div>
@@ -378,13 +378,13 @@ export function TripSettingsForm({
                   />
                 </div>
               </div>
-              <div className="trip-settings-divider-heading">
+              <div className="settings-divider-heading">
                 <CalendarDays className="size-4" aria-hidden="true" />
                 <h3>Dates & horaires</h3>
                 <span>À définir à votre rythme</span>
               </div>
-              <div className="trip-settings-fields">
-                <div className="trip-settings-columns">
+              <div className="settings-fields">
+                <div className="settings-columns">
                   <div>
                     <Label htmlFor={`${prefix}-start`}>Départ</Label>
                     <Input
@@ -424,11 +424,11 @@ export function TripSettingsForm({
                       <option key={zone} value={zone} />
                     ))}
                   </datalist>
-                  <p id={`${prefix}-zone-help`} className="trip-settings-help">
+                  <p id={`${prefix}-zone-help`} className="settings-help">
                     Les horaires des étapes suivent l’heure locale du voyage.
                   </p>
                 </div>
-                <p className="trip-settings-note">
+                <p className="settings-note">
                   <Info className="size-4" aria-hidden="true" />
                   <span>
                     Les journées sont complétées selon vos dates. Si vous raccourcissez le séjour,
@@ -442,27 +442,27 @@ export function TripSettingsForm({
               role="tabpanel"
               aria-labelledby={`${prefix}-trip-cover-tab`}
               hidden={tab !== 'trip-cover'}
-              className="trip-settings-panel"
+              className="settings-panel"
             >
               <SectionHeading title="Une image, votre voyage">
                 Donnez-lui une couverture qui vous ressemble.
               </SectionHeading>
-              <div className="trip-settings-fields">
-                <div className="trip-settings-cover-preview">
+              <div className="settings-fields">
+                <div className="settings-cover-preview">
                   <EntryImage
                     src={cover}
-                    className="trip-settings-cover-image"
+                    className="settings-cover-image"
                     sizes="(max-width: 767px) 100vw, 720px"
                   />
-                  <div className="trip-settings-cover-shade" />
-                  <span className="trip-settings-cover-source">
+                  <div className="settings-cover-shade" />
+                  <span className="settings-cover-source">
                     {customCover
                       ? 'Couverture personnalisée'
                       : cover
                         ? 'Couverture de la destination'
                         : 'Couverture par défaut'}
                   </span>
-                  <div className="trip-settings-cover-caption">
+                  <div className="settings-cover-caption">
                     <span>{country?.name ?? 'Votre prochaine destination'}</span>
                     <strong>{draft.title.trim() || 'Votre voyage'}</strong>
                   </div>
@@ -495,7 +495,7 @@ export function TripSettingsForm({
                     setFileError('');
                   }}
                 />
-                <div className="trip-settings-cover-tools">
+                <div className="settings-cover-tools">
                   <Button
                     type="button"
                     variant="secondary"
@@ -523,19 +523,19 @@ export function TripSettingsForm({
                   {removeCover && (
                     <button
                       type="button"
-                      className="trip-settings-text-button"
+                      className="settings-text-button"
                       onClick={() => setRemoveCover(false)}
                     >
                       Conserver l’image actuelle
                     </button>
                   )}
                 </div>
-                <p className="trip-settings-help">
+                <p className="settings-help">
                   {file ? `${file.name} · ` : ''}JPEG, PNG ou WebP · {maxCoverBytes / coverMebibyte}{' '}
                   Mo maximum. Un format horizontal est idéal.
                 </p>
                 {fileError && <Alert role="alert">{fileError}</Alert>}
-                <p className="trip-settings-note">
+                <p className="settings-note">
                   <ImagePlus className="size-4" aria-hidden="true" />
                   <span>
                     Sans image personnalisée, Nagi utilise la couverture de votre destination
@@ -549,15 +549,15 @@ export function TripSettingsForm({
               role="tabpanel"
               aria-labelledby={`${prefix}-trip-organizers-tab`}
               hidden={tab !== 'trip-organizers'}
-              className="trip-settings-panel"
+              className="settings-panel"
             >
               <SectionHeading title="Mieux préparer, ensemble">
                 Choisissez qui organise et qui peut faire évoluer l’itinéraire.
               </SectionHeading>
-              <div className="trip-settings-fields">
+              <div className="settings-fields">
                 <fieldset className="min-w-0">
-                  <legend className="trip-settings-legend">Qui peut modifier l’itinéraire ?</legend>
-                  <div className="trip-settings-permissions">
+                  <legend className="settings-legend">Qui peut modifier l’itinéraire ?</legend>
+                  <div className="settings-permissions">
                     {(
                       [
                         {
@@ -577,7 +577,7 @@ export function TripSettingsForm({
                       <label
                         key={value}
                         className={cn(
-                          'trip-settings-permission',
+                          'settings-permission',
                           draft.collaboration_mode === value && 'is-selected',
                         )}
                       >
@@ -595,7 +595,7 @@ export function TripSettingsForm({
                     ))}
                   </div>
                 </fieldset>
-                <p className="trip-settings-note">
+                <p className="settings-note">
                   <ShieldCheck className="size-4" aria-hidden="true" />
                   <span>
                     Les paramètres du voyage et la gestion des organisateurs restent réservés aux
@@ -603,19 +603,19 @@ export function TripSettingsForm({
                   </span>
                 </p>
               </div>
-              <div className="trip-settings-divider-heading">
+              <div className="settings-divider-heading">
                 <Users className="size-4" aria-hidden="true" />
                 <h3>Organisateurs</h3>
                 <span>{organizers.length}</span>
               </div>
-              <div className="trip-settings-fields">
+              <div className="settings-fields">
                 {organizers.length === 0 && (
-                  <p className="trip-settings-help">
+                  <p className="settings-help">
                     Ce voyage n’a plus d’organisateur. Vous pouvez en ajouter un en tant
                     qu’administrateur Discord de cet espace.
                   </p>
                 )}
-                <ul className="trip-settings-organizers">
+                <ul className="settings-organizers">
                   {organizers.map((person) => (
                     <li key={person.id}>
                       <UserIdentity
@@ -627,13 +627,13 @@ export function TripSettingsForm({
                         }}
                       />
                       {person.id === trip.created_by ? (
-                        <span className="trip-settings-owner">Créateur</span>
+                        <span className="settings-owner">Créateur</span>
                       ) : (
                         <button
                           type="button"
                           onClick={() => changeOrganizer(person.id)}
                           aria-label={`Retirer ${person.name} des organisateurs`}
-                          className="trip-settings-remove-member"
+                          className="settings-remove-member"
                         >
                           Retirer
                         </button>
@@ -642,7 +642,7 @@ export function TripSettingsForm({
                   ))}
                 </ul>
                 <div
-                  className="trip-settings-invite"
+                  className="settings-invite"
                   role="group"
                   aria-labelledby={`${prefix}-invite-label`}
                 >
@@ -670,13 +670,13 @@ export function TripSettingsForm({
                       Ajouter
                     </Button>
                   </div>
-                  <p id={`${prefix}-invite-help`} className="trip-settings-help">
+                  <p id={`${prefix}-invite-help`} className="settings-help">
                     Le membre doit avoir ouvert cet espace dans Nagi. Sur Discord, le mode
                     développeur permet de copier son identifiant.
                   </p>
                 </div>
                 {teamFeedback.error && <Alert role="alert">{teamFeedback.error}</Alert>}
-                <p className="trip-settings-team-status" role="status">
+                <p className="settings-team-status" role="status">
                   {teamPending ? (
                     <>
                       <LoaderCircle
@@ -699,10 +699,10 @@ export function TripSettingsForm({
           </fieldset>
         </form>
       </div>
-      <div className={cn('trip-settings-savebar', (dirty || pending) && 'is-active')}>
-        <div className="trip-settings-save-feedback">
+      <div className={cn('settings-savebar', (dirty || pending) && 'is-active')}>
+        <div className="settings-save-feedback">
           {state.error && errorVisible && !pending ? (
-            <p role="alert" className="trip-settings-save-error">
+            <p role="alert" className="settings-save-error">
               {state.error}
             </p>
           ) : (
@@ -713,7 +713,7 @@ export function TripSettingsForm({
                   aria-hidden="true"
                 />
               ) : dirty ? (
-                <span className="trip-settings-dirty-dot" />
+                <span className="settings-dirty-dot" />
               ) : (
                 <CheckCheck className="size-4" aria-hidden="true" />
               )}
@@ -725,7 +725,7 @@ export function TripSettingsForm({
             </p>
           )}
         </div>
-        <div className="trip-settings-save-actions">
+        <div className="settings-save-actions">
           <Button type="button" variant="ghost" disabled={!dirty || busy} onClick={reset}>
             Rétablir
           </Button>
@@ -760,7 +760,7 @@ function TripDeleteForm({
       }}
     >
       <DialogTrigger asChild>
-        <button type="button" className="trip-settings-delete" disabled={disabled}>
+        <button type="button" className="settings-delete" disabled={disabled}>
           <Trash2 className="size-4" aria-hidden="true" />
           Supprimer le voyage
         </button>
@@ -771,7 +771,7 @@ function TripDeleteForm({
           if (pending) event.preventDefault();
         }}
       >
-        <span className="trip-settings-delete-icon">
+        <span className="settings-delete-icon">
           <Trash2 className="size-5" aria-hidden="true" />
         </span>
         <DialogTitle className="pr-5 text-xl font-extrabold tracking-tight">

@@ -1,7 +1,8 @@
 'use client';
 
 import { useActionState, useId, useRef, useState } from 'react';
-import { Check, LogOut, Star, Trash2 } from 'lucide-react';
+import { Check, Compass, LogOut, Star, Trash2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -19,15 +20,19 @@ import {
   signOutOtherSessions,
   type SettingsState,
 } from './actions';
+import { SettingsSection } from './section';
+import { SettingsSavebar } from './savebar';
 
 const initialState: SettingsState = { error: '' };
 
 export function DefaultSpaceForm({
   spaces,
   selected,
+  children,
 }: {
   spaces: { id: string; name: string }[];
   selected: string | null;
+  children?: ReactNode;
 }) {
   const id = useId();
   const [state, action, pending] = useActionState(saveDefaultSpace, initialState);
@@ -35,47 +40,100 @@ export function DefaultSpaceForm({
     spaces.find((space) => space.id === selected)?.id ??
       (spaces.length === 1 ? (spaces[0]?.id ?? '') : ''),
   );
+  const [feedbackVisible, setFeedbackVisible] = useState(true);
+  const dirty = !!value && value !== selected;
   return (
-    <form action={action} className="space-y-4">
-      <Label htmlFor={id}>Espace à ouvrir après la connexion</Label>
-      <select
-        id={id}
-        name="guildId"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        disabled={pending}
-        required
-        className="settings-select"
+    <form action={action} aria-busy={pending} onSubmit={() => setFeedbackVisible(true)}>
+      <SettingsSection
+        title="Votre point de départ"
+        description="Retrouvez votre espace préféré dès la connexion."
       >
-        <option value="" disabled>
-          Choisir un espace
-        </option>
-        {spaces.map((space) => (
-          <option key={space.id} value={space.id}>
-            {space.name}
-          </option>
-        ))}
-      </select>
-      {state.error && <Alert role="alert">{state.error}</Alert>}
-      {state.message && (
-        <p role="status" className="settings-success">
-          <Check aria-hidden="true" className="size-4" />
-          {state.message}
+        <div>
+          <Label htmlFor={id}>Espace à ouvrir après la connexion</Label>
+          <select
+            id={id}
+            name="guildId"
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setFeedbackVisible(false);
+            }}
+            disabled={pending}
+            required
+            className="settings-select"
+            aria-describedby={`${id}-help`}
+          >
+            <option value="" disabled>
+              Choisir un espace
+            </option>
+            {spaces.map((space) => (
+              <option key={space.id} value={space.id}>
+                {space.name}
+              </option>
+            ))}
+          </select>
+          <p id={`${id}-help`} className="settings-help">
+            Ce choix est personnel. Il ne change pas les préférences des autres membres de l’espace.
+          </p>
+        </div>
+        {children}
+      </SettingsSection>
+      <SettingsSavebar
+        dirty={dirty}
+        pending={pending}
+        error={feedbackVisible ? state.error : ''}
+        message={feedbackVisible ? state.message : undefined}
+        onReset={() => {
+          setValue(spaces.find((space) => space.id === selected)?.id ?? '');
+          setFeedbackVisible(false);
+        }}
+        disabled={!value}
+      />
+    </form>
+  );
+}
+
+export function DefaultSpaceShortcut({
+  space,
+  selected,
+  children,
+}: {
+  space: { id: string; name: string };
+  selected: string | null;
+  children?: ReactNode;
+}) {
+  const [state, action, pending] = useActionState(saveDefaultSpace, initialState);
+  const isDefault = selected === space.id || !!state.message;
+  return (
+    <form action={action} aria-busy={pending}>
+      <input type="hidden" name="guildId" value={space.id} />
+      <SettingsSection
+        title="Votre point de départ"
+        description="Retrouvez cet espace dès votre prochaine connexion."
+      >
+        <p className="settings-note">
+          <Compass className="size-4" aria-hidden="true" />
+          <span>
+            Ouvrez directement {space.name} après la connexion. Ce choix s’applique uniquement à
+            votre compte.
+          </span>
         </p>
-      )}
-      <Button
-        type="submit"
-        variant="secondary"
-        size="sm"
-        disabled={pending || !value || value === selected}
-      >
-        <Star aria-hidden="true" className="size-4" />
-        {pending
-          ? 'Enregistrement…'
-          : value === selected
-            ? 'Espace par défaut'
-            : 'Enregistrer ce choix'}
-      </Button>
+        {state.error && <Alert role="alert">{state.error}</Alert>}
+        {isDefault ? (
+          <p className="settings-success" role="status">
+            <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>Cet espace est déjà votre espace par défaut.</span>
+          </p>
+        ) : (
+          <div className="settings-section-actions">
+            <Button type="submit" size="sm" disabled={pending}>
+              <Star className="size-4" aria-hidden="true" />
+              {pending ? 'Enregistrement…' : 'Définir cet espace par défaut'}
+            </Button>
+          </div>
+        )}
+        {children}
+      </SettingsSection>
     </form>
   );
 }
@@ -119,6 +177,9 @@ function DeleteAccountForm({ userId, onCancel }: { userId: string; onCancel: () 
         cancel.current?.focus();
       }}
     >
+      <span className="settings-delete-icon">
+        <Trash2 className="size-5" aria-hidden="true" />
+      </span>
       <DialogTitle className="pr-6 text-xl font-bold">
         Supprimer votre compte Nagi&nbsp;?
       </DialogTitle>
@@ -183,10 +244,10 @@ export function DeleteAccountButton({ available, userId }: { available: boolean;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="destructive" size="sm" disabled={!available}>
+        <button type="button" className="settings-delete" disabled={!available}>
           <Trash2 aria-hidden="true" className="size-4" />
-          Supprimer mon compte
-        </Button>
+          Supprimer le compte
+        </button>
       </DialogTrigger>
       {open && <DeleteAccountForm userId={userId} onCancel={() => setOpen(false)} />}
     </Dialog>

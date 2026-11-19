@@ -50,5 +50,5 @@ export async function saveGuildSettings(
     .eq('id', guildId);
   if (error) return { error: 'Impossible d’enregistrer les paramètres.' };
   revalidatePath(`/app/${guildId}`, 'layout');
-  redirect(`/app/${guildId}/settings?saved=settings`);
+  redirect(`/app/${guildId}/settings?saved=settings#space-permissions`);
 }
