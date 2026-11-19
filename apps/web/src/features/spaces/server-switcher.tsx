@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { Check, ChevronDown, Grid2X2, LoaderCircle, Star } from 'lucide-react';
+import { Check, ChevronDown, Grid2X2, LoaderCircle, Settings2, Star } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
@@ -36,7 +36,7 @@ export function ServerSwitcher({
           <Button
             variant="ghost"
             className="app-server-trigger"
-            aria-label={`Changer d’espace, ${guild.name}`}
+            aria-label={`Ouvrir le menu de l’espace ${guild.name}`}
             aria-busy={pending}
             disabled={pending}
           >
@@ -93,6 +93,12 @@ export function ServerSwitcher({
             ))}
           </div>
           <div className="app-menu-section">
+            <DropdownMenuItem asChild disabled={pending}>
+              <Link href={`/app/${guild.id}/settings`}>
+                <Settings2 className="size-4" />
+                Paramètres de l’espace
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
               asChild
               disabled={favorite === guild.id || pending}

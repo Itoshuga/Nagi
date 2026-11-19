@@ -861,6 +861,7 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      account_deletion_ready: { Args: Record<PropertyKey, never>; Returns: boolean; };
       acquire_bot_lease: { Args: { p_application_id: string; p_scope: string; p_instance: string }; Returns: string; };
       can_create_guild_trip: { Args: { p_guild_id: string }; Returns: boolean; };
       can_edit_guild_trip: { Args: { p_trip_id: string }; Returns: boolean; };

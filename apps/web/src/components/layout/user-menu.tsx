@@ -15,11 +15,9 @@ import { signOut } from '@/features/auth/actions';
 export function UserMenu({
   viewer,
   variant = 'default',
-  guildId,
 }: {
   viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
   variant?: 'default' | 'app';
-  guildId?: string;
 }) {
   const app = variant === 'app';
   const avatar = viewer.avatar_url?.startsWith('https://') ? viewer.avatar_url : null;
@@ -85,14 +83,6 @@ export function UserMenu({
               Paramètres du compte
             </Link>
           </DropdownMenuItem>
-          {app && guildId && (
-            <DropdownMenuItem asChild>
-              <Link href={`/app/${guildId}/settings`}>
-                <Settings2 className="size-4" />
-                Paramètres<span className="ml-auto text-[10px] text-muted-foreground">Espace</span>
-              </Link>
-            </DropdownMenuItem>
-          )}
           {isAdmin(viewer.role) && (
             <DropdownMenuItem asChild>
               <Link href="/admin">

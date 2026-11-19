@@ -16,7 +16,7 @@ export default async function TripPage({
 }) {
   const { guildId, tripId } = await params;
   if (!uuidSchema.safeParse(tripId).success) notFound();
-  const { viewer } = await requireGuild(guildId);
+  const { viewer, isAdmin } = await requireGuild(guildId);
   const { trips } = await spaceServices();
   const catalog = publicCatalogDatabase();
   const selection = uuidSchema.safeParse((await searchParams).ajouter);
@@ -26,7 +26,9 @@ export default async function TripPage({
     selection.success ? catalogEntriesById(catalog, [selection.data]) : null,
   ]);
   if (!plan) notFound();
-  const canManage = plan.organizers.some((person) => person.user_id === viewer.id);
+  const canManage =
+    plan.organizers.some((person) => person.user_id === viewer.id) ||
+    (isAdmin && plan.organizers.length === 0);
   return (
     <TripWorkbench
       guild={guildId}

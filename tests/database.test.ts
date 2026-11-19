@@ -35,7 +35,7 @@ beforeAll(async () => {
     create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
     create schema auth;
     create table auth.users(id uuid primary key,last_sign_in_at timestamptz,raw_user_meta_data jsonb);
-    create table auth.identities(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users(id),provider text,provider_id text,identity_data jsonb);
+    create table auth.identities(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users(id) on delete cascade,provider text,provider_id text,identity_data jsonb);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     create function auth.role() returns text language sql stable as $$ select current_setting('request.jwt.claim.role',true) $$;
     grant usage on schema auth,public to anon,authenticated,service_role;
@@ -866,6 +866,113 @@ async function spacesFixture() {
     select public.record_discord_memberships('${adminId}','${applicationId}','[{"id":"${guildB}","permissions":"32"}]');
     insert into public.trips(id,guild_id,title,created_by) values('${tripA}','${guildA}','Voyage A','${userId}'),('${tripB}','${guildB}','Voyage B','${adminId}'); reset role`);
 }
+
+describe('Account deletion and retained shared travel', () => {
+  beforeEach(spacesFixture);
+  it('exposes deletion readiness only to the authenticated server layer', async () => {
+    await asUser();
+    await fails('select public.account_deletion_ready()', /permission denied/);
+    await asService();
+    expect(await scalar<boolean>('select public.account_deletion_ready() as value')).toBe(true);
+  });
+  it('cascades personal data, queues the banner cleanup and keeps shared trips available to their Discord administrator', async () => {
+    await asService();
+    await db.exec(
+      `select public.record_discord_memberships('${otherId}','${applicationId}','[{"id":"${guildA}","permissions":"8"}]');`,
+    );
+    await asUser(otherId);
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripA}') as value`)).toBe(
+      false,
+    );
+    await db.exec('reset role');
+    const banner = `${userId}/${otherId}.webp`;
+    await db.exec(`
+      update public.trips set collaboration_mode='organizers_only' where id='${tripA}';
+      update public.profile_customizations set banner_path='${banner}' where user_id='${userId}';
+      insert into private.profile_aliases(handle,user_id) values ('old-handle','${userId}');
+      insert into private.trip_add_requests(id,trip_id,user_id,entry_id) values(gen_random_uuid(),'${tripA}','${userId}',gen_random_uuid());
+      insert into public.user_guild_preferences(user_id,default_guild_id) values('${userId}','${guildA}');
+      insert into private.discord_credentials(user_id,encrypted_tokens,expires_at,scopes) values('${userId}','encrypted',now()+interval '1 hour',array['identify','guilds']);
+      delete from auth.users where id='${userId}';
+    `);
+    for (const table of [
+      'public.profiles',
+      'public.profile_customizations',
+      'private.profile_aliases',
+      'private.trip_add_requests',
+      'public.user_guild_preferences',
+      'private.discord_credentials',
+      'private.guild_memberships',
+    ]) {
+      const column = table === 'public.profiles' ? 'id' : 'user_id';
+      expect(
+        await scalar<number>(
+          `select count(*)::int as value from ${table} where ${column}='${userId}'`,
+        ),
+      ).toBe(0);
+    }
+    expect(
+      await scalar<string>(`select created_by as value from public.trips where id='${tripA}'`),
+    ).toBeNull();
+    expect(
+      await scalar<string>(
+        `select path as value from public.profile_banner_garbage where path='${banner}'`,
+      ),
+    ).toBe(banner);
+    await asUser(otherId);
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripA}') as value`)).toBe(
+      true,
+    );
+    expect(await scalar<boolean>(`select public.can_edit_guild_trip('${tripA}') as value`)).toBe(
+      true,
+    );
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripB}') as value`)).toBe(
+      false,
+    );
+    const version = await scalar<number>(
+      `select version as value from public.trips where id='${tripA}'`,
+    );
+    await db.exec(
+      `select public.edit_trip_plan('${guildA}','${tripA}',${version},'organizer_add','{"discord_id":"333333333333333333"}')`,
+    );
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_organizers where trip_id='${tripA}'`,
+      ),
+    ).toBe(1);
+  });
+  it('keeps remaining organizers in control and rejects ordinary or expired members on orphan trips', async () => {
+    await asService();
+    await db.exec(
+      `select public.record_discord_memberships('${adminId}','${applicationId}','[{"id":"${guildA}","permissions":"8"}]');`,
+    );
+    await db.exec(
+      `reset role; insert into public.trip_organizers(trip_id,user_id) values('${tripA}','${otherId}'); delete from auth.users where id='${userId}';`,
+    );
+    await asUser(adminId);
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripA}') as value`)).toBe(
+      false,
+    );
+    await asUser(otherId);
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripA}') as value`)).toBe(
+      true,
+    );
+    await db.exec(
+      `reset role; delete from public.trip_organizers where trip_id='${tripA}'; update public.trips set collaboration_mode='organizers_only' where id='${tripA}';`,
+    );
+    await asUser(otherId);
+    expect(await scalar<boolean>(`select public.can_edit_guild_trip('${tripA}') as value`)).toBe(
+      false,
+    );
+    await db.exec(
+      `reset role; update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${adminId}';`,
+    );
+    await asUser(adminId);
+    expect(await scalar<boolean>(`select public.is_trip_organizer('${tripA}') as value`)).toBe(
+      false,
+    );
+  });
+});
 describe('Collaborative planner transactions', () => {
   beforeEach(spacesFixture);
   const dayOne = 'e93c463c-feee-454e-9222-40ea186a0830';

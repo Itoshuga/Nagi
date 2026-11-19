@@ -234,7 +234,7 @@ export async function editTrip(
 export async function editableTripOptions(guild: string) {
   const { viewer, guild: space, isAdmin } = await requireGuild(guild);
   return {
-    trips: await (await spaceServices()).trips.editableTrips(guild, viewer.id),
+    trips: await (await spaceServices()).trips.editableTrips(guild, viewer.id, isAdmin),
     canCreate: isAdmin || space.members_can_create_trips,
   };
 }

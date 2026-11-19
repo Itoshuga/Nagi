@@ -143,7 +143,7 @@ export class TripService {
         .map((item) => ({ ...item, entry: entries.get(item.entry_id) ?? null })),
     };
   }
-  async editableTrips(guildId: string, userId: string) {
+  async editableTrips(guildId: string, userId: string, isGuildAdmin = false) {
     const result = await this.db
       .from('trips')
       .select(
@@ -158,7 +158,8 @@ export class TripService {
       .filter(
         (trip) =>
           trip.collaboration_mode === 'all_members' ||
-          trip.organizers.some((o) => o.user_id === userId),
+          trip.organizers.some((o) => o.user_id === userId) ||
+          (isGuildAdmin && trip.organizers.length === 0),
       )
       .map((trip) => ({
         id: trip.id,

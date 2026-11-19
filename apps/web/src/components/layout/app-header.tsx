@@ -9,14 +9,12 @@ export function AppHeader({
   navigation,
   mobileNavigation,
   feedback,
-  guildId,
 }: {
   viewer: { username?: string; display_name: string; avatar_url: string | null; role: Role };
   context?: React.ReactNode;
   navigation?: React.ReactNode;
   mobileNavigation?: React.ReactNode;
   feedback?: React.ReactNode;
-  guildId?: string;
 }) {
   return (
     <>
@@ -37,7 +35,7 @@ export function AppHeader({
             </nav>
           )}
           <div className="app-header-account">
-            <UserMenu viewer={viewer} variant="app" {...(guildId ? { guildId } : {})} />
+            <UserMenu viewer={viewer} variant="app" />
           </div>
         </div>
       </header>

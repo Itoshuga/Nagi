@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: 'Connexion' };
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{ next?: string; error?: string; notice?: string }>;
 }) {
   const params = await searchParams;
   if ((await getViewer()) && params.error !== 'discord') redirect(safeNext(params.next));
@@ -25,6 +25,11 @@ export default async function Login({
         <p className="mb-8 mt-4 text-sm leading-7 text-muted-foreground">
           Connectez votre compte Discord pour retrouver votre espace Nagi.
         </p>
+        {params.notice === 'account-deleted' && (
+          <Alert role="status" className="mb-6 text-left">
+            Votre compte Nagi a été supprimé.
+          </Alert>
+        )}
         {params.error && (
           <Alert className="mb-6 text-left">
             {params.error === 'discord'

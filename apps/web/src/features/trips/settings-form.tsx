@@ -218,6 +218,12 @@ export function TripOrganizers({
   return (
     <Card className="space-y-4">
       <h2 className="text-lg font-bold">Organisateurs</h2>
+      {organizers.length === 0 && (
+        <p className="text-sm leading-6 text-muted-foreground">
+          Ce voyage n’a plus d’organisateur. Vous pouvez en ajouter un en tant qu’administrateur
+          Discord de cet espace.
+        </p>
+      )}
       <ul className="space-y-2">
         {organizers.map((person) => (
           <li

@@ -52,7 +52,6 @@ export function ServerHeader({
   return (
     <AppHeader
       viewer={viewer}
-      guildId={guild.id}
       context={
         <ServerSwitcher
           key={guild.id}

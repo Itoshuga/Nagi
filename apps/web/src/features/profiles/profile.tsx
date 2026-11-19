@@ -13,6 +13,7 @@ import {
   MapPin,
   Pencil,
   Route,
+  Settings2,
   Sparkles,
 } from 'lucide-react';
 import { Alert, Button, Dialog, DialogTrigger, cn, toast } from '@nagi/ui';
@@ -84,12 +85,20 @@ export function SocialProfilePage({
                 <span className="hidden sm:inline">{copied ? 'Lien copié' : 'Copier le lien'}</span>
               </Button>
               {own && (
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Pencil className="size-3.5" />
-                    Modifier le profil
+                <>
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/app/settings" aria-label="Paramètres du compte">
+                      <Settings2 className="size-3.5" aria-hidden="true" />
+                      <span className="hidden sm:inline">Paramètres du compte</span>
+                    </Link>
                   </Button>
-                </DialogTrigger>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Pencil className="size-3.5" />
+                      Modifier le profil
+                    </Button>
+                  </DialogTrigger>
+                </>
               )}
             </div>
           </div>
