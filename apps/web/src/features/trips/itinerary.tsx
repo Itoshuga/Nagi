@@ -70,13 +70,20 @@ export function TripStep({
     disabled: !canEdit || busy,
   });
   const index = items.findIndex((i) => i.id === item.id);
+  const sameTime = (other?: TripPlanItem) =>
+    !!other && other.start_time?.slice(0, 5) === item.start_time?.slice(0, 5);
   const move = (offset: number) =>
     void mutate({
       operation: 'move_item',
       data: {
         id: item.id,
         day: item.trip_day_id,
-        before: items[index + (offset < 0 ? -1 : 2)]?.id ?? null,
+        before:
+          offset < 0
+            ? (items[index - 1]?.id ?? null)
+            : sameTime(items[index + 2])
+              ? items[index + 2]!.id
+              : null,
       },
     });
   return (
@@ -159,11 +166,14 @@ export function TripStep({
             <DropdownMenuItem onSelect={() => onDetails(item)}>
               <Pencil className="size-3.5" /> Détails et notes
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={busy || index === 0} onSelect={() => move(-1)}>
+            <DropdownMenuItem
+              disabled={busy || !sameTime(items[index - 1])}
+              onSelect={() => move(-1)}
+            >
               <ArrowUp className="size-3.5" /> Monter l’étape
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={busy || index === items.length - 1}
+              disabled={busy || !sameTime(items[index + 1])}
               onSelect={() => move(1)}
             >
               <ArrowDown className="size-3.5" /> Descendre l’étape
@@ -284,7 +294,7 @@ function DayTimeline({
   props: WorkspaceViewProps;
   search?: string;
 }) {
-  const items = props.plan.items.filter((i) => i.trip_day_id === (day?.id ?? null));
+  const items = visibleTripItems(props.plan, day?.id ?? 'pending');
   const visible = search
     ? items.filter((i) =>
         `${i.entry?.title} ${stepLocation(i)} ${i.notes}`
@@ -293,8 +303,6 @@ function DayTimeline({
       )
     : items;
   const conflicts = overlappingTripItems(items);
-  const timed = items.filter((i) => i.start_time),
-    disorder = timed.some((i, n) => n > 0 && i.start_time! < timed[n - 1]!.start_time!);
   return (
     <section className="trip-day-timeline">
       {day ? (
@@ -308,22 +316,6 @@ function DayTimeline({
             </small>
           </div>
         </header>
-      )}
-      {disorder && (
-        <div className="trip-order-notice">
-          <span>Les horaires suivent un autre ordre que vos visites.</span>
-          {props.canEdit && (
-            <button
-              type="button"
-              disabled={props.busy}
-              onClick={() =>
-                void props.mutate({ operation: 'sort_items', data: { day: day?.id ?? null } })
-              }
-            >
-              Trier par horaire
-            </button>
-          )}
-        </div>
       )}
       <ol className="trip-timeline">
         {visible.map((item) => (

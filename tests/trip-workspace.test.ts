@@ -17,6 +17,54 @@ describe('Shared travel workspace model', () => {
       estimated_duration_minutes: duration,
       trip_day_id: day,
     }) as TripPlanItem;
+  it('shows earlier visits first and keeps equal times and unscheduled visits in manual order', () => {
+    const items = [
+      item('ten-first', '10:00:00', 60),
+      item('free-first', null, null),
+      item('early', '08:30:00', 30),
+      item('ten-second', '10:00', 30),
+      item('free-second', null, 60),
+      item('late', '23:30', 15),
+    ];
+    expect(visibleTripItems({ items } as TripPlan, 'day').map((i) => i.id)).toEqual([
+      'early',
+      'ten-first',
+      'ten-second',
+      'late',
+      'free-first',
+      'free-second',
+    ]);
+    expect(items.map((i) => i.id)).toEqual([
+      'ten-first',
+      'free-first',
+      'early',
+      'ten-second',
+      'free-second',
+      'late',
+    ]);
+  });
+  it('updates the visible order immediately after a schedule change without mutating saved items', () => {
+    const items = [item('ten', '10:00', 60), item('early', '08:30', 30)];
+    const changed = optimisticTripItems(items, {
+      operation: 'schedule_item',
+      data: {
+        id: 'early',
+        item_version: 0,
+        day: 'day',
+        start_time: '11:00',
+        end_time: null,
+        duration: 30,
+      },
+    });
+    expect(visibleTripItems({ items: changed } as TripPlan, 'day').map((i) => i.id)).toEqual([
+      'ten',
+      'early',
+    ]);
+    expect(visibleTripItems({ items } as TripPlan, 'day').map((i) => i.id)).toEqual([
+      'early',
+      'ten',
+    ]);
+  });
   it('lays out overlapping events side by side and gives the full width back afterwards', () => {
     const items = [
       item('a', '09:00', 90),
@@ -103,14 +151,14 @@ describe('Shared travel workspace model', () => {
     expect(tripPlaceQuery.safeParse({ mode: 'nearby', north: '100' }).success).toBe(false);
     expect(tripPlaceQuery.safeParse({ entry: 'other-trip' }).success).toBe(false);
   });
-  it('keeps visit order within each day while grouping the whole-trip map by day', () => {
+  it('uses chronological order within each day while grouping the whole-trip map by day', () => {
     const items = [
-      item('a', '09:00', 60, 'first'),
-      item('c', '10:00', 60, 'second'),
-      item('b', '12:00', 30, 'first'),
+      item('a', '12:00', 60, 'first'),
+      item('c', '08:00', 60, 'second'),
+      item('b', '09:00', 30, 'first'),
     ];
     const plan = { items, days: [{ id: 'first' }, { id: 'second' }] } as TripPlan;
-    expect(visibleTripItems(plan, 'all').map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(visibleTripItems(plan, 'all').map((i) => i.id)).toEqual(['b', 'a', 'c']);
     expect(items.map((i) => i.id)).toEqual(['a', 'c', 'b']);
   });
 });

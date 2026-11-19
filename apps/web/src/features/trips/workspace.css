@@ -538,20 +538,6 @@
 .trip-timeline-end {
   padding: 8px 0 2px 96px;
 }
-.trip-order-notice {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 8px;
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.trip-order-notice button {
-  color: var(--primary-ink);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .trip-day-order {
   display: flex;
   justify-content: flex-end;

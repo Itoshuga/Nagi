@@ -46,13 +46,23 @@ export function unavailableTripEntry(item: TripPlanItem): TripDetailEntry {
     category: null,
   };
 }
+const chronologicalTripItems = (items: TripPlanItem[]) =>
+  [...items].sort(
+    (a, b) =>
+      (a.start_time ? timeMinutes(a.start_time) : 1440) -
+      (b.start_time ? timeMinutes(b.start_time) : 1440),
+  );
 export const visibleTripItems = (plan: Pick<TripPlan, 'days' | 'items'>, day: DaySelection) =>
   day === 'all'
     ? [
-        ...plan.days.flatMap((d) => plan.items.filter((i) => i.trip_day_id === d.id)),
-        ...plan.items.filter((i) => !i.trip_day_id),
+        ...plan.days.flatMap((d) =>
+          chronologicalTripItems(plan.items.filter((i) => i.trip_day_id === d.id)),
+        ),
+        ...chronologicalTripItems(plan.items.filter((i) => !i.trip_day_id)),
       ]
-    : plan.items.filter((item) => item.trip_day_id === (day === 'pending' ? null : day));
+    : chronologicalTripItems(
+        plan.items.filter((item) => item.trip_day_id === (day === 'pending' ? null : day)),
+      );
 export function timeMinutes(value: string) {
   return Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
 }
