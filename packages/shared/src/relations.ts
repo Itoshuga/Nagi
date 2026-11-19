@@ -1,5 +1,18 @@
 import { z } from 'zod';
-import { destinationIdSchema } from './geography';
+import { destinationIdSchema, destinationKindSchema } from './geography';
+
+export const relationSearchInput = z.object({
+  mode: z.enum(['entries', 'locations']).default('entries'),
+  q: z.string().trim().max(180).default(''),
+  exclude: destinationIdSchema.optional(),
+  category: destinationIdSchema.optional(),
+  country: destinationIdSchema.optional(),
+  city: destinationIdSchema.optional(),
+  neighborhood: destinationIdSchema.optional(),
+  kind: destinationKindSchema.optional(),
+  parent: destinationIdSchema.optional(),
+  page: z.coerce.number().int().min(0).max(10000).default(0),
+});
 
 export type RelationDirection = 'forward' | 'inverse';
 export type SemanticRelationType = {

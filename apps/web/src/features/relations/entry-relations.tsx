@@ -2,15 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import {
-  ArrowLeftRight,
-  ArrowUpRight,
-  Link2,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { ArrowUpRight, Link2, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -24,16 +16,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Label,
   toast,
 } from '@nagi/ui';
 import type { CatalogCategory, CatalogRelation, EntryCardRow, RelationType } from '@nagi/database';
 import { groupCatalogRelations, relationOptions, type RelationDirection } from '@nagi/shared';
-import { CatalogForm, CatalogSelect } from '@/features/catalog/admin-form';
+import { CatalogForm } from '@/features/catalog/admin-form';
 import { FieldIcon } from '@/features/icons/field-icon';
 import { deleteEntryRelation, saveEntryRelation } from './actions';
-import { RelatedEntry, RelationEntrySearch, type RelationEntry } from './entry-search';
-import { RelationPreview } from './preview';
+import {
+  RelatedEntry,
+  RelationEntryPicker,
+  RelationEntrySummary,
+  type RelationEntry,
+} from './entry-search';
+import { InverseRelationPreview } from './preview';
+import { RelationTypePicker } from './type-picker';
 import './relations.css';
 
 const dialogClasses =
@@ -58,6 +55,13 @@ function RelationDialog({
   const [selected, setSelected] = useState<EntryCardRow | undefined>(relation?.entry);
   const [choice, setChoice] = useState(relation ? `${relation.type.id}:${relation.direction}` : '');
   const [pending, setPending] = useState(false);
+  const [selector, setSelector] = useState<'type' | 'entry'>();
+  const typeTrigger = useRef<HTMLButtonElement>(null);
+  const entryEscape = useRef<(() => void) | null>(null);
+  function closeSelector() {
+    if (selector === 'entry' && entryEscape.current) entryEscape.current();
+    else setSelector(undefined);
+  }
   const available = types.filter((t) => t.is_enabled || t.id === relation?.type.id);
   const options = relationOptions(available);
   const option = options.find((o) => o.value === choice);
@@ -77,28 +81,35 @@ function RelationDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !pending) onClose();
+        if (!open && !pending) {
+          if (selector) closeSelector();
+          else onClose();
+        }
       }}
     >
       <DialogContent
         closeDisabled={pending}
-        className={`${dialogClasses} max-w-4xl`}
+        className={`${dialogClasses} relation-builder-dialog max-w-[520px]`}
+        aria-busy={pending}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          typeTrigger.current?.focus();
+        }}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           returnFocus();
         }}
         onEscapeKeyDown={(e) => {
-          if (pending) e.preventDefault();
+          if (pending || selector) e.preventDefault();
+          if (selector && !pending) closeSelector();
         }}
         onPointerDownOutside={(e) => {
-          if (pending) e.preventDefault();
+          if (pending || selector) e.preventDefault();
         }}
       >
         <div className="entry-dialog-heading">
           <DialogTitle>{relation ? 'Modifier la relation' : 'Ajouter une relation'}</DialogTitle>
-          <DialogDescription>
-            Un seul lien, deux façons de le lire. Choisissez ce que chaque fiche dira de l’autre.
-          </DialogDescription>
+          <DialogDescription>Connectez deux fiches du catalogue.</DialogDescription>
         </div>
         <CatalogForm
           run={saveEntryRelation.bind(null, current.id, relation?.id ?? null)}
@@ -115,74 +126,37 @@ function RelationDialog({
           <input type="hidden" name="updated_at" value={relation?.updated_at ?? ''} />
           <input type="hidden" name="type" value={type?.id ?? ''} />
           <input type="hidden" name="direction" value={direction} />
-          <div className="entry-dialog-body space-y-6">
-            <div className="grid min-w-0 gap-6 md:grid-cols-2">
-              <section className="min-w-0 space-y-5">
-                <div>
-                  <p className="entry-dialog-label mb-3">La fiche actuelle</p>
-                  <RelatedEntry entry={current} />
-                </div>
-                <div>
-                  <Label htmlFor="relation-orientation">Depuis {current.title}</Label>
-                  <CatalogSelect
-                    id="relation-orientation"
-                    value={choice}
-                    required
-                    onChange={(e) => setChoice(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Choisir le sens de la relation…
-                    </option>
-                    {available.map((t) => (
-                      <optgroup key={t.id} label={`${t.name}${!t.is_enabled ? ' · Inactif' : ''}`}>
-                        {options
-                          .filter((o) => o.type.id === t.id)
-                          .map((o) => (
-                            <option key={o.value} value={o.value} disabled={!t.is_enabled}>
-                              {o.label}
-                            </option>
-                          ))}
-                      </optgroup>
-                    ))}
-                  </CatalogSelect>
-                  {type?.description && (
-                    <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                      {type.description}
-                    </p>
-                  )}
-                  {type && !type.is_symmetric && (
-                    <button
-                      type="button"
-                      className="relation-invert"
-                      onClick={() =>
-                        setChoice(`${type.id}:${direction === 'forward' ? 'inverse' : 'forward'}`)
-                      }
-                    >
-                      <ArrowLeftRight className="size-3.5" />
-                      Inverser le sens
-                    </button>
-                  )}
-                  {type && !type.is_enabled && (
-                    <Alert className="mt-3">
-                      Ce type est inactif. La relation reste visible ; choisissez un type actif pour
-                      la modifier.
-                    </Alert>
-                  )}
-                </div>
-              </section>
-              <section className="min-w-0">
-                <RelationEntrySearch
-                  current={current.id}
-                  categories={categories}
-                  value={selected}
-                  onSelect={setSelected}
-                  disabled={pending}
-                />
-              </section>
-            </div>
-            <RelationPreview
+          <div className="entry-dialog-body relation-builder-body">
+            <RelationEntrySummary entry={current} />
+            <span className="relation-sentence-connector" aria-hidden="true" />
+            <RelationTypePicker
+              types={available}
+              value={choice}
+              onChange={setChoice}
+              open={selector === 'type'}
+              onOpenChange={(open) => setSelector(open ? 'type' : undefined)}
+              disabled={pending}
+              triggerRef={typeTrigger}
+            />
+            {type && !type.is_enabled && (
+              <p role="status" className="relation-inactive-note">
+                Ce type est inactif. Choisissez un type actif pour modifier la relation.
+              </p>
+            )}
+            <span className="relation-sentence-connector" aria-hidden="true" />
+            <RelationEntryPicker
+              current={current}
+              categories={categories}
+              value={selected}
+              onSelect={setSelected}
+              disabled={pending}
+              open={selector === 'entry'}
+              onOpenChange={(open) => setSelector(open ? 'entry' : undefined)}
+              escapeRef={entryEscape}
+            />
+            <InverseRelationPreview
               current={current.title}
-              other={selected?.title}
+              target={selected?.title}
               type={type}
               direction={direction}
             />
@@ -192,17 +166,12 @@ function RelationDialog({
               </Alert>
             )}
           </div>
-          <div className="entry-dialog-footer">
+          <div className="entry-dialog-footer relation-builder-footer">
             <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
               Annuler
             </Button>
             <Button type="submit" disabled={!selected || !type?.is_enabled || Boolean(duplicate)}>
-              <Link2 className="size-4" />
-              {pending
-                ? 'Enregistrement…'
-                : relation
-                  ? 'Enregistrer la relation'
-                  : 'Créer la relation'}
+              {pending ? 'Enregistrement…' : relation ? 'Enregistrer' : 'Créer la relation'}
             </Button>
           </div>
         </CatalogForm>

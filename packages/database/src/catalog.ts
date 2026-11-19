@@ -190,21 +190,60 @@ export async function searchCatalogEntries(
   search: string,
   exclude: string,
   categoryId?: string,
-  filters: { countryId?: string; page?: number } = {},
+  filters: {
+    countryId?: string;
+    cityId?: string;
+    neighborhoodId?: string;
+    page?: number;
+    signal?: AbortSignal;
+  } = {},
 ) {
   let query = db.from('entries').select(cardColumns, { count: 'exact' }).neq('id', exclude);
   if (categoryId) query = query.eq('category_id', categoryId);
   if (filters.countryId) query = query.eq('country_id', filters.countryId);
+  if (filters.cityId) query = query.eq('city_id', filters.cityId);
+  if (filters.neighborhoodId) query = query.eq('neighborhood_id', filters.neighborhoodId);
   if (search) query = query.ilike('title', destinationNamePattern(search));
   const page = filters.page ?? 0;
-  const result = await query
+  const ordered = query
     .order('title')
     .order('id')
     .range(page * 12, page * 12 + 11);
+  const result = await (filters.signal ? ordered.abortSignal(filters.signal) : ordered);
   if (result.error?.code === 'PGRST103') return { rows: [], hasMore: false };
   if (result.error)
     throw new Error('Impossible de rechercher des fiches.', { cause: result.error });
   return { rows: result.data, hasMore: (page + 1) * 12 < (result.count ?? 0) };
+}
+
+/** At most six real suggestions, ranked by the current entry's neighbourhood and city. */
+export async function suggestRelationEntries(
+  db: NagiDatabase,
+  current: string,
+  signal?: AbortSignal,
+) {
+  const sourceQuery = db.from('entries').select('city_id,neighborhood_id').eq('id', current);
+  const source = await (signal ? sourceQuery.abortSignal(signal) : sourceQuery).maybeSingle();
+  if (source.error) throw new Error('Impossible de charger les suggestions.');
+  if (!source.data) return [];
+  const rows: EntryCardRow[] = [];
+  async function append(kind: 'neighborhood_id' | 'city_id' | null, id?: string | null) {
+    if (rows.length >= 6 || (kind && !id)) return;
+    let query = db.from('entries').select(cardColumns).neq('id', current);
+    if (kind) query = query.eq(kind, id!);
+    if (rows.length) query = query.not('id', 'in', `(${rows.map((r) => r.id).join(',')})`);
+    const ordered = query
+      .order('updated_at', { ascending: false })
+      .order('id')
+      .limit(6 - rows.length);
+    const result = await (signal ? ordered.abortSignal(signal) : ordered);
+    if (result.error) throw new Error('Impossible de charger les suggestions.');
+    rows.push(...result.data);
+  }
+  await append('neighborhood_id', source.data.neighborhood_id);
+  await append('city_id', source.data.city_id);
+  await append(null);
+  return rows;
 }
 
 export type CatalogLocation = {
@@ -219,6 +258,7 @@ export async function searchCatalogLocations(
   kind: DestinationKind,
   search: string,
   parentId?: string,
+  signal?: AbortSignal,
 ) {
   if (!parentId && kind !== 'countries') return [];
   const query =
@@ -227,10 +267,11 @@ export async function searchCatalogLocations(
       : kind === 'cities'
         ? db.from('cities').select('id,name,has_neighborhoods').eq('country_id', parentId!)
         : db.from('neighborhoods').select('id,name').eq('city_id', parentId!);
-  const result = await (search ? query.ilike('name', destinationNamePattern(search)) : query)
+  const ordered = (search ? query.ilike('name', destinationNamePattern(search)) : query)
     .order('name')
     .order('id')
     .limit(16);
+  const result = await (signal ? ordered.abortSignal(signal) : ordered);
   if (result.error)
     throw new Error('Impossible de rechercher des destinations.', { cause: result.error });
   const rows: CatalogLocation[] = result.data;

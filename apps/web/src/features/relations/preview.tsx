@@ -1,4 +1,7 @@
-import { ArrowRight } from 'lucide-react';
+'use client';
+
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { ArrowRight, ArrowLeftRight } from 'lucide-react';
 import { relationLabel, type RelationDirection, type SemanticRelationType } from '@nagi/shared';
 
 export function RelationPreview({
@@ -38,5 +41,45 @@ export function RelationPreview({
         </div>
       ))}
     </div>
+  );
+}
+
+export function InverseRelationPreview({
+  current,
+  target,
+  type,
+  direction,
+}: {
+  current: string;
+  target?: string;
+  type?: SemanticRelationType;
+  direction: RelationDirection;
+}) {
+  const reduced = useReducedMotion();
+  const label = type ? relationLabel(type, direction === 'forward' ? 'inverse' : 'forward') : '';
+  const sentenceLabel = label.slice(0, 1).toLocaleLowerCase('fr') + label.slice(1);
+  return (
+    <AnimatePresence initial={false}>
+      {target && type && (
+        <motion.div
+          className="relation-inverse-note"
+          key="inverse"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: reduced ? 0 : 0.16, ease: 'easeOut' }}
+        >
+          <div aria-live="polite">
+            <ArrowLeftRight className="size-3.5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="relation-inverse-caption">Relation inverse automatique</p>
+              <p className="relation-inverse-sentence">
+                {target} {sentenceLabel} {current}.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
