@@ -1,17 +1,7 @@
 'use client';
 import { calendarColorStyle } from './calendar-color-style';
-import { useEffect, useId, useRef, useState } from 'react';
-import {
-  DndContext,
-  DragOverlay,
-  MouseSensor,
-  TouchSensor,
-  type DragMoveEvent,
-  pointerWithin,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
+import { useEffect, useRef, useState } from 'react';
+import { DragOverlay, type DragMoveEvent, useDroppable, useDndMonitor } from '@dnd-kit/core';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button, cn } from '@nagi/ui';
 import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
@@ -32,6 +22,7 @@ import { QuickStepEditor } from './step-editor';
 import { TripItinerary } from './itinerary';
 import { CalendarEvent, CalendarEventCopy } from './calendar-event';
 import { useCalendarColors } from './calendar-colors';
+import { useDragPointer } from './drag-pointer';
 import {
   calendarHourHeight,
   calendarMinuteHeight,
@@ -41,6 +32,13 @@ import {
   unchangedCalendarSchedule,
   type CalendarSchedule,
 } from './calendar-model';
+
+import {
+  catalogCalendarSchedule,
+  isCatalogDrag,
+  isCalendarDrop,
+  type CatalogDragData,
+} from './catalog-drag';
 
 const hourHeight = calendarHourHeight,
   minuteHeight = calendarMinuteHeight;
@@ -63,16 +61,10 @@ function Slot({
   onNavigate: (key: string) => void;
   date: string;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `slot:${day}:${minute}`,
-    data: { day, minute },
-    disabled: !editable,
-  });
   return (
     <button
       type="button"
-      ref={setNodeRef}
-      className={cn('trip-calendar-slot', isOver && 'is-over')}
+      className="trip-calendar-slot"
       style={{ top: minute * minuteHeight, height: hourHeight / 2 }}
       disabled={!editable}
       tabIndex={active ? 0 : -1}
@@ -103,17 +95,14 @@ export function TripCalendar(props: WorkspaceViewProps) {
     dragSource = useRef<
       { item: TripPlanItem; trip: number; width: number; height: number } | undefined
     >(undefined),
-    scroll = useRef<HTMLDivElement>(null),
-    id = useId();
+    scroll = useRef<HTMLDivElement>(null);
   const [activeSlot, setActiveSlot] = useState<{ day?: string; minute: number }>({ minute: 540 });
   const [dragBox, setDragBox] = useState<{ width: number; height: number }>();
   const [destination, setDestination] = useState<CalendarSchedule>();
+  const [catalog, setCatalog] = useState<CatalogDragData>();
+  const pointer = useDragPointer(!!catalog || !!dragged);
   const [scheduleLayout] = useState(() => createCalendarLayoutCache());
   const colors = useCalendarColors();
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-  );
   const index = dated.findIndex((d) => d.id === chosen?.id),
     start = Math.floor(Math.max(0, index) / 7) * 7;
   const days = mode === 'day' ? (chosen ? [chosen] : []) : dated.slice(start, start + 7);
@@ -130,6 +119,74 @@ export function TripCalendar(props: WorkspaceViewProps) {
     media.addEventListener('change', adapt);
     return () => media.removeEventListener('change', adapt);
   }, []);
+  function targetSchedule(
+    event: Pick<DragMoveEvent, 'active' | 'over' | 'delta' | 'activatorEvent'>,
+  ) {
+    const data = event.active.data.current;
+    if (isCatalogDrag(data)) return catalogCalendarSchedule(data, event, pointer.current);
+    const source = dragSource.current;
+    if (!source || !isCalendarDrop(event.over?.data.current)) return;
+    return movedCalendarSchedule(
+      source.item,
+      event.over.data.current.day,
+      event.delta.y / minuteHeight,
+    );
+  }
+  function resetDrag() {
+    setDragged(undefined);
+    setCatalog(undefined);
+    setDestination(undefined);
+    dragSource.current = undefined;
+  }
+  useDndMonitor({
+    onDragStart: ({ active }) => {
+      if (isCatalogDrag(active.data.current)) {
+        setCatalog(active.data.current);
+        return;
+      }
+      if (active.data.current?.type !== 'calendar-item') return;
+      const item = plan.items.find((entry) => entry.id === active.data.current?.id);
+      if (!item) return;
+      const rect = active.rect.current.initial;
+      dragSource.current = {
+        item,
+        trip: plan.version,
+        width: rect?.width ?? 120,
+        height: rect?.height ?? 56,
+      };
+      setDragBox({ width: rect?.width ?? 120, height: rect?.height ?? 56 });
+      setDragged(item);
+    },
+    onDragMove: (event) => {
+      const next = targetSchedule(event);
+      setDestination((old) => (old?.day === next?.day && old?.start === next?.start ? old : next));
+    },
+    onDragOver: (event) => {
+      const next = targetSchedule(event);
+      setDestination(next);
+    },
+    onDragCancel: resetDrag,
+    onDragEnd: (event) => {
+      const source = dragSource.current,
+        next = targetSchedule(event);
+      resetDrag();
+      if (!canEdit || !source || !next || unchangedCalendarSchedule(source.item, next)) return;
+      void props.mutate(
+        {
+          operation: 'schedule_item',
+          data: {
+            id: source.item.id,
+            item_version: source.item.version,
+            ...calendarScheduleFields(next),
+          },
+        },
+        source.trip,
+        { item: source.item },
+      );
+    },
+  });
+  const previewItem =
+    dragged ?? (catalog ? { entry: catalog.entry, calendar_color: null, stops: [] } : undefined);
   if (
     selectedDay === 'pending' ||
     (selectedDay !== 'all' && !dated.some((d) => d.id === selectedDay))
@@ -149,14 +206,8 @@ export function TripCalendar(props: WorkspaceViewProps) {
   function dayItems(day: TripPlannerDay) {
     return plan.items.filter((i) => i.trip_day_id === day.id);
   }
-  function targetSchedule(event: Pick<DragMoveEvent, 'over' | 'delta'>) {
-    const source = dragSource.current;
-    const target = event.over?.data.current as { day?: string } | undefined;
-    if (!source || !target?.day || !dated.some((day) => day.id === target.day)) return undefined;
-    return movedCalendarSchedule(source.item, target.day, event.delta.y / minuteHeight);
-  }
   return (
-    <div className={cn('trip-calendar', dragged && 'is-dragging')}>
+    <div className={cn('trip-calendar', (dragged || catalog) && 'is-dragging')}>
       <header className="trip-calendar-toolbar">
         <div>
           <h2>
@@ -199,9 +250,11 @@ export function TripCalendar(props: WorkspaceViewProps) {
       {mode === 'overview' ? (
         <div className="trip-calendar-overview">
           {dated.map((d, i) => (
-            <button
-              type="button"
+            <CalendarDayTarget
               key={d.id}
+              day={d.id}
+              editable={canEdit}
+              button
               className={cn('trip-calendar-day-card', d.id === selectedDay && 'is-active')}
               onClick={() => {
                 onDay(d.id);
@@ -227,62 +280,13 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     {item.entry?.title ?? 'Fiche indisponible'}
                   </em>
                 ))}
-            </button>
+            </CalendarDayTarget>
           ))}
         </div>
       ) : (
         <>
           <div className="trip-calendar-desktop">
-            <DndContext
-              id={`${id}-schedule`}
-              sensors={sensors}
-              collisionDetection={pointerWithin}
-              autoScroll={{ threshold: { x: 0.12, y: 0.12 } }}
-              onDragStart={({ active }) => {
-                const item = plan.items.find((entry) => entry.id === active.id);
-                if (!item) return;
-                const rect = active.rect.current.initial;
-                dragSource.current = {
-                  item,
-                  trip: plan.version,
-                  width: rect?.width ?? 120,
-                  height: rect?.height ?? 56,
-                };
-                setDragBox({ width: rect?.width ?? 120, height: rect?.height ?? 56 });
-                setDragged(item);
-              }}
-              onDragMove={(event) => {
-                const next = targetSchedule(event);
-                setDestination((old) =>
-                  old?.day === next?.day && old?.start === next?.start ? old : next,
-                );
-              }}
-              onDragCancel={() => {
-                setDragged(undefined);
-                setDestination(undefined);
-                dragSource.current = undefined;
-              }}
-              onDragEnd={(event) => {
-                const source = dragSource.current,
-                  next = targetSchedule(event);
-                setDragged(undefined);
-                setDestination(undefined);
-                dragSource.current = undefined;
-                if (!source || !next || unchangedCalendarSchedule(source.item, next)) return;
-                void props.mutate(
-                  {
-                    operation: 'schedule_item',
-                    data: {
-                      id: source.item.id,
-                      item_version: source.item.version,
-                      ...calendarScheduleFields(next),
-                    },
-                  },
-                  source.trip,
-                  { item: source.item },
-                );
-              }}
-            >
+            <>
               <div
                 className="trip-calendar-grid-header"
                 style={{ gridTemplateColumns: `46px repeat(${days.length},minmax(0,1fr))` }}
@@ -311,7 +315,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                   horaire
                 </span>
                 {days.map((d) => (
-                  <div key={d.id}>
+                  <CalendarDayTarget key={d.id} day={d.id} editable={canEdit}>
                     {dayItems(d)
                       .filter((i) => !i.start_time)
                       .map((item) => (
@@ -346,7 +350,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                           {item.entry?.title ?? 'Fiche indisponible'}
                         </button>
                       ))}
-                  </div>
+                  </CalendarDayTarget>
                 ))}
               </div>
               <div ref={scroll} className="trip-calendar-scroll">
@@ -365,7 +369,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     ))}
                   </div>
                   {days.map((d) => (
-                    <div key={d.id} className="trip-calendar-column" data-calendar-day={d.id}>
+                    <CalendarColumn key={d.id} day={d.id} editable={canEdit}>
                       {canEdit &&
                         Array.from({ length: 48 }, (_, i) => (
                           <Slot
@@ -423,15 +427,15 @@ export function TripCalendar(props: WorkspaceViewProps) {
                           scroll={scroll}
                         />
                       ))}
-                      {dragged && destination?.day === d.id && (
+                      {previewItem && destination?.day === d.id && (
                         <div
                           className="trip-calendar-drop-preview"
                           aria-hidden="true"
                           style={{
                             ...calendarColorStyle(
                               calendarEventColor(
-                                dragged.calendar_color,
-                                dragged.entry?.category?.color,
+                                previewItem.calendar_color,
+                                previewItem.entry?.category?.color,
                               ),
                             ),
                             top: destination.start * minuteHeight,
@@ -440,15 +444,27 @@ export function TripCalendar(props: WorkspaceViewProps) {
                               Math.min(1440 - destination.start, destination.duration ?? 30) *
                                 minuteHeight,
                             ),
-                            width: dragBox?.width,
+                            width: catalog ? 'calc(100% - 6px)' : dragBox?.width,
                           }}
-                        />
+                        >
+                          {catalog && (
+                            <>
+                              <strong>{catalog.entry.title}</strong>
+                              <span className="trip-calendar-drag-time">
+                                {calendarScheduleLabel(destination)} · {destination.duration} min{' '}
+                                {catalog.entry.suggested_duration_minutes
+                                  ? 'conseillées'
+                                  : 'initiales'}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </CalendarColumn>
                   ))}
                 </div>
               </div>
-              <DragOverlay dropAnimation={null}>
+              <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
                 {dragged &&
                   dragBox &&
                   (() => {
@@ -482,9 +498,9 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     );
                   })()}
               </DragOverlay>
-            </DndContext>
+            </>
           </div>
-          <div className="trip-calendar-mobile">
+          <CalendarDayTarget day={chosen.id} editable={canEdit} className="trip-calendar-mobile">
             <h3>{tripDayLabel(chosen.date!)}</h3>
             {dayItems(chosen)
               .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'))
@@ -520,9 +536,61 @@ export function TripCalendar(props: WorkspaceViewProps) {
                 <Plus className="size-4" /> Ajouter une étape
               </button>
             )}
-          </div>
+          </CalendarDayTarget>
         </>
       )}
+    </div>
+  );
+}
+
+function CalendarColumn({
+  day,
+  editable,
+  children,
+}: {
+  day: string;
+  editable: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({
+    id: `calendar-column:${day}`,
+    data: { type: 'calendar', day },
+    disabled: !editable,
+  });
+  return (
+    <div ref={setNodeRef} className="trip-calendar-column" data-calendar-day={day}>
+      {children}
+    </div>
+  );
+}
+function CalendarDayTarget({
+  day,
+  editable,
+  button,
+  className,
+  children,
+  onClick,
+}: {
+  day: string;
+  editable: boolean;
+  button?: boolean;
+  className?: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `calendar-day:${day}:${button ? 'overview' : (className ?? 'unscheduled')}`,
+    data: { day, before: null },
+    disabled: !editable,
+  });
+  const classes = cn(className, isOver && 'is-catalog-day-over');
+  return button ? (
+    <button type="button" ref={setNodeRef} className={classes} onClick={onClick}>
+      {children}
+    </button>
+  ) : (
+    <div ref={setNodeRef} className={classes}>
+      {children}
     </div>
   );
 }

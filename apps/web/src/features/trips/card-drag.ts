@@ -4,7 +4,7 @@ import type { MouseEvent, TouchEvent } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { TripDragData } from './planner-dnd';
 
-// Keep quick clicks and native controls intact. Only a held press starts a drag;
+// Keep quick clicks and native controls intact. Sensors distinguish a drag;
 // the handle retains keyboard activation without hijacking Space on detail buttons.
 export function useTripCardDrag(id: string, data: TripDragData, disabled: boolean) {
   const drag = useDraggable({ id, data, disabled });

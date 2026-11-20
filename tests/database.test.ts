@@ -23,6 +23,14 @@ async function fails(sql: string, pattern?: RegExp) {
     await db.exec('rollback to savepoint expected_failure; release savepoint expected_failure');
   }
 }
+async function acceptsWithoutChanges(sql: string) {
+  await db.exec('savepoint accepted_visit');
+  try {
+    await expect(db.exec(sql)).resolves.toBeDefined();
+  } finally {
+    await db.exec('rollback to savepoint accepted_visit; release savepoint accepted_visit');
+  }
+}
 async function asUser(id = userId) {
   await db.exec(
     `set local role authenticated; set local request.jwt.claim.sub='${id}'; set local request.jwt.claim.role='authenticated'`,
@@ -1082,6 +1090,91 @@ describe('Collaborative planner transactions', () => {
   const changes = (after: number) =>
     `select public.read_trip_changes('${guildA}','${tripA}',${after}) as value`;
 
+  it('creates repeated visits atomically at exact anchors with independent state and replay receipts', async () => {
+    await activityFixture();
+    const create = queued(71, {
+      operation: 'add_item',
+      data: {
+        id: secondItem,
+        entry: catalogEntry,
+        day: dayOne,
+        before: firstItem,
+        start_time: null,
+        duration: null,
+      },
+    });
+    const batch = await scalar<TripSyncBatch>(create);
+    const row = batch.events
+      .flatMap((e) => e.changes.items.upsert)
+      .find((i) => i.id === secondItem)!;
+    expect(row.start_time).toBeNull();
+    expect(row.sort_order).toBeLessThan(
+      await scalar<number>(
+        `select sort_order as value from public.trip_items where id='${firstItem}'`,
+      ),
+    );
+    expect((await scalar<TripSyncBatch>(create)).version).toBe(batch.version);
+    await scalar(
+      queued(72, {
+        operation: 'add_stop',
+        data: { id: stopTwo, entry: stopEntry, parent: firstItem, before: stopOne, duration: 20 },
+      }),
+    );
+    await scalar(
+      queued(73, {
+        operation: 'add_stop',
+        data: { id: stopThree, entry: stopEntry, parent: firstItem, before: stopOne, duration: 15 },
+      }),
+    );
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_item_stops where entry_id='${stopEntry}'`,
+      ),
+    ).toBe(3);
+    const ordered = await db.query<{ id: string }>(
+      `select id from public.trip_item_stops where trip_item_id='${firstItem}' order by sort_order`,
+    );
+    expect(ordered.rows.map((r) => r.id)).toEqual([stopTwo, stopThree, stopOne]);
+    await scalar(
+      queued(
+        74,
+        {
+          operation: 'patch_item',
+          data: { id: secondItem, patch: { notes: 'Repeat only', calendar_color: '#73A6DF' } },
+        },
+        { items: { [secondItem]: { notes: '', calendar_color: null } } },
+      ),
+    );
+    expect(
+      await scalar<string>(`select notes as value from public.trip_items where id='${firstItem}'`),
+    ).not.toBe('Repeat only');
+    await scalar(queued(75, { operation: 'delete_item', data: { id: secondItem } }));
+    await scalar(create);
+    expect(
+      await scalar<number>(
+        `select count(*)::int as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toBe(0);
+    await fails(
+      queued(76, {
+        operation: 'add_item',
+        data: { id: plannedTrip, entry: catalogEntry, day: dayOne, before: stopOne },
+      }),
+      /trip_conflict/,
+    );
+    await db.exec(
+      `reset role; update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+    );
+    await asUser(otherId);
+    await fails(
+      queued(77, {
+        operation: 'add_item',
+        data: { id: secondItem, entry: catalogEntry, day: dayOne },
+      }),
+      /trip_forbidden/,
+    );
+  });
+
   it('merges compatible property edits from two actors and rejects an overwritten property', async () => {
     await activityFixture();
     const color = queued(
@@ -1545,15 +1638,12 @@ describe('Collaborative planner transactions', () => {
     ).toEqual({ day: dayOne, time: '14:00:00', duration: 45, notes: 'Billet Nintendo · étage 6' });
   });
 
-  it('rejects nesting into self, duplicates, nested groups and another trip without deleting activities', async () => {
+  it('allows repeated places while rejecting self, nested groups and another trip', async () => {
     await activityFixture();
     await scalar(
       operation(2, 'add_item', { id: secondItem, entry: stopEntry, day: dayOne, repeat: false }),
     );
-    await fails(
-      operation(3, 'nest_item', { id: secondItem, parent: firstItem }),
-      /trip_stop_duplicate/,
-    );
+    await acceptsWithoutChanges(operation(3, 'nest_item', { id: secondItem, parent: firstItem }));
     await fails(operation(3, 'nest_item', { id: firstItem, parent: firstItem }), /trip_stop_self/);
     await fails(
       operation(3, 'nest_item', { id: firstItem, parent: secondItem }),
@@ -1714,7 +1804,7 @@ describe('Collaborative planner transactions', () => {
     ).toBe(0);
   });
 
-  it('reorders existing duplicate stops but rejects foreign destinations and new duplicates atomically', async () => {
+  it('reorders and transfers repeated stops while rejecting foreign destinations atomically', async () => {
     await activityFixture();
     await scalar(
       operation(2, 'add_item', { id: secondItem, entry: catalogEntry, day: dayTwo, repeat: true }),
@@ -1728,14 +1818,13 @@ describe('Collaborative planner transactions', () => {
         duration: null,
       }),
     );
-    await fails(
+    await acceptsWithoutChanges(
       operation(4, 'relocate_stop', {
         kind: 'stop',
         id: stopOne,
         parent: secondItem,
         before: null,
       }),
-      /trip_stop_duplicate/,
     );
     await fails(
       operation(4, 'relocate_stop', {
@@ -1883,10 +1972,9 @@ describe('Collaborative planner transactions', () => {
     expect(
       await scalar<number>(`select count(*)::integer as value from public.trip_item_stops`),
     ).toBe(1);
-    await fails(operation(2, 'add_stop', { ...add, id: stopTwo }), /trip_duplicate/);
-    await fails(
+    await acceptsWithoutChanges(operation(2, 'add_stop', { ...add, id: stopTwo }));
+    await acceptsWithoutChanges(
       operation(2, 'add_stop', { ...add, id: stopTwo, entry: catalogEntry }),
-      /trip_stop_self/,
     );
     await fails(
       operation(2, 'add_stop', { ...add, id: stopTwo, parent: stopOne }),
@@ -2329,7 +2417,7 @@ describe('Collaborative planner transactions', () => {
     const add = { id: firstItem, entry: catalogEntry, day: null, repeat: false };
     expect(await scalar<number>(operation(0, 'add_item', add))).toBe(1);
     expect(await scalar<number>(operation(0, 'add_item', add))).toBe(1);
-    await fails(operation(1, 'add_item', { ...add, id: secondItem }), /trip_duplicate/);
+    await acceptsWithoutChanges(operation(1, 'add_item', { ...add, id: secondItem }));
     expect(
       await scalar<number>(operation(1, 'add_item', { ...add, id: secondItem, repeat: true })),
     ).toBe(2);

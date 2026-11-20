@@ -14,7 +14,6 @@ import {
   DialogTrigger,
   Input,
   Label,
-  cn,
   toast,
 } from '@nagi/ui';
 import {
@@ -316,7 +315,6 @@ export function AddPlaceDialog({
     error?: string;
   }>();
   const [error, setError] = useState('');
-  const [duplicate, setDuplicate] = useState(false);
   const [pending, startTransition] = useTransition();
   const receipt = useRef<{ key: string; id: string }>(null);
   const inFlight = useRef(false);
@@ -347,7 +345,6 @@ export function AddPlaceDialog({
     if (inFlight.current) return;
     setOpen(openNext);
     setError('');
-    setDuplicate(false);
     if (!openNext) {
       setSelected(entry);
       setDay(initialDay ?? '');
@@ -358,7 +355,7 @@ export function AddPlaceDialog({
     }
   }
 
-  function submit(repeat: boolean) {
+  function submit() {
     if (!selected || !target || inFlight.current) return;
     const key = [target.id, selected.id, chosenDay].join('|');
     const id = receipt.current?.key === key ? receipt.current.id : crypto.randomUUID();
@@ -370,7 +367,7 @@ export function AddPlaceDialog({
       try {
         const result = await editTrip(guildId, selectedTrip, 0, {
           operation: 'add_item',
-          data: { id, entry: entryId, day: chosenDay || null, repeat },
+          data: { id, entry: entryId, day: chosenDay || null },
         });
         if (result.ok) {
           inFlight.current = false;
@@ -378,7 +375,6 @@ export function AddPlaceDialog({
           toast.success('Lieu ajouté au voyage.');
           router.refresh();
         } else {
-          setDuplicate(result.reason === 'duplicate');
           setError(result.error);
         }
       } catch {
@@ -424,7 +420,6 @@ export function AddPlaceDialog({
                   onClick={() => {
                     setSelected(undefined);
                     setError('');
-                    setDuplicate(false);
                   }}
                 >
                   Choisir un autre lieu
@@ -449,7 +444,6 @@ export function AddPlaceDialog({
                             setTripId(event.target.value);
                             setDay('');
                             setError('');
-                            setDuplicate(false);
                           }}
                         >
                           <option value="">Choisir un voyage</option>
@@ -486,24 +480,14 @@ export function AddPlaceDialog({
                       if (pending) return;
                       setDay(value);
                       setError('');
-                      setDuplicate(false);
                     }}
                   />
                 </div>
               )}
               {error && <Alert role="alert">{error}</Alert>}
               {target && (
-                <Button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => submit(duplicate)}
-                  className={cn('w-full', duplicate && 'sm:w-auto')}
-                >
-                  {pending
-                    ? 'Ajout en cours…'
-                    : duplicate
-                      ? 'Ajouter une autre fois'
-                      : 'Ajouter au voyage'}
+                <Button type="button" disabled={pending} onClick={submit} className="w-full">
+                  {pending ? 'Ajout en cours…' : 'Ajouter au voyage'}
                 </Button>
               )}
             </>

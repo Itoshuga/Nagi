@@ -1,7 +1,7 @@
 'use client';
 
-import { useId, useRef, useState, type FormEvent } from 'react';
-import { useDndContext, useDroppable } from '@dnd-kit/core';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useDndContext, useDndMonitor, useDroppable } from '@dnd-kit/core';
 import {
   ArrowDown,
   ArrowUp,
@@ -38,6 +38,7 @@ import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { ActivityCardCopy } from './activity-card';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
+import { isCatalogDrag } from './catalog-drag';
 import {
   activityBudget,
   activityStops,
@@ -435,6 +436,8 @@ export function ActivityStops({
   onExpandedChange?: () => void;
 }) {
   const id = useId();
+  const { active } = useDndContext();
+  const catalogDragging = isCatalogDrag(active?.data.current);
   const section = useRef<HTMLElement>(null);
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `stops-end:${id}`,
@@ -446,15 +449,37 @@ export function ActivityStops({
     },
     disabled: !canEdit || busy || plan.stopsAvailable === false,
   });
+  const { setNodeRef: setCatalogDropRef, isOver: isCatalogOver } = useDroppable({
+    id: `catalog-stop:${id}`,
+    data: {
+      type: 'stop',
+      parent: item.id,
+      before: null,
+      title: item.entry?.title ?? 'cette activité',
+    },
+    disabled: !catalogDragging || !canEdit || plan.stopsAvailable === false,
+  });
   const [localExpanded, setLocalExpanded] = useState(true);
-  const expanded = controlledExpanded ?? localExpanded;
+  const [hoverExpanded, setHoverExpanded] = useState(false);
+  useDndMonitor({
+    onDragStart: () => setHoverExpanded(false),
+    onDragEnd: () => setHoverExpanded(false),
+    onDragCancel: () => setHoverExpanded(false),
+  });
+  const expanded = hoverExpanded || (controlledExpanded ?? localExpanded);
+  useEffect(() => {
+    if (!catalogDragging || !isCatalogOver) return;
+    const timer = setTimeout(() => setHoverExpanded(true), 550);
+    return () => clearTimeout(timer);
+  }, [catalogDragging, isCatalogOver]);
   const [editor, setEditor] = useState<{ id: string; removing: boolean }>();
   const [error, setError] = useState('');
   const stops = item.stops ?? [];
   const schedule = activityStops(item);
   const budget = activityBudget(item);
   const edited = stops.find((stop) => stop.id === editor?.id);
-  if (plan.stopsAvailable === false || (!stops.length && (!always || !canEdit))) return null;
+  if (plan.stopsAvailable === false || (!stops.length && !catalogDragging && (!always || !canEdit)))
+    return null;
   async function move(stop: TripPlanStop, before: string | null) {
     const result = await mutate({ operation: 'move_stop', data: { id: stop.id, before } });
     setError(result.ok ? '' : result.error);
@@ -485,7 +510,7 @@ export function ActivityStops({
     <section
       ref={(node) => {
         section.current = node;
-        setDropRef(node);
+        setDropRef(catalogDragging ? null : node);
       }}
       className={cn(
         'trip-activity-stops',
@@ -558,6 +583,15 @@ export function ActivityStops({
               Ajuster à {formatTripDuration(budget.used)}
             </button>
           )}
+        </div>
+      )}
+      {catalogDragging && canEdit && (
+        <div
+          ref={setCatalogDropRef}
+          className={cn('trip-catalog-stop-target', isCatalogOver && 'is-over')}
+          role="status"
+        >
+          Déposer ici pour ajouter un arrêt
         </div>
       )}
       <div

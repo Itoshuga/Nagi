@@ -1,4 +1,9 @@
-import { destinationNamePattern, relationReading, type TripPlaceQuery } from '@nagi/shared';
+import {
+  destinationNamePattern,
+  relationReading,
+  suggestedVisitDuration,
+  type TripPlaceQuery,
+} from '@nagi/shared';
 import type { NagiDatabase } from './client';
 import { cardColumns, catalogEntriesById, type EntryCardRow } from './catalog';
 
@@ -73,11 +78,7 @@ export async function searchTripPlaces(
     catalogEntriesById(db, context.entries.slice(0, 40), signal),
   ]);
   const links = linked
-    .filter(
-      (r, i) =>
-        !context.entries.includes(r.entry.id) &&
-        linked.findIndex((other) => other.entry.id === r.entry.id) === i,
-    )
+    .filter((r, i) => linked.findIndex((other) => other.entry.id === r.entry.id) === i)
     .slice(0, 6);
   const rows: EntryCardRow[] = links.map((r) => r.entry);
   const city = [...current.values()].find((e) => e.city)?.city?.id;
@@ -85,7 +86,7 @@ export async function searchTripPlaces(
     if (rows.length >= 12 || (kind && !id)) return;
     let q = db.from('entries').select(cardColumns);
     if (kind) q = q.eq(kind, id!);
-    const exclude = [...context.entries, ...rows.map((r) => r.id)];
+    const exclude = rows.map((r) => r.id);
     if (exclude.length) q = q.not('id', 'in', `(${exclude.join(',')})`);
     const ordered = q
       .order('updated_at', { ascending: false })
@@ -125,4 +126,39 @@ export async function nearbyTripPlaces(
   const result = await (signal ? ordered.abortSignal(signal) : ordered);
   if (result.error) throw new Error('Les lieux proches sont indisponibles.');
   return { rows: result.data.slice(0, 80), hasMore: result.data.length > 80 };
+}
+
+/** Search-time enrichment only: two bounded batch reads, never a request while
+ * dragging or one read per result. No official duration is invented. */
+export async function tripCatalogDurations(
+  db: NagiDatabase,
+  rows: EntryCardRow[],
+  signal?: AbortSignal,
+) {
+  if (!rows.length) return [];
+  const categories = [...new Set(rows.flatMap((r) => (r.category ? [r.category.id] : [])))];
+  const valuesQuery = db
+    .from('entries')
+    .select('id,custom_values')
+    .in(
+      'id',
+      rows.map((r) => r.id),
+    );
+  const fieldsQuery = db
+    .from('category_fields')
+    .select('id,key,label,category_id')
+    .in('category_id', categories)
+    .order('sort_order');
+  const [values, fields] = await Promise.all([
+    signal ? valuesQuery.abortSignal(signal) : valuesQuery,
+    signal ? fieldsQuery.abortSignal(signal) : fieldsQuery,
+  ]);
+  if (values.error || fields.error) throw new Error('Les durées conseillées sont indisponibles.');
+  return rows.map((row) => ({
+    ...row,
+    suggested_duration_minutes: suggestedVisitDuration(
+      fields.data.filter((f) => f.category_id === row.category?.id),
+      values.data.find((v) => v.id === row.id)?.custom_values,
+    ),
+  }));
 }

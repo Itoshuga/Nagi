@@ -133,3 +133,4 @@ export function commandScope(
 export * from './catalog';
 export * from './profiles';
 export * from './relations';
+export * from './trip-catalog-duration';

@@ -5,7 +5,8 @@ import { activityNestingIssue, type LanePosition } from './planner-model';
 
 export type ActivityDrop = { type: 'activity'; parent: string; title: string };
 export type StopDrop = { type: 'stop'; parent: string; before: string | null; title: string };
-export type TripDragData = { type: 'item' | 'stop'; id: string };
+export type TripDragData = { type: 'item' | 'stop' | 'calendar-item'; id: string };
+export type TripDragSourceData = TripDragData | import('./catalog-drag').CatalogDragData;
 export type TripDragSource = { card: TripPlanItem | TripPlanStop; parent?: TripPlanItem };
 export const isActivityDrop = (data: unknown): data is ActivityDrop =>
   !!data && typeof data === 'object' && 'type' in data && data.type === 'activity';
@@ -17,6 +18,7 @@ export function tripDragSource(
   data: Record<string, unknown> | undefined,
   activeId?: string | number,
 ): TripDragSource | undefined {
+  if (data?.type === 'catalog-entry') return undefined;
   const id = typeof data?.id === 'string' ? data.id : String(activeId ?? '');
   if (data?.type === 'stop') {
     const parent = items.find((item) => item.stops?.some((stop) => stop.id === id));
@@ -65,7 +67,23 @@ export function tripDropChange(
 // The centre of the card nests the activity; its edges keep the existing reorder
 // behaviour. Keyboard movement uses lanes, with nesting also available in a menu.
 export const tripCollision: CollisionDetection = (args) => {
+  const catalog = args.active.data.current?.type === 'catalog-entry';
+  const pointed =
+    args.pointerCoordinates && typeof document !== 'undefined'
+      ? document.elementFromPoint(args.pointerCoordinates.x, args.pointerCoordinates.y)
+      : null;
+  const surface = pointed?.closest('.trip-workspace-canvas,.trip-day-navigation');
+  if (args.pointerCoordinates && typeof document !== 'undefined' && !surface) return [];
+
   const containers = args.droppableContainers.filter((container) => {
+    const node = container.node.current;
+    if (surface && node && !surface.contains(node)) return false;
+    if (container.data.current?.type === 'calendar')
+      return (
+        (catalog || args.active.data.current?.type === 'calendar-item') &&
+        (!pointed || !!pointed.closest('.trip-calendar-scroll'))
+      );
+    if (catalog && isActivityDrop(container.data.current)) return false;
     if (isStopDrop(container.data.current)) {
       return !!args.pointerCoordinates || args.active.data.current?.type === 'stop';
     }
@@ -82,6 +100,7 @@ export const tripCollision: CollisionDetection = (args) => {
   const hits = pointerWithin(filtered);
   const priority = (id: string | number) => {
     const target = containers.find((container) => container.id === id)?.data.current;
+    if (target?.type === 'calendar') return 6;
     return isStopDrop(target)
       ? target.before
         ? 4

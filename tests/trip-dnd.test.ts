@@ -14,7 +14,7 @@ const rect = (top: number, height: number) => ({
   width: 400,
   height,
 });
-function collisions(y: number | null, active = 'source') {
+function collisions(y: number | null, active = 'source', type = 'item') {
   const targets = [
     { id: 'step:parent', data: { day: 'day', before: 'parent' }, rect: rect(100, 100) },
     {
@@ -27,7 +27,7 @@ function collisions(y: number | null, active = 'source') {
   return tripCollision({
     active: {
       id: active,
-      data: { current: {} },
+      data: { current: { type } },
       rect: { current: { initial: null, translated: null } },
     },
     pointerCoordinates: y === null ? null : { x: 200, y },
@@ -117,6 +117,12 @@ describe('Itinerary drop intentions', () => {
   it('keeps keyboard dragging focused on moving activities', () => {
     expect(collisions(null)).toContain('step:parent');
     expect(collisions(null)).not.toContain('activity:parent');
+  });
+  it('never nests a catalogue reference through the main activity card', () => {
+    expect(collisions(150, 'catalog:parco', 'catalog-entry')[0]).toBe('step:parent');
+    expect(
+      tripDragSource(items, { type: 'catalog-entry', entry: parent.entry_id }),
+    ).toBeUndefined();
   });
   it('cancels when the pointer leaves the itinerary', () => {
     expect(collisions(500)).toEqual([]);

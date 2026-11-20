@@ -6,6 +6,7 @@ import {
   nearbyTripPlaces,
   searchCatalogLocations,
   searchTripPlaces,
+  tripCatalogDurations,
 } from '@nagi/database';
 import { requireGuild, spaceServices } from '@/features/spaces/server';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
@@ -85,48 +86,25 @@ export async function GET(
       if (!activity.data) return new Response(null, { status: 404, headers });
       activityEntry = activity.data.entry_id;
     }
-    if (v.q || v.category || v.country || v.city || v.neighborhood || v.page > 0)
+    async function search(entries: string[]) {
+      const result = await searchTripPlaces(
+        catalog,
+        v,
+        { country: trip!.destination_country_id, entries },
+        signal,
+      );
       return Response.json(
-        await searchTripPlaces(
-          catalog,
-          v,
-          {
-            country: trip.destination_country_id,
-            entries: activityEntry ? [activityEntry] : [],
-          },
-          signal,
-        ),
+        { ...result, rows: await tripCatalogDurations(catalog, result.rows, signal) },
         { headers },
       );
-    if (activityEntry)
-      return Response.json(
-        await searchTripPlaces(
-          catalog,
-          v,
-          {
-            country: trip.destination_country_id,
-            entries: [activityEntry],
-          },
-          signal,
-        ),
-        { headers },
-      );
+    }
+    if (v.q || v.category || v.country || v.city || v.neighborhood || v.page > 0 || activityEntry)
+      return await search(activityEntry ? [activityEntry] : []);
     let items = db.from('trip_items').select('entry_id').eq('trip_id', tripId);
     if (v.day) items = items.eq('trip_day_id', v.day);
     const context = await items.order('sort_order').limit(40).abortSignal(signal);
     if (context.error) throw context.error;
-    return Response.json(
-      await searchTripPlaces(
-        catalog,
-        v,
-        {
-          country: trip.destination_country_id,
-          entries: context.data.map((r) => r.entry_id),
-        },
-        signal,
-      ),
-      { headers },
-    );
+    return await search(context.data.map((r) => r.entry_id));
   } catch {
     return Response.json(
       { error: 'Le catalogue est momentanément indisponible.' },

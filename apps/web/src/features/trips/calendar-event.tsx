@@ -91,6 +91,7 @@ export function CalendarEvent({
 }) {
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: item.id,
+    data: { type: 'calendar-item', id: item.id },
     disabled: !props.canEdit || props.busy,
   });
   const colors = useCalendarColors();

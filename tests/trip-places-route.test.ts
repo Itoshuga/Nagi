@@ -18,6 +18,7 @@ vi.mock('@/features/spaces/server', () => ({
 vi.mock('@/lib/supabase/server', () => ({ publicCatalogDatabase: mocks.catalog }));
 vi.mock('../packages/database/src/index', () => ({
   searchTripPlaces: mocks.search,
+  tripCatalogDurations: async (_db: unknown, rows: unknown[]) => rows,
   nearbyTripPlaces: mocks.nearby,
   findCatalogEntry: mocks.detail,
   listCategoryFields: mocks.fields,

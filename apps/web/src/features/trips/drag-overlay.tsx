@@ -4,10 +4,12 @@ import { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { DragOverlay, type Modifier } from '@dnd-kit/core';
 import type { TripPlanItem, TripPlanStop } from '@nagi/database';
+import type { CatalogEntry } from './catalog-drag';
+import { Copy } from 'lucide-react';
 import { EntryImage } from '@/features/media/image';
 
-// The preview is narrower than the original timeline row. Anchor its own centre
-// to the initial mouse/touch position instead of retaining the row's left edge.
+// The preview is narrower than the source row. Keep its centre on the pointer,
+// regardless of where the user originally grabbed the card.
 const followPointer: Modifier = ({
   activatorEvent,
   activeNodeRect,
@@ -45,9 +47,11 @@ const serverContainer = () => null;
 
 export function TripDragOverlay({
   item,
+  entry,
   reduced,
 }: {
   item?: TripPlanItem | TripPlanStop;
+  entry?: CatalogEntry;
   reduced: boolean | null;
 }) {
   const container = useSyncExternalStore<HTMLElement | null>(
@@ -59,17 +63,18 @@ export function TripDragOverlay({
   return createPortal(
     <DragOverlay
       modifiers={modifiers}
-      style={{ width: 'max-content', height: 'auto' }}
+      style={{ width: 'max-content', height: 'auto', pointerEvents: 'none' }}
       dropAnimation={reduced ? null : { duration: 150, easing: 'ease-out' }}
     >
-      {item && (
+      {(item || entry) && (
         <div className="trip-drag-preview">
           <EntryImage
-            src={item.entry?.cover_image_url}
+            src={(entry ?? item?.entry)?.cover_image_url}
             className="size-10 shrink-0 rounded-lg"
             sizes="40px"
           />
-          <span>{item.entry?.title ?? 'Étape'}</span>
+          <span>{(entry ?? item?.entry)?.title ?? 'Étape'}</span>
+          {entry && <Copy className="size-3 shrink-0" aria-label="Nouvelle visite" />}
         </div>
       )}
     </DragOverlay>,

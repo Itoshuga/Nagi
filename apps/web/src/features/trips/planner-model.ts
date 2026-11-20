@@ -36,6 +36,7 @@ export type PlaceAdder = (
   time?: string,
   repeat?: boolean,
   parent?: string,
+  placement?: { before?: string | null; duration?: number | null },
 ) => Promise<TripResult & { id?: string }>;
 export type TripDetailEntry = Omit<EntryCardRow, 'country' | 'city' | 'category'> & {
   country: EntryCardRow['country'] | null;
@@ -59,12 +60,33 @@ export function unavailableTripEntry(item: TripPlanItem): TripDetailEntry {
     category: null,
   };
 }
-const chronologicalTripItems = (items: TripPlanItem[]) =>
-  [...items].sort(
-    (a, b) =>
-      (a.start_time ? timeMinutes(a.start_time) : 1440) -
-      (b.start_time ? timeMinutes(b.start_time) : 1440),
-  );
+// Preserve explicit positions for visits without a clock. Timed visits remain
+// chronological; unscheduled visits travel with their next timed neighbour.
+const chronologicalTripItems = (items: TripPlanItem[]) => {
+  if (items.some((i) => !Number.isFinite(i.sort_order)))
+    return [...items].sort(
+      (a, b) =>
+        (a.start_time ? timeMinutes(a.start_time) : 1440) -
+        (b.start_time ? timeMinutes(b.start_time) : 1440),
+    );
+  const positioned = [...items].sort((a, b) => a.sort_order - b.sort_order);
+  const groups = new Map<string | null, TripPlanItem[]>();
+  let anchor: string | null = null;
+  for (let i = positioned.length - 1; i >= 0; i--) {
+    const item = positioned[i]!;
+    if (item.start_time) anchor = item.id;
+    else {
+      const group = groups.get(anchor) ?? [];
+      group.push(item);
+      groups.set(anchor, group);
+    }
+  }
+  for (const group of groups.values()) group.reverse();
+  const timed = positioned
+    .filter((i) => i.start_time)
+    .sort((a, b) => timeMinutes(a.start_time!) - timeMinutes(b.start_time!));
+  return [...timed.flatMap((i) => [...(groups.get(i.id) ?? []), i]), ...(groups.get(null) ?? [])];
+};
 export const visibleTripItems = (plan: Pick<TripPlan, 'days' | 'items'>, day: DaySelection) =>
   day === 'all'
     ? [
@@ -162,15 +184,9 @@ export function activityNestingIssue(
   source: Pick<TripPlanItem, 'id' | 'entry_id'> & { stops?: TripPlanStop[] },
   parent: TripPlanItem,
 ) {
-  if (source.id === parent.id || source.entry_id === parent.entry_id)
-    return 'Choisissez un autre lieu que l’activité principale.';
+  if (source.id === parent.id) return 'Une activité ne peut pas devenir son propre arrêt.';
   if (source.stops?.length)
     return 'Cette activité contient déjà des arrêts. Sortez-les avant de l’intégrer à une autre activité.';
-  if (
-    !parent.stops?.some((stop) => stop.id === source.id) &&
-    parent.stops?.some((stop) => stop.entry_id === source.entry_id)
-  )
-    return 'Ce lieu figure déjà parmi les arrêts de cette activité.';
   return null;
 }
 
@@ -321,7 +337,8 @@ export function optimisticTripItems(items: TripPlanItem[], change: TripEdit) {
     case 'sort_items': {
       const sorted = items
         .filter((i) => i.trip_day_id === change.data.day)
-        .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'));
+        .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'))
+        .map((item, index) => ({ ...item, sort_order: (index + 1) * 1024 }));
       return [...items.filter((i) => i.trip_day_id !== change.data.day), ...sorted];
     }
     case 'move_item':
@@ -352,7 +369,15 @@ export function movedTripItems(items: TripPlanItem[], id: string, destination: L
   const before = next.findIndex(
     (item) => item.id === destination.before && item.trip_day_id === destination.day,
   );
-  const moved = { ...current, trip_day_id: destination.day };
+  const lane = next
+    .filter((item) => item.trip_day_id === destination.day)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const anchor = lane.findIndex((item) => item.id === destination.before);
+  const order =
+    anchor < 0
+      ? (lane.at(-1)?.sort_order ?? 0) + 1024
+      : ((lane[anchor - 1]?.sort_order ?? -1) + lane[anchor]!.sort_order) / 2;
+  const moved = { ...current, trip_day_id: destination.day, sort_order: order };
   if (before >= 0) next.splice(before, 0, moved);
   else next.push(moved);
   return next;

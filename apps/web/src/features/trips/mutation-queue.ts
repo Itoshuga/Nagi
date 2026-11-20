@@ -116,28 +116,6 @@ export class TripMutationQueue {
     if (this.disposed || this.snapshot.revoked || !this.snapshot.canEdit)
       return Promise.resolve({ ok: false, error: 'Ce voyage n’est plus modifiable.' });
     const plan = this.snapshot.plan;
-    if (
-      change.operation === 'add_item' &&
-      !change.data.repeat &&
-      plan.items.some((i) => i.trip_day_id === change.data.day && i.entry_id === change.data.entry)
-    )
-      return Promise.resolve({
-        ok: false,
-        reason: 'duplicate',
-        error: 'Ce lieu figure déjà dans cette journée. Confirmez une nouvelle visite.',
-      });
-    if (
-      change.operation === 'add_stop' &&
-      !change.data.repeat &&
-      plan.items
-        .find((i) => i.id === change.data.parent)
-        ?.stops.some((s) => s.entry_id === change.data.entry)
-    )
-      return Promise.resolve({
-        ok: false,
-        reason: 'duplicate',
-        error: 'Ce lieu figure déjà parmi les arrêts. Confirmez une nouvelle visite.',
-      });
     try {
       const intent = context
         ? {

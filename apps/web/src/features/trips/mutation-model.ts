@@ -5,7 +5,7 @@ import {
   type TripRealtimeEvent,
   type TripTransportChange,
 } from '@nagi/shared';
-import type { EntryCardRow, TripPlan, TripSyncPayload } from '@nagi/database';
+import type { EntryCardRow, TripPlan, TripPlanStop, TripSyncPayload } from '@nagi/database';
 import { calendarDateAt, dayRange, movedTripItems, optimisticTripItems } from './planner-model';
 
 type Guard = TripMutationRequest['expected'];
@@ -264,29 +264,33 @@ export function optimisticTripChange(
   if (change.operation === 'add_item' && entry)
     return {
       ...plan,
-      items: [
-        ...plan.items,
-        {
-          id: change.data.id,
-          trip_id: plan.id,
-          trip_day_id: change.data.day,
-          entry_id: entry.id,
-          entry,
-          stops: [],
-          added_by: viewer,
-          notes: '',
-          sort_order:
-            (plan.items.filter((i) => i.trip_day_id === change.data.day).at(-1)?.sort_order ?? 0) +
-            1024,
-          start_time: change.data.start_time ?? null,
-          end_time: null,
-          estimated_duration_minutes: change.data.duration ?? null,
-          calendar_color: null,
-          version: 0,
-          created_at: now,
-          updated_at: now,
-        },
-      ],
+      items: movedTripItems(
+        [
+          ...plan.items,
+          {
+            id: change.data.id,
+            trip_id: plan.id,
+            trip_day_id: change.data.day,
+            entry_id: entry.id,
+            entry,
+            stops: [],
+            added_by: viewer,
+            notes: '',
+            sort_order:
+              (plan.items.filter((i) => i.trip_day_id === change.data.day).at(-1)?.sort_order ??
+                0) + 1024,
+            start_time: change.data.start_time ?? null,
+            end_time: null,
+            estimated_duration_minutes: change.data.duration ?? null,
+            calendar_color: null,
+            version: 0,
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        change.data.id,
+        { day: change.data.day, before: change.data.before ?? null },
+      ),
     };
   if (change.operation === 'add_stop' && entry)
     return {
@@ -295,23 +299,20 @@ export function optimisticTripChange(
         i.id === change.data.parent
           ? {
               ...i,
-              stops: [
-                ...i.stops,
-                {
-                  id: change.data.id,
-                  trip_item_id: i.id,
-                  entry_id: entry.id,
-                  entry,
-                  added_by: viewer,
-                  duration_minutes: change.data.duration,
-                  calendar_color: null,
-                  notes: '',
-                  sort_order: (i.stops.at(-1)?.sort_order ?? 0) + 1024,
-                  version: 0,
-                  created_at: now,
-                  updated_at: now,
-                },
-              ],
+              stops: insertStop(i.stops, change.data.before, {
+                id: change.data.id,
+                trip_item_id: i.id,
+                entry_id: entry.id,
+                entry,
+                added_by: viewer,
+                duration_minutes: change.data.duration,
+                calendar_color: null,
+                notes: '',
+                sort_order: (i.stops.at(-1)?.sort_order ?? 0) + 1024,
+                version: 0,
+                created_at: now,
+                updated_at: now,
+              }),
             }
           : i,
       ),
@@ -482,4 +483,14 @@ export function applyTripEvent(
         ]
       : plan.people,
   };
+}
+
+function insertStop(stops: TripPlanStop[], before: string | null | undefined, stop: TripPlanStop) {
+  const next = [...stops];
+  const index = next.findIndex((s) => s.id === before);
+  if (index >= 0) {
+    stop.sort_order = ((next[index - 1]?.sort_order ?? -1) + next[index]!.sort_order) / 2;
+    next.splice(index, 0, stop);
+  } else next.push(stop);
+  return next;
 }

@@ -121,7 +121,14 @@ function setup(count = 3) {
   queues.push(queue);
   function event(request: TripMutationRequest) {
     const previous = server,
-      next = optimisticTripChange(server, request.change, viewer),
+      next = optimisticTripChange(
+        server,
+        request.change,
+        viewer,
+        request.change.operation === 'add_item'
+          ? ({ id: request.change.data.entry, title: 'Fixture visit' } as EntryCardRow)
+          : undefined,
+      ),
       data = request.change.data as { id?: string; patch?: object };
     const changed = next.items.find((i) => i.id === data.id),
       old = previous.items.find((i) => i.id === data.id);
@@ -394,6 +401,33 @@ describe('Trip mutation journal and non-blocking queue', () => {
     await flush();
     expect(s.queue.getSnapshot().plan.version).toBe(2);
     expect(s.requests).toHaveLength(0);
+  });
+  it('accepts repeated catalogue drops before prior saves finish, keeping each occurrence identity', async () => {
+    const s = setup();
+    const entry = { id: s.server.items[0]!.entry_id, title: 'Repeat' } as EntryCardRow;
+    for (const n of [800, 801])
+      expect(
+        (
+          await s.queue.enqueue(
+            { operation: 'add_item', data: { id: uuid(n), entry: entry.id, day } },
+            0,
+            entry,
+          )
+        ).ok,
+      ).toBe(true);
+    expect(s.queue.getSnapshot().plan.items.filter((i) => i.entry_id === entry.id)).toHaveLength(3);
+    expect(s.queue.getSnapshot().pending).toBe(2);
+    expect(s.requests).toHaveLength(1);
+    s.commit(0);
+    await flush();
+    s.commit(1);
+    await flush();
+    expect(s.server.items.filter((i) => i.entry_id === entry.id).map((i) => i.id)).toEqual([
+      s.server.items[0]!.id,
+      uuid(800),
+      uuid(801),
+    ]);
+    expect(s.queue.getSnapshot().pending).toBe(0);
   });
   it('keeps creation and deletion ordered, without briefly resurrecting a saved item', async () => {
     const s = setup(),

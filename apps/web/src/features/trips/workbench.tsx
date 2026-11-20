@@ -60,6 +60,7 @@ import { TripPlacePicker } from './place-picker';
 import { CalendarColorsProvider } from './calendar-colors';
 import { useTripMutations } from './use-trip-mutations';
 import { TripSaveStatus } from './save-status';
+import { useDragPointer } from './drag-pointer';
 import {
   unavailableTripEntry,
   type DaySelection,
@@ -77,6 +78,15 @@ import {
   tripDropChange,
 } from './planner-dnd';
 
+import {
+  catalogPlacement,
+  catalogVisitChange,
+  catalogHintKey,
+  isCatalogDrag,
+  isCalendarDrop,
+  type CatalogEntry,
+} from './catalog-drag';
+
 const TripMap = dynamic(() => import('./map'), { ssr: false, loading: () => <LoadingState /> });
 const TripCalendar = dynamic(() => import('./calendar').then((m) => m.TripCalendar), {
   loading: () => <LoadingState />,
@@ -93,8 +103,10 @@ function DayNav({
   sub,
   count,
   onClick,
+  editable,
 }: {
   id: string;
+  editable: boolean;
   active: boolean;
   label: string;
   sub?: string;
@@ -104,7 +116,7 @@ function DayNav({
   const { setNodeRef, isOver } = useDroppable({
     id: `nav:${id}`,
     data: { day: id === 'pending' ? null : id, before: null },
-    disabled: id === 'all',
+    disabled: !editable || id === 'all',
   });
   return (
     <button
@@ -209,6 +221,8 @@ export function TripWorkbench({
   const [deleteOpen, setDeleteOpen] = useState(false),
     [localError, setLocalError] = useState('');
   const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
+  const [draggedEntry, setDraggedEntry] = useState<CatalogEntry>();
+  const dragPointer = useDragPointer(!!draggedEntry);
   const { state: sync, queue } = useTripMutations(
     guild,
     initialPlan,
@@ -233,12 +247,11 @@ export function TripWorkbench({
   const currentItem = displayed.items.find((i) => i.id === selectedId);
   const detailEntry =
     preview ?? currentItem?.entry ?? (currentItem ? unavailableTripEntry(currentItem) : undefined);
-  const dragVersion = useRef(plan.version),
-    addReceipt = useRef<{ key: string; id: string } | null>(null);
+  const dragVersion = useRef(plan.version);
   const lastTrigger = useRef<HTMLElement | null>(null),
     panelRef = useRef<HTMLElement>(null);
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
@@ -263,33 +276,17 @@ export function TripWorkbench({
     queue.enqueue(change, version, entry);
   const mutate: PlanMutation = (change, version, context) =>
     queue.enqueue(change, version, undefined, context);
-  const add: PlaceAdder = async (entry, targetDay, time, repeat = false, parent) => {
+  const add: PlaceAdder = async (entry, targetDay, time, _repeat, parent, placement) => {
+    if (!editing) return { ok: false, error: 'Ce voyage n’est pas modifiable.' };
     if (parent && !displayed.items.some((item) => item.id === parent))
       return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
-    const key = `${entry.id}:${targetDay ?? ''}:${time ?? ''}:${repeat}:${parent ?? ''}`;
-    const id = addReceipt.current?.key === key ? addReceipt.current.id : crypto.randomUUID();
-    addReceipt.current = { key, id };
+    // One intentional gesture creates one identity. The queue retains it through retries.
+    const id = crypto.randomUUID();
     const result = await execute(
-      parent
-        ? {
-            operation: 'add_stop',
-            data: { id, parent, entry: entry.id, repeat, duration: null },
-          }
-        : {
-            operation: 'add_item',
-            data: {
-              id,
-              entry: entry.id,
-              day: targetDay,
-              repeat,
-              start_time: time ?? null,
-              duration: null,
-            },
-          },
+      catalogVisitChange(entry, { day: targetDay, time, parent, ...placement }, id),
       displayed.version,
       entry,
     );
-    if (result.ok) addReceipt.current = null;
     return { ...result, ...(result.ok ? { id } : {}) };
   };
   function openPicker(targetDay: string | null, time?: string) {
@@ -379,13 +376,58 @@ export function TripWorkbench({
       id={prefix}
       sensors={sensors}
       collisionDetection={tripCollision}
+      autoScroll={{ threshold: { x: 0.12, y: 0.12 }, acceleration: 5 }}
       onDragStart={({ active }) => {
         dragVersion.current = displayed.version;
-        setDragged(tripDragSource(displayed.items, active.data.current, active.id)?.card);
+        setDragged(
+          active.data.current?.type === 'calendar-item'
+            ? undefined
+            : tripDragSource(displayed.items, active.data.current, active.id)?.card,
+        );
+        setDraggedEntry(isCatalogDrag(active.data.current) ? active.data.current.entry : undefined);
       }}
-      onDragCancel={() => setDragged(undefined)}
-      onDragEnd={({ active, over }) => {
+      onDragCancel={() => {
         setDragged(undefined);
+        setDraggedEntry(undefined);
+      }}
+      onDragEnd={(event) => {
+        const { active, over } = event;
+        setDragged(undefined);
+        setDraggedEntry(undefined);
+        if (!editing) return;
+        if (isCatalogDrag(active.data.current)) {
+          const point = dragPointer.current;
+          const hit = point ? document.elementFromPoint(point.x, point.y) : null;
+          if (!hit?.closest('.trip-workspace-canvas,.trip-day-navigation')) return;
+          if (isCalendarDrop(over?.data.current) && !hit.closest('.trip-calendar-scroll')) return;
+          const placement = catalogPlacement(
+            displayed,
+            active.data.current,
+            event,
+            dragPointer.current,
+          );
+          if (!placement) return;
+          void add(
+            active.data.current.entry,
+            placement.day,
+            placement.time,
+            undefined,
+            placement.parent,
+            placement,
+          ).then((result) => {
+            if (!result.ok) setError(result.error);
+            else {
+              try {
+                localStorage.setItem(catalogHintKey, '1');
+              } catch {
+                /* Storage can be disabled. */
+              }
+              window.dispatchEvent(new Event('nagi:catalog-dropped'));
+            }
+          });
+          return;
+        }
+        if (isCalendarDrop(over?.data.current)) return;
         const target = over?.data.current as Parameters<typeof tripDropChange>[2] | undefined;
         const source = tripDragSource(displayed.items, active.data.current, active.id);
         if (!target || !source) return;
@@ -399,7 +441,10 @@ export function TripWorkbench({
             'Maintenez une carte pour la glisser. Au clavier, Espace sur la poignée pour saisir, puis les flèches et Espace pour déposer. Les menus permettent aussi de déplacer les étapes et de sortir les arrêts.',
         },
         announcements: {
-          onDragStart: () => 'Étape saisie.',
+          onDragStart: ({ active }) =>
+            isCatalogDrag(active.data.current)
+              ? 'Lieu saisi. Déposez pour créer une visite.'
+              : 'Étape saisie.',
           onDragOver: ({ active, over }) =>
             isActivityDrop(over?.data.current) || isStopDrop(over?.data.current)
               ? `Déposer pour ajouter un arrêt dans ${over.data.current.title}.`
@@ -421,7 +466,14 @@ export function TripWorkbench({
         busy={busy}
         mutate={mutate}
       >
-        <div className={cn('trip-workspace', !editing && 'is-reading', dragged && 'is-sorting')}>
+        <div
+          className={cn(
+            'trip-workspace',
+            !editing && 'is-reading',
+            (dragged || draggedEntry) && 'is-sorting',
+            draggedEntry && 'is-catalog-dragging',
+          )}
+        >
           <header className="trip-workspace-header">
             <Link
               href={`/app/${guild}/trips`}
@@ -656,6 +708,7 @@ export function TripWorkbench({
                 )}
               </div>
               <DayNav
+                editable={editing}
                 id="all"
                 active={activeDay === 'all'}
                 label="Tout le voyage"
@@ -666,6 +719,7 @@ export function TripWorkbench({
                 {plan.days.map((d, i) => (
                   <DayNav
                     key={d.id}
+                    editable={editing}
                     id={d.id}
                     active={activeDay === d.id}
                     label={`Jour ${i + 1}`}
@@ -687,6 +741,7 @@ export function TripWorkbench({
                 ))}
               </div>
               <DayNav
+                editable={editing}
                 id="pending"
                 active={activeDay === 'pending'}
                 label="À organiser"
@@ -746,7 +801,7 @@ export function TripWorkbench({
                         first?.focus();
                       }
                     }
-                    if (e.key === 'Escape' && !e.defaultPrevented) {
+                    if (e.key === 'Escape' && !e.defaultPrevented && !dragged && !draggedEntry) {
                       e.preventDefault();
                       closePanel();
                     }
@@ -828,7 +883,7 @@ export function TripWorkbench({
             <DeleteTripDialog guild={guild} plan={displayed} onClose={() => setDeleteOpen(false)} />
           )}
         </div>
-        <TripDragOverlay item={dragged} reduced={reduced} />
+        <TripDragOverlay item={dragged} entry={draggedEntry} reduced={reduced} />
       </CalendarColorsProvider>
     </DndContext>
   );

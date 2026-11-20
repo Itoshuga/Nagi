@@ -2263,3 +2263,123 @@ html:has(.trip-workspace.is-sorting) * {
   padding: 18px;
   font-family: 'Manrope Variable', sans-serif;
 }
+
+/* Catalogue copies reuse the existing canvas, colours and event geometry. */
+.trip-catalog-draggable,
+.trip-catalog-draggable .trip-picker-preview {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+.trip-catalog-draggable.is-copying {
+  background: var(--muted);
+}
+.trip-workspace.is-catalog-dragging,
+.trip-workspace.is-catalog-dragging .trip-picker-preview {
+  cursor: grabbing;
+}
+.trip-catalog-hint {
+  padding: 0 22px 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.trip-catalog-action {
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.trip-catalog-destination {
+  width: min(304px, calc(100vw - 24px));
+  max-height: min(420px, var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  padding: 18px;
+  color: var(--foreground);
+  font-family: 'Manrope Variable', sans-serif;
+}
+.trip-catalog-destination form,
+.trip-catalog-destination label {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  font-size: 12px;
+}
+.trip-catalog-destination form {
+  gap: 16px;
+}
+.trip-catalog-destination-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.trip-catalog-destination-heading strong {
+  font-size: 14px;
+  font-weight: 750;
+}
+.trip-catalog-destination-heading span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trip-catalog-destination label {
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+.trip-catalog-destination select,
+.trip-catalog-destination input {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 500;
+}
+.trip-catalog-destination button {
+  font-family: inherit;
+}
+.trip-catalog-destination form > button {
+  width: 100%;
+}
+.trip-catalog-stop-target {
+  margin: 4px 0 8px var(--trip-content-x);
+  padding: 9px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.trip-catalog-stop-target.is-over,
+.is-catalog-day-over {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  outline: 1px solid var(--primary);
+  outline-offset: -1px;
+}
+.is-catalog-dragging .trip-drop-target:not(.trip-timeline-end) {
+  min-height: 12px;
+}
+.trip-calendar-drop-preview:has(strong) {
+  z-index: 6;
+  overflow: visible;
+  padding: 3px 5px;
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--trip-calendar-color) 14%, var(--background));
+  color: var(--foreground);
+}
+.trip-calendar-drop-preview > strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trip-calendar-drop-preview .trip-calendar-drag-time {
+  top: max(calc(100% + 6px), 42px);
+  bottom: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-catalog-stop-target {
+    transition: none;
+  }
+}

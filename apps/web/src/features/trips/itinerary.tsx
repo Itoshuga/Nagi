@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import {
@@ -36,6 +36,7 @@ import { QuickStepEditor } from './step-editor';
 import { ActivityStops } from './activity-stops';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
+import { isCatalogDrag } from './catalog-drag';
 import {
   itemDuration,
   activityNestingIssue,
@@ -61,6 +62,9 @@ export function TripDropTarget({
     <div ref={setNodeRef} className={cn('trip-drop-target', className, isOver && 'is-over')}>
       {isOver && active?.data.current?.type === 'stop' && (
         <span className="trip-drop-label">Remettre en activité</span>
+      )}
+      {isOver && isCatalogDrag(active?.data.current) && (
+        <span className="trip-drop-label">Déposer ici</span>
       )}
       {children}
     </div>
@@ -350,7 +354,8 @@ function DayTimeline({
   props: WorkspaceViewProps;
   search?: string;
 }) {
-  const { setNodeRef } = useDroppable({
+  const { active } = useDndContext();
+  const { setNodeRef, isOver } = useDroppable({
     id: `day-background:${day?.id ?? 'pending'}`,
     data: { day: day?.id ?? null, before: null },
     disabled: !props.canEdit || props.busy,
@@ -365,7 +370,14 @@ function DayTimeline({
     : items;
   const conflicts = overlappingTripItems(items);
   return (
-    <section ref={setNodeRef} className={cn('trip-day-timeline', !items.length && 'is-empty')}>
+    <section
+      ref={setNodeRef}
+      className={cn(
+        'trip-day-timeline',
+        !items.length && 'is-empty',
+        isOver && isCatalogDrag(active?.data.current) && 'is-catalog-day-over',
+      )}
+    >
       {day ? (
         <DayHeading day={day} props={props} count={items.length} />
       ) : (
@@ -443,11 +455,31 @@ function DayTimeline({
   );
 }
 export function TripItinerary(props: WorkspaceViewProps) {
+  const content = useRef<HTMLDivElement>(null);
+  const { active, measureDroppableContainers } = useDndContext();
+  const catalogDragging = isCatalogDrag(active?.data.current);
+  useEffect(() => {
+    if (!catalogDragging || !content.current) return;
+    let frame = 0;
+    const refresh = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => measureDroppableContainers([]));
+    };
+    // The stop targets are intentionally absent at rest. Re-measure positions
+    // after their layout and after a folded activity opens, without polling.
+    const observer = new ResizeObserver(refresh);
+    observer.observe(content.current);
+    refresh();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [catalogDragging, measureDroppableContainers]);
   const [search, setSearch] = useState('');
   const { selectedDay, plan } = props;
   if (selectedDay === 'pending')
     return (
-      <div className="trip-itinerary">
+      <div ref={content} className="trip-itinerary">
         <div className="trip-ideas-search">
           <SearchInput value={search} onChange={setSearch} />
         </div>
@@ -456,7 +488,7 @@ export function TripItinerary(props: WorkspaceViewProps) {
     );
   const days = selectedDay === 'all' ? plan.days : plan.days.filter((d) => d.id === selectedDay);
   return (
-    <div className="trip-itinerary">
+    <div ref={content} className="trip-itinerary">
       {days.map((day) => (
         <DayTimeline key={day.id} day={day} props={props} />
       ))}

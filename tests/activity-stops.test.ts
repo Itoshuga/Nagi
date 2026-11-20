@@ -152,20 +152,20 @@ describe('Activities with internal stops', () => {
     expect(activityStops(result[0]!)[0]?.time).toBe('14:00');
     expect(itemDuration(result[0]!)).toBe(120);
   });
-  it('rejects nesting a group, the parent itself or a duplicate place without hiding the source', () => {
+  it('rejects cycles and nested groups but permits independent visits to the same place', () => {
     const item = { ...parent(), entry_id: 'parent-entry' };
     const source = { ...parent([]), id: 'source', entry_id: 'source-entry' };
     expect(activityNestingIssue(item, source)).toContain('déjà des arrêts');
-    expect(activityNestingIssue(source, source)).toContain('autre lieu');
+    expect(activityNestingIssue(source, source)).toContain('propre arrêt');
     const duplicate = { ...item, stops: [{ ...stop('dup', 20), entry_id: source.entry_id }] };
-    expect(activityNestingIssue(source, duplicate)).toContain('déjà parmi');
+    expect(activityNestingIssue(source, duplicate)).toBeNull();
     const snapshot = [duplicate, source];
     expect(
       optimisticTripItems(snapshot, {
         operation: 'nest_item',
         data: { id: source.id, parent: duplicate.id },
       }),
-    ).toBe(snapshot);
+    ).not.toBe(snapshot);
   });
   it('derives internal times without adding the stop durations to the parent calendar block', () => {
     const item = parent();
