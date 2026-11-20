@@ -62,6 +62,7 @@ type ColorTarget = {
   x: number;
   y: number;
   focus: HTMLElement | null;
+  snapshot: TripPlanItem;
 };
 type ColorAccess = {
   open: (item: TripPlanItem, point?: { x: number; y: number }, focus?: HTMLElement | null) => void;
@@ -142,6 +143,7 @@ export function CalendarColorsProvider({
       x: point?.x ?? rect?.left ?? 20,
       y: point?.y ?? rect?.bottom ?? 20,
       focus: element,
+      snapshot: item,
     });
     openingDialog.current = false;
     setMenu(true);
@@ -153,6 +155,7 @@ export function CalendarColorsProvider({
     return mutate(
       { operation: 'color_item', data: { id: target.id, item_version: target.version, color } },
       target.trip,
+      { item: target.snapshot },
     );
   }
   function choose(color: string | null) {
@@ -274,7 +277,9 @@ export function CalendarColorsProvider({
           busy={busy}
           canEdit={canEdit}
           onClose={closeDialog}
-          onReload={() => setTarget({ ...target, trip: plan.version, version: item.version })}
+          onReload={() =>
+            setTarget({ ...target, trip: plan.version, version: item.version, snapshot: item })
+          }
           onAdd={async (hex) => {
             const saved = await addCalendarColor(guild, hex);
             if (!saved.ok) return saved;

@@ -35,7 +35,7 @@ export function TripDayEditor({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
-  const [base, setBase] = useState(plan.version);
+  const [base, setBase] = useState({ version: plan.version, snapshot: day });
   const titleId = useId(),
     dateId = useId(),
     removeId = useId();
@@ -56,7 +56,8 @@ export function TripDayEditor({
           : day
             ? { operation: 'edit_day', data: { id: day.id, title, date } }
             : { operation: 'add_day', data: { title, date } },
-        base,
+        base.version,
+        { day: base.snapshot },
       );
       if (result.ok) {
         setOpen(false);
@@ -69,7 +70,7 @@ export function TripDayEditor({
       open={open}
       onOpenChange={(value) => {
         if (!pending) {
-          if (value) setBase(plan.version);
+          if (value) setBase({ version: plan.version, snapshot: day });
           setOpen(value);
           setError('');
         }
@@ -243,13 +244,13 @@ export function TripStepDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [day, setDay] = useState<string | null>(null);
-  const [base, setBase] = useState({ trip: plan.version, item: item.version });
+  const [base, setBase] = useState({ trip: plan.version, item: item.version, snapshot: item });
   const [pending, startTransition] = useTransition();
   const prefix = useId();
   const activeDay = day ?? item.trip_day_id ?? '';
   function submit(change: Parameters<PlanMutation>[0]) {
     startTransition(async () => {
-      const result = await mutate(change, base.trip);
+      const result = await mutate(change, base.trip, { item: base.snapshot });
       if (result.ok) {
         setOpen(false);
         setError('');
@@ -279,7 +280,7 @@ export function TripStepDialog({
       open={open}
       onOpenChange={(value) => {
         if (!pending) {
-          if (value) setBase({ trip: plan.version, item: item.version });
+          if (value) setBase({ trip: plan.version, item: item.version, snapshot: item });
           setOpen(value);
           setDay(null);
           setError('');

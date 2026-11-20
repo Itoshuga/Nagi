@@ -2,6 +2,7 @@
 
 import { calendarColorStyle } from './calendar-color-style';
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -29,35 +30,43 @@ import {
 } from './calendar-model';
 import { useCalendarColors } from './calendar-colors';
 
-export function CalendarEventCopy({
-  item,
-  schedule,
-}: {
-  item: TripPlanItem;
-  schedule: CalendarSchedule;
-}) {
-  return (
-    <>
-      <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
-      {(schedule.duration == null || schedule.duration > 30) && (
-        <span>
-          {calendarScheduleLabel(schedule)}
-          {schedule.duration ? ` · ${formatTripDuration(schedule.duration)}` : ' · Durée libre'}
-        </span>
-      )}
-      {schedule.duration != null && schedule.duration >= 60 && (
-        <small>
-          {[
-            item.entry?.category?.name,
-            item.stops?.length ? tripStopCount(item.stops.length) : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </small>
-      )}
-    </>
-  );
-}
+export const CalendarEventCopy = memo(
+  function CalendarEventCopy({
+    item,
+    schedule,
+  }: {
+    item: TripPlanItem;
+    schedule: CalendarSchedule;
+  }) {
+    return (
+      <>
+        <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
+        {(schedule.duration == null || schedule.duration > 30) && (
+          <span>
+            {calendarScheduleLabel(schedule)}
+            {schedule.duration ? ` · ${formatTripDuration(schedule.duration)}` : ' · Durée libre'}
+          </span>
+        )}
+        {schedule.duration != null && schedule.duration >= 60 && (
+          <small>
+            {[
+              item.entry?.category?.name,
+              item.stops?.length ? tripStopCount(item.stops.length) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </small>
+        )}
+      </>
+    );
+  },
+  (before, after) =>
+    before.item === after.item &&
+    before.schedule.day === after.schedule.day &&
+    before.schedule.start === after.schedule.start &&
+    before.schedule.end === after.schedule.end &&
+    before.schedule.duration === after.schedule.duration,
+);
 
 type ResizeBase = {
   item: TripPlanItem;
@@ -127,6 +136,7 @@ export function CalendarEvent({
           data: { id: item.id, item_version: base.item.version, ...calendarScheduleFields(next) },
         },
         base.trip,
+        { item: base.item },
       );
     } finally {
       preview.current = undefined;

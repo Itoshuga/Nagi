@@ -7,3 +7,4 @@ export * from './catalog';
 export * from './profiles';
 export * from './trip-catalog';
 export * from './calendar-colors';
+export * from './trip-sync';

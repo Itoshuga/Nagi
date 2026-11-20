@@ -987,9 +987,11 @@ export type Database = {
       is_guild_member: { Args: { p_guild_id: string }; Returns: boolean; };
       is_nagi_admin: { Args: Record<PropertyKey, never>; Returns: boolean; };
       is_trip_organizer: { Args: { p_trip_id: string }; Returns: boolean; };
+      mutate_trip_plan: { Args: { p_guild: string; p_trip: string; p_request: Json }; Returns: Json; };
       read_discord_credentials: { Args: { p_user_id: string }; Returns: Json; };
       read_discord_guild_snapshot: { Args: { p_user_id: string; p_application_id: string }; Returns: Json; };
       read_social_profile: { Args: { p_viewer: string; p_target: string; p_app: string }; Returns: Json; };
+      read_trip_changes: { Args: { p_guild: string; p_trip: string; p_after: number }; Returns: Json; };
       reconcile_discord_guilds: { Args: { p_application_id: string; p_guilds: Json }; Returns: undefined; };
       record_discord_memberships: { Args: { p_user_id: string; p_application_id: string; p_guilds: Json }; Returns: undefined; };
       refresh_social_identity: { Args: { p_user: string; p_discord: string; p_profile: Json }; Returns: undefined; };

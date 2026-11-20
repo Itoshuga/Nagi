@@ -133,7 +133,7 @@ function StopTiming({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [duration, setDuration] = useState(String(stop.duration_minutes ?? ''));
-  const [base, setBase] = useState({ trip: plan.version, stop: stop.version });
+  const [base, setBase] = useState({ trip: plan.version, stop: stop.version, snapshot: stop });
   const [error, setError] = useState('');
   const label = (
     <span className="trip-stop-timing-label">
@@ -162,7 +162,7 @@ function StopTiming({
         setError('');
         if (next) {
           setDuration(String(stop.duration_minutes ?? ''));
-          setBase({ trip: plan.version, stop: stop.version });
+          setBase({ trip: plan.version, stop: stop.version, snapshot: stop });
         }
       }}
     >
@@ -200,10 +200,11 @@ function StopTiming({
                   id: stop.id,
                   stop_version: base.stop,
                   duration: duration ? Number(duration) : null,
-                  notes: stop.notes,
+                  notes: base.snapshot.notes,
                 },
               },
               base.trip,
+              { stop: base.snapshot },
             );
             if (result.ok) setOpen(false);
             else setError(result.error);
@@ -265,6 +266,7 @@ function StopEditor({
   const [duration, setDuration] = useState(String(stop.duration_minutes ?? ''));
   const [notes, setNotes] = useState(stop.notes);
   const [version, setVersion] = useState(stop.version);
+  const [original, setOriginal] = useState(stop);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -283,6 +285,7 @@ function StopEditor({
             },
           },
       plan.version,
+      { stop: original },
     );
     if (result.ok) onClose();
     else {
@@ -384,6 +387,7 @@ function StopEditor({
                     setDuration(String(stop.duration_minutes ?? ''));
                     setNotes(stop.notes);
                     setVersion(stop.version);
+                    setOriginal(stop);
                     setError('');
                     setConflict(false);
                   }}

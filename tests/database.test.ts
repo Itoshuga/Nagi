@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { tripSyncBatchSchema, type TripSyncBatch } from '../packages/shared/src/trip-sync';
 const db = new PGlite({ extensions: { pg_trgm } });
 const userId = '11111111-1111-4111-8111-111111111111';
 const adminId = '22222222-2222-4222-8222-222222222222';
@@ -1068,6 +1069,241 @@ describe('Collaborative planner transactions', () => {
       }),
     );
   }
+
+  const queued = (
+    id: number,
+    change: Record<string, unknown>,
+    expected: Record<string, unknown> = {},
+    base = 2,
+    guild = guildA,
+    trip = tripA,
+  ) =>
+    `select public.mutate_trip_plan('${guild}','${trip}','${JSON.stringify({ id: `${id.toString(16).padStart(8, '0')}-8888-4888-8888-888888888888`, base, change, expected: { items: {}, stops: {}, days: {}, ...expected } }).replaceAll("'", "''")}') as value`;
+  const changes = (after: number) =>
+    `select public.read_trip_changes('${guildA}','${tripA}',${after}) as value`;
+
+  it('merges compatible property edits from two actors and rejects an overwritten property', async () => {
+    await activityFixture();
+    const color = queued(
+      1,
+      { operation: 'patch_item', data: { id: firstItem, patch: { calendar_color: '#73A6DF' } } },
+      { items: { [firstItem]: { calendar_color: null } } },
+    );
+    const first = await scalar<TripSyncBatch>(color);
+    expect(tripSyncBatchSchema.parse(first).events[0]?.changes.items.patch[0]).toMatchObject({
+      id: firstItem,
+      calendar_color: '#73A6DF',
+    });
+    expect(first.events[0]?.changes.items.upsert).toHaveLength(0);
+    expect(first.events[0]?.changes.items.patch[0]).not.toHaveProperty('notes');
+    await db.exec('reset role');
+    await asUser(otherId);
+    const note = await scalar<TripSyncBatch>(
+      queued(
+        2,
+        { operation: 'patch_item', data: { id: firstItem, patch: { notes: 'Billet réservé' } } },
+        { items: { [firstItem]: { notes: '' } } },
+      ),
+    );
+    expect(note.version).toBe(4);
+    expect(
+      await scalar(`select calendar_color as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('#73A6DF');
+    await fails(
+      queued(
+        3,
+        { operation: 'patch_item', data: { id: firstItem, patch: { calendar_color: '#A28BC9' } } },
+        { items: { [firstItem]: { calendar_color: null } } },
+      ),
+      /trip_conflict/,
+    );
+    await db.exec('reset role');
+    await asUser();
+    expect((await scalar<TripSyncBatch>(color)).version).toBe(4);
+    expect(
+      await scalar(`select version as value from public.trip_items where id='${firstItem}'`),
+    ).toBe(2);
+    await fails(
+      queued(
+        1,
+        { operation: 'patch_item', data: { id: firstItem, patch: { calendar_color: '#FFFFFF' } } },
+        { items: { [firstItem]: { calendar_color: null } } },
+      ),
+      /trip_mutation_mismatch/,
+    );
+    expect((await scalar<TripSyncBatch>(changes(4))).events).toHaveLength(0);
+  });
+
+  it('requires precise guards, rejects sensitive patches and isolates journal reads and writes', async () => {
+    await activityFixture();
+    await fails(
+      queued(10, { operation: 'patch_item', data: { id: firstItem, patch: { notes: 'Unsafe' } } }),
+      /trip_patch_invalid/,
+    );
+    await fails(
+      queued(
+        11,
+        { operation: 'patch_item', data: { id: firstItem, patch: { trip_id: tripB } } },
+        { items: { [firstItem]: { trip_id: tripA } } },
+      ),
+      /trip_patch_invalid/,
+    );
+    await fails(
+      queued(
+        12,
+        { operation: 'patch_item', data: { id: firstItem, patch: { calendar_color: 'red' } } },
+        { items: { [firstItem]: { calendar_color: null } } },
+      ),
+      /check constraint/,
+    );
+    await fails(`select * from private.trip_plan_events`, /permission denied/);
+    await fails(`select * from private.trip_mutation_receipts`, /permission denied/);
+    await db.exec('reset role');
+    await asUser(adminId);
+    await fails(changes(0), /trip_forbidden/);
+    await fails(
+      queued(13, { operation: 'delete_item', data: { id: firstItem } }),
+      /trip_forbidden/,
+    );
+    await db.exec('reset role');
+    await asUser();
+    await fails(
+      queued(14, { operation: 'delete_item', data: { id: firstItem } }, {}, 2, guildB, tripA),
+      /trip_forbidden/,
+    );
+    await db.exec('reset role');
+    await db.exec(
+      `update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${userId}'`,
+    );
+    await asUser();
+    await fails(changes(2), /trip_forbidden/);
+    await fails(
+      queued(15, { operation: 'delete_item', data: { id: firstItem } }),
+      /trip_forbidden/,
+    );
+  });
+
+  it('replays structural mutations exactly once and returns only affected rows', async () => {
+    await activityFixture();
+    const move = queued(
+      20,
+      { operation: 'move_item', data: { id: firstItem, day: dayTwo, before: null } },
+      { items: { [firstItem]: { trip_day_id: dayOne, sort_order: 1024 } } },
+    );
+    const moved = await scalar<TripSyncBatch>(move);
+    expect(moved.events).toHaveLength(1);
+    expect(moved.events[0]?.changes.items.patch).toHaveLength(1);
+    expect(moved.events[0]?.changes.stops.patch).toHaveLength(0);
+    expect((await scalar<TripSyncBatch>(move)).version).toBe(3);
+    const remove = queued(
+      21,
+      { operation: 'delete_item', data: { id: firstItem } },
+      {
+        items: { [firstItem]: { trip_day_id: dayTwo } },
+        stops: { [stopOne]: { trip_item_id: firstItem } },
+      },
+      3,
+    );
+    expect((await scalar<TripSyncBatch>(remove)).events[0]?.changes.items.remove).toEqual([
+      firstItem,
+    ]);
+    expect((await scalar<TripSyncBatch>(remove)).version).toBe(4);
+    expect(await scalar(`select count(*)::int as value from public.trip_item_stops`)).toBe(0);
+    const add = queued(
+      22,
+      {
+        operation: 'add_item',
+        data: { id: secondItem, entry: catalogEntry, day: dayOne, repeat: true },
+      },
+      {},
+      4,
+    );
+    const inserted = await scalar<TripSyncBatch>(add);
+    expect(inserted.events[0]?.changes.items.upsert[0]?.id).toBe(secondItem);
+    expect(inserted.events[0]?.entry_ids).toEqual([catalogEntry]);
+    expect((await scalar<TripSyncBatch>(add)).version).toBe(5);
+  });
+
+  it('preserves client day IDs, recovers journal gaps and keeps lifetime idempotency receipts', async () => {
+    await activityFixture();
+    const day = queued(30, {
+      operation: 'add_day',
+      data: { id: plannedTrip, title: 'Promenade', date: null },
+    });
+    expect((await scalar<TripSyncBatch>(day)).events[0]?.changes.days.upsert[0]?.id).toBe(
+      plannedTrip,
+    );
+    await db.exec('reset role');
+    await db.exec(`delete from private.trip_plan_events where trip_id='${tripA}'`);
+    await asUser();
+    expect((await scalar<TripSyncBatch>(changes(2))).reset).toBe(true);
+    expect((await scalar<TripSyncBatch>(day)).version).toBe(3);
+    expect(
+      await scalar(`select count(*)::int as value from public.trip_days where id='${plannedTrip}'`),
+    ).toBe(1);
+  });
+
+  it('bounds replay to 1000 revisions and returns an empty snapshot request beyond that boundary', async () => {
+    await db.exec(
+      `do $$ begin for n in 1..1001 loop update public.trips set updated_at=clock_timestamp() where id='${tripA}'; end loop; end $$;`,
+    );
+    await asUser();
+    const old = await scalar<TripSyncBatch>(changes(0));
+    expect(old.reset).toBe(true);
+    expect(old.events).toEqual([]);
+    const boundary = tripSyncBatchSchema.parse(await scalar(changes(1)));
+    expect(boundary.reset).toBe(false);
+    expect(boundary.events).toHaveLength(1000);
+  });
+
+  it('protects destructive confirmations from children added by another member meanwhile', async () => {
+    await activityFixture();
+    await db.exec('reset role');
+    await asUser(otherId);
+    await scalar(
+      operation(2, 'add_stop', {
+        id: stopTwo,
+        parent: firstItem,
+        entry: stopEntry,
+        repeat: true,
+        duration: 20,
+      }),
+    );
+    await db.exec('reset role');
+    await asUser();
+    await fails(
+      queued(
+        40,
+        { operation: 'delete_item', data: { id: firstItem } },
+        {
+          items: { [firstItem]: { trip_day_id: dayOne } },
+          stops: { [stopOne]: { trip_item_id: firstItem } },
+        },
+      ),
+      /trip_conflict/,
+    );
+    expect(
+      await scalar(
+        `select count(*)::int as value from public.trip_item_stops where trip_item_id='${firstItem}'`,
+      ),
+    ).toBe(2);
+    await scalar(
+      operation(3, 'add_item', { id: secondItem, entry: catalogEntry, day: dayOne, repeat: true }),
+    );
+    await fails(
+      queued(
+        41,
+        { operation: 'delete_day', data: { id: dayOne, day: null } },
+        { days: { [dayOne]: { date: null } }, items: { [firstItem]: { trip_day_id: dayOne } } },
+      ),
+      /trip_conflict/,
+    );
+    expect(
+      await scalar(
+        `select count(*)::int as value from public.trip_items where trip_day_id='${dayOne}'`,
+      ),
+    ).toBe(2);
+  });
 
   it('keeps personal palettes private, normalizes duplicates and does not grant direct palette writes', async () => {
     await asUser();

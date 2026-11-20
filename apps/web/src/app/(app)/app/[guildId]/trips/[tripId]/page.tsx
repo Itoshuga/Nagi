@@ -38,6 +38,7 @@ export default async function TripPage({
     (isAdmin && plan.organizers.length === 0);
   return (
     <TripWorkbench
+      key={`${viewer.id}:${guildId}:${plan.id}`}
       guild={guildId}
       viewerId={viewer.id}
       plan={plan}

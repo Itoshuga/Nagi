@@ -1,7 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import {
   DndContext,
@@ -49,19 +48,19 @@ import {
   cn,
 } from '@nagi/ui';
 import type { EntryCardRow, TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
-import type { TripEdit, TripResult } from '@nagi/shared';
+import type { TripEdit } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import { UserIdentity } from '@/features/profiles/identity';
-import { archivePlannedTrip, editTrip, removeTrip } from './actions';
+import { archivePlannedTrip, removeTrip } from './actions';
 import { TripItinerary } from './itinerary';
 import { TripDragOverlay } from './drag-overlay';
 import { TripDayEditor } from './plan-dialogs';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
 import { CalendarColorsProvider } from './calendar-colors';
-import { useTripLive } from './live';
+import { useTripMutations } from './use-trip-mutations';
+import { TripSaveStatus } from './save-status';
 import {
-  optimisticTripItems,
   unavailableTripEntry,
   type DaySelection,
   type PlaceAdder,
@@ -166,10 +165,10 @@ function DeleteTripDialog({
 }
 export function TripWorkbench({
   guild,
-  plan,
+  plan: initialPlan,
   categories,
-  canEdit,
-  canManage,
+  canEdit: initialCanEdit,
+  canManage: initialCanManage,
   initialEntry,
   viewerId,
   initialView = 'itinerary',
@@ -189,8 +188,7 @@ export function TripWorkbench({
   initialMode?: string;
   initialItem?: string;
 }) {
-  const router = useRouter(),
-    prefix = useId(),
+  const prefix = useId(),
     reduced = useReducedMotion();
   const [view, setView] = useState(tabs.find((t) => t.id === initialView)?.id ?? 'itinerary');
   const [day, setDay] = useState<DaySelection>(initialDay),
@@ -209,17 +207,25 @@ export function TripWorkbench({
     parent?: string;
   } | null>(initialEntry ? { day: null } : null);
   const [deleteOpen, setDeleteOpen] = useState(false),
-    [error, setError] = useState(''),
-    [feedback, setFeedback] = useState('');
-  const [busy, setBusy] = useState(false),
-    [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
-  const [draft, setDraft] = useState<{ base: number; version?: number; items: TripPlanItem[] }>();
-  const displayed =
-    draft &&
-    ((draft.version ?? draft.base) > plan.version ||
-      (draft.version == null && draft.base === plan.version))
-      ? { ...plan, items: draft.items, version: draft.version ?? plan.version }
-      : plan;
+    [localError, setLocalError] = useState('');
+  const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
+  const { state: sync, queue } = useTripMutations(
+    guild,
+    initialPlan,
+    viewerId,
+    initialCanEdit,
+    initialCanManage,
+  );
+  const plan = sync.plan,
+    displayed = plan,
+    canEdit = sync.canEdit,
+    canManage = sync.canManage,
+    busy = false;
+  const error = localError || sync.error;
+  const setError = (value: string) => {
+    setLocalError(value);
+    if (!value) queue.clearError();
+  };
   const activeDay =
     day === 'all' || day === 'pending' || plan.days.some((d) => d.id === day) ? day : 'all';
   const editing = canEdit && organize,
@@ -227,8 +233,7 @@ export function TripWorkbench({
   const currentItem = displayed.items.find((i) => i.id === selectedId);
   const detailEntry =
     preview ?? currentItem?.entry ?? (currentItem ? unavailableTripEntry(currentItem) : undefined);
-  const inFlight = useRef(false),
-    dragVersion = useRef(plan.version),
+  const dragVersion = useRef(plan.version),
     addReceipt = useRef<{ key: string; id: string } | null>(null);
   const lastTrigger = useRef<HTMLElement | null>(null),
     panelRef = useRef<HTMLElement>(null);
@@ -237,7 +242,6 @@ export function TripWorkbench({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
-  useTripLive(guild, plan.id, plan.version);
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set('vue', view);
@@ -255,114 +259,10 @@ export function TripWorkbench({
       .querySelector('.trip-day-nav-item.is-active')
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeDay]);
-  async function execute(
-    change: TripEdit,
-    version = displayed.version,
-    entry?: EntryCardRow,
-  ): Promise<TripResult> {
-    if (inFlight.current) return { ok: false, error: 'Une modification est en cours.' };
-    inFlight.current = true;
-    setBusy(true);
-    setFeedback('Enregistrement…');
-    setError('');
-    let items = optimisticTripItems(displayed.items, change);
-    if (change.operation === 'add_item' && entry) {
-      const now = new Date().toISOString();
-      items = [
-        ...items,
-        {
-          id: change.data.id,
-          trip_id: plan.id,
-          trip_day_id: change.data.day,
-          entry_id: entry.id,
-          entry,
-          stops: [],
-          added_by: viewerId,
-          notes: '',
-          sort_order: 0,
-          start_time: change.data.start_time ?? null,
-          end_time: null,
-          estimated_duration_minutes: change.data.duration ?? null,
-          calendar_color: null,
-          version: 0,
-          created_at: now,
-          updated_at: now,
-        },
-      ];
-    }
-    if (change.operation === 'add_stop' && entry) {
-      const now = new Date().toISOString();
-      items = items.map((item) =>
-        item.id === change.data.parent
-          ? {
-              ...item,
-              stops: [
-                ...(item.stops ?? []),
-                {
-                  id: change.data.id,
-                  trip_item_id: item.id,
-                  entry_id: entry.id,
-                  entry,
-                  added_by: viewerId,
-                  duration_minutes: change.data.duration,
-                  calendar_color: null,
-                  notes: '',
-                  sort_order: 0,
-                  version: 0,
-                  created_at: now,
-                  updated_at: now,
-                },
-              ],
-            }
-          : item,
-      );
-    }
-    setDraft({ base: plan.version, items });
-    try {
-      const result = await editTrip(guild, plan.id, version, change);
-      if (result.ok) {
-        setDraft({ base: plan.version, version: result.version, items });
-        setFeedback('Modifications enregistrées');
-        if (change.operation === 'nest_item') {
-          if (selectedId === change.data.id) setSelectedId(change.data.parent);
-          requestAnimationFrame(() =>
-            document
-              .querySelector<HTMLElement>(
-                `[data-activity-id="${change.data.parent}"] .trip-step-main`,
-              )
-              ?.focus(),
-          );
-        }
-        if (change.operation === 'relocate_stop') {
-          const id = change.data.kind === 'activity' ? change.data.id : change.data.parent;
-          requestAnimationFrame(() =>
-            document
-              .querySelector<HTMLElement>(`[data-activity-id="${id}"] .trip-step-main`)
-              ?.focus(),
-          );
-        }
-      } else {
-        setDraft(undefined);
-        setFeedback('');
-        setError(result.error);
-        if (result.reason === 'conflict') router.refresh();
-      }
-      return result;
-    } catch {
-      setDraft(undefined);
-      setFeedback('');
-      const result: TripResult = {
-        ok: false,
-        error: 'Impossible d’enregistrer la modification. Réessayez.',
-      };
-      setError(result.error);
-      return result;
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
-  }
-  const mutate: PlanMutation = execute;
+  const execute = (change: TripEdit, version?: number, entry?: EntryCardRow) =>
+    queue.enqueue(change, version, entry);
+  const mutate: PlanMutation = (change, version, context) =>
+    queue.enqueue(change, version, undefined, context);
   const add: PlaceAdder = async (entry, targetDay, time, repeat = false, parent) => {
     if (parent && !displayed.items.some((item) => item.id === parent))
       return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
@@ -465,6 +365,15 @@ export function TripWorkbench({
     onToggleStops: toggleStops,
   };
   const organizers = plan.people.filter((p) => plan.organizers.some((o) => o.user_id === p.id));
+  if (sync.revoked)
+    return (
+      <div className="p-6">
+        <Alert role="alert">{sync.error}</Alert>
+        <Link href="/select-server" className="mt-4 inline-block underline">
+          Revenir à mes espaces
+        </Link>
+      </div>
+    );
   return (
     <DndContext
       id={prefix}
@@ -533,6 +442,7 @@ export function TripWorkbench({
             <div className="trip-heading-copy">
               <div>
                 <h1>{plan.title}</h1>
+                <TripSaveStatus state={sync} onRetry={queue.retry} />
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -678,9 +588,6 @@ export function TripWorkbench({
                 </button>
               ))}
             </div>
-            <span role="status" aria-live="polite" className="trip-save-status">
-              {feedback}
-            </span>
             <div className="trip-toolbar-actions">
               {canEdit && (
                 <button

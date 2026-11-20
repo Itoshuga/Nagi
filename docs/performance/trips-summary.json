@@ -1,0 +1,410 @@
+{
+  "baselineCommit": "acf4e39ec430d47a65ef70712b3182762563d429",
+  "conditions": {
+    "environment": "Next production build, local PGlite with real migrations/RPC/RLS, Chromium 1440x1000",
+    "injectedRpcLatencyMs": 500,
+    "collaborators": 1,
+    "sync": "disabled only during isolated write benchmark",
+    "samplesPerInteraction": 20,
+    "warmupPerInteraction": 1,
+    "size": "4 dated days, 4 root activities, 3 included stops in the main trip; second trip has one event",
+    "volume": "decoded UTF-8 response bytes; excludes transport headers and compression"
+  },
+  "before": {
+    "color": {
+      "visual": {
+        "median": 17.85,
+        "p95": 20.8
+      },
+      "confirmed": {
+        "median": 597.55,
+        "p95": 609.7
+      },
+      "serverCalls": {
+        "median": 28.0,
+        "p95": 28
+      },
+      "serverBytes": {
+        "median": 25486.0,
+        "p95": 25489
+      },
+      "browserRequests": {
+        "median": 9.0,
+        "p95": 9
+      },
+      "browserBytes": {
+        "median": 37743.0,
+        "p95": 37746
+      },
+      "fullPlanReads": {
+        "median": 1.0,
+        "p95": 1
+      }
+    },
+    "schedule": {
+      "visual": {
+        "median": 17.5,
+        "p95": 21.6
+      },
+      "confirmed": {
+        "median": 597.0,
+        "p95": 607
+      },
+      "serverCalls": {
+        "median": 28.0,
+        "p95": 28
+      },
+      "serverBytes": {
+        "median": 25495.0,
+        "p95": 25495
+      },
+      "browserRequests": {
+        "median": 9.0,
+        "p95": 9
+      },
+      "browserBytes": {
+        "median": 37752.0,
+        "p95": 37752
+      },
+      "fullPlanReads": {
+        "median": 1.0,
+        "p95": 1
+      }
+    },
+    "reorder": {
+      "visual": {
+        "median": 13.2,
+        "p95": 14.1
+      },
+      "confirmed": {
+        "median": 588.5,
+        "p95": 594.3
+      },
+      "serverCalls": {
+        "median": 28.0,
+        "p95": 28
+      },
+      "serverBytes": {
+        "median": 25494.0,
+        "p95": 25496
+      },
+      "browserRequests": {
+        "median": 9.0,
+        "p95": 9
+      },
+      "browserBytes": {
+        "median": 37753.0,
+        "p95": 37755
+      },
+      "fullPlanReads": {
+        "median": 1.0,
+        "p95": 1
+      }
+    }
+  },
+  "after": {
+    "color": {
+      "visual": {
+        "median": 17.05,
+        "p95": 19.2
+      },
+      "confirmed": {
+        "median": 568.45,
+        "p95": 579.7
+      },
+      "serverCalls": {
+        "median": 4.0,
+        "p95": 4
+      },
+      "serverBytes": {
+        "median": 1406.5,
+        "p95": 1408
+      },
+      "browserRequests": {
+        "median": 1.0,
+        "p95": 1
+      },
+      "browserBytes": {
+        "median": 645.5,
+        "p95": 647
+      },
+      "fullPlanReads": {
+        "median": 0.0,
+        "p95": 0
+      }
+    },
+    "schedule": {
+      "visual": {
+        "median": 14.45,
+        "p95": 15.4
+      },
+      "confirmed": {
+        "median": 567.35,
+        "p95": 570.6
+      },
+      "serverCalls": {
+        "median": 4.0,
+        "p95": 4
+      },
+      "serverBytes": {
+        "median": 1435.0,
+        "p95": 1435
+      },
+      "browserRequests": {
+        "median": 1.0,
+        "p95": 1
+      },
+      "browserBytes": {
+        "median": 674.0,
+        "p95": 674
+      },
+      "fullPlanReads": {
+        "median": 0.0,
+        "p95": 0
+      }
+    },
+    "reorder": {
+      "visual": {
+        "median": 12.05,
+        "p95": 14.4
+      },
+      "confirmed": {
+        "median": 554.95,
+        "p95": 558.8
+      },
+      "serverCalls": {
+        "median": 4.0,
+        "p95": 4
+      },
+      "serverBytes": {
+        "median": 1398.0,
+        "p95": 1399
+      },
+      "browserRequests": {
+        "median": 1.0,
+        "p95": 1
+      },
+      "browserBytes": {
+        "median": 637.0,
+        "p95": 638
+      },
+      "fullPlanReads": {
+        "median": 0.0,
+        "p95": 0
+      }
+    }
+  },
+  "synchronization": {
+    "before": {
+      "samples": [
+        {
+          "interactionToRemoteMs": 657,
+          "commitToRemoteMs": 98
+        },
+        {
+          "interactionToRemoteMs": 662,
+          "commitToRemoteMs": 97
+        },
+        {
+          "interactionToRemoteMs": 659,
+          "commitToRemoteMs": 97
+        },
+        {
+          "interactionToRemoteMs": 658,
+          "commitToRemoteMs": 100
+        },
+        {
+          "interactionToRemoteMs": 657,
+          "commitToRemoteMs": 97
+        },
+        {
+          "interactionToRemoteMs": 673,
+          "commitToRemoteMs": 112
+        },
+        {
+          "interactionToRemoteMs": 657,
+          "commitToRemoteMs": 96
+        },
+        {
+          "interactionToRemoteMs": 711,
+          "commitToRemoteMs": 153
+        },
+        {
+          "interactionToRemoteMs": 649,
+          "commitToRemoteMs": 97
+        },
+        {
+          "interactionToRemoteMs": 647,
+          "commitToRemoteMs": 92
+        },
+        {
+          "interactionToRemoteMs": 646,
+          "commitToRemoteMs": 95
+        },
+        {
+          "interactionToRemoteMs": 643,
+          "commitToRemoteMs": 92
+        },
+        {
+          "interactionToRemoteMs": 646,
+          "commitToRemoteMs": 94
+        },
+        {
+          "interactionToRemoteMs": 654,
+          "commitToRemoteMs": 100
+        },
+        {
+          "interactionToRemoteMs": 652,
+          "commitToRemoteMs": 94
+        },
+        {
+          "interactionToRemoteMs": 693,
+          "commitToRemoteMs": 130
+        },
+        {
+          "interactionToRemoteMs": 700,
+          "commitToRemoteMs": 144
+        },
+        {
+          "interactionToRemoteMs": 673,
+          "commitToRemoteMs": 120
+        },
+        {
+          "interactionToRemoteMs": 665,
+          "commitToRemoteMs": 109
+        },
+        {
+          "interactionToRemoteMs": 670,
+          "commitToRemoteMs": 108
+        }
+      ],
+      "transport": "Local Phoenix shim, actual application SSE/RPC/RLS, two fake Discord accounts",
+      "injectedRpcLatencyMs": 500,
+      "summary": {
+        "interactionToRemoteMs": {
+          "median": 657.5,
+          "p95": 700
+        },
+        "commitToRemoteMs": {
+          "median": 97.5,
+          "p95": 144
+        }
+      }
+    },
+    "after": {
+      "samples": [
+        {
+          "interactionToRemoteMs": 564,
+          "commitToRemoteMs": 17
+        },
+        {
+          "interactionToRemoteMs": 580,
+          "commitToRemoteMs": 24
+        },
+        {
+          "interactionToRemoteMs": 558,
+          "commitToRemoteMs": 15
+        },
+        {
+          "interactionToRemoteMs": 576,
+          "commitToRemoteMs": 20
+        },
+        {
+          "interactionToRemoteMs": 557,
+          "commitToRemoteMs": 19
+        },
+        {
+          "interactionToRemoteMs": 557,
+          "commitToRemoteMs": 14
+        },
+        {
+          "interactionToRemoteMs": 570,
+          "commitToRemoteMs": 21
+        },
+        {
+          "interactionToRemoteMs": 559,
+          "commitToRemoteMs": 17
+        },
+        {
+          "interactionToRemoteMs": 567,
+          "commitToRemoteMs": 18
+        },
+        {
+          "interactionToRemoteMs": 571,
+          "commitToRemoteMs": 24
+        },
+        {
+          "interactionToRemoteMs": 555,
+          "commitToRemoteMs": 16
+        },
+        {
+          "interactionToRemoteMs": 557,
+          "commitToRemoteMs": 18
+        },
+        {
+          "interactionToRemoteMs": 566,
+          "commitToRemoteMs": 19
+        },
+        {
+          "interactionToRemoteMs": 578,
+          "commitToRemoteMs": 23
+        },
+        {
+          "interactionToRemoteMs": 551,
+          "commitToRemoteMs": 15
+        },
+        {
+          "interactionToRemoteMs": 564,
+          "commitToRemoteMs": 15
+        },
+        {
+          "interactionToRemoteMs": 577,
+          "commitToRemoteMs": 21
+        },
+        {
+          "interactionToRemoteMs": 574,
+          "commitToRemoteMs": 22
+        },
+        {
+          "interactionToRemoteMs": 564,
+          "commitToRemoteMs": 15
+        },
+        {
+          "interactionToRemoteMs": 563,
+          "commitToRemoteMs": 16
+        }
+      ],
+      "transport": "Local Phoenix shim, actual application SSE/RPC/RLS, two fake Discord accounts",
+      "injectedRpcLatencyMs": 500,
+      "summary": {
+        "interactionToRemoteMs": {
+          "median": 564.0,
+          "p95": 578
+        },
+        "commitToRemoteMs": {
+          "median": 18.0,
+          "p95": 24
+        }
+      }
+    }
+  },
+  "large": {
+    "items": 500,
+    "datedDays": 14,
+    "renderedCalendarEvents": 254,
+    "queuedTenInteractionsMs": 2216.2,
+    "injectedRpcLatencyMs": 2000,
+    "frameSamples": 675,
+    "frameMedianMs": 11.9,
+    "frameP95Ms": 26.6,
+    "framesOver50ms": 5,
+    "maxFrameMs": 90.7,
+    "browserErrors": []
+  },
+  "crud": {
+    "addVisualMs": 9.400000095367432,
+    "dayVisualMs": 13.5,
+    "removeVisualMs": 13,
+    "browserErrors": []
+  }
+}

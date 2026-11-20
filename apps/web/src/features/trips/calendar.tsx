@@ -24,7 +24,7 @@ import {
 } from '@nagi/shared';
 import {
   itemDuration,
-  layoutCalendarEvents,
+  createCalendarLayoutCache,
   minuteTime,
   type WorkspaceViewProps,
 } from './planner-model';
@@ -108,6 +108,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
   const [activeSlot, setActiveSlot] = useState<{ day?: string; minute: number }>({ minute: 540 });
   const [dragBox, setDragBox] = useState<{ width: number; height: number }>();
   const [destination, setDestination] = useState<CalendarSchedule>();
+  const [scheduleLayout] = useState(() => createCalendarLayoutCache());
   const colors = useCalendarColors();
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -278,6 +279,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     },
                   },
                   source.trip,
+                  { item: source.item },
                 );
               }}
             >
@@ -411,7 +413,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                             }}
                           />
                         ))}
-                      {layoutCalendarEvents(dayItems(d)).map(({ item, lane, lanes }) => (
+                      {scheduleLayout(d.id, dayItems(d)).map(({ item, lane, lanes }) => (
                         <CalendarEvent
                           key={item.id}
                           item={item}

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowUpRight, Check, Clock3, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
 import {
   Alert,
   Button,
@@ -63,7 +63,7 @@ export function QuickStepEditor({
 }) {
   const [open, setOpen] = useState(false),
     [error, setError] = useState('');
-  const [base, setBase] = useState({ trip: plan.version, item: item.version });
+  const [base, setBase] = useState({ trip: plan.version, item: item.version, snapshot: item });
   const [day, setDay] = useState(item.trip_day_id ?? '');
   const [duration, setDuration] = useState(String(itemDuration(item) ?? ''));
   const id = useId();
@@ -89,6 +89,7 @@ export function QuickStepEditor({
         },
       },
       base.trip,
+      { item: base.snapshot },
     );
     if (result.ok) {
       setOpen(false);
@@ -104,7 +105,7 @@ export function QuickStepEditor({
         setOpen(v);
         setError('');
         if (v) {
-          setBase({ trip: plan.version, item: item.version });
+          setBase({ trip: plan.version, item: item.version, snapshot: item });
           setDay(item.trip_day_id ?? '');
           setDuration(String(itemDuration(item) ?? ''));
         }
@@ -226,12 +227,12 @@ export function TripPlaceDetails({
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [confirm, setConfirm] = useState(false),
-    [saved, setSaved] = useState(false),
     [retry, setRetry] = useState(0);
   const notes = useRef<HTMLTextAreaElement>(null),
     id = useId();
   const base = useRef({ trip: plan.version, item: item?.version });
   const dirtyNotes = useRef(false);
+  const notesBase = useRef(item);
   const originalNotes = useRef(item?.notes ?? '');
   const latestNotes = item?.notes,
     latestVersion = item?.version;
@@ -241,10 +242,11 @@ export function TripPlaceDetails({
       base.current = { trip: plan.version, item: latestVersion };
       if (!dirtyNotes.current) {
         originalNotes.current = latestNotes ?? '';
+        notesBase.current = item;
         if (notes.current) notes.current.value = latestNotes ?? '';
       }
     }
-  }, [plan.version, latestNotes, latestVersion]);
+  }, [plan.version, latestNotes, latestVersion, item]);
   const parent = plan.items.find((activity) => activity.id === parentId);
   const targetDay = item ? item.trip_day_id : parentId ? (parent?.trip_day_id ?? null) : defaultDay;
   const fullEntry =
@@ -363,25 +365,27 @@ export function TripPlaceDetails({
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const expectedItemVersion = base.current.item!;
+                  const original = notesBase.current ?? item;
                   const result = await mutate(
                     {
                       operation: 'edit_item',
                       data: {
                         id: item.id,
                         item_version: base.current.item!,
-                        start_time: item.start_time?.slice(0, 5) ?? null,
-                        end_time: item.end_time?.slice(0, 5) ?? null,
-                        duration: item.estimated_duration_minutes,
+                        start_time: original.start_time?.slice(0, 5) ?? null,
+                        end_time: original.end_time?.slice(0, 5) ?? null,
+                        duration: original.estimated_duration_minutes,
                         notes: notes.current?.value ?? '',
                       },
                     },
                     base.current.trip,
+                    { item: original },
                   );
                   if (result.ok) {
-                    setSaved(true);
                     setError('');
                     dirtyNotes.current = false;
                     originalNotes.current = notes.current?.value ?? '';
+                    notesBase.current = { ...original, notes: originalNotes.current };
                     base.current = { trip: result.version, item: expectedItemVersion + 1 };
                   } else setError(result.error);
                 }}
@@ -396,11 +400,12 @@ export function TripPlaceDetails({
                   maxLength={4000}
                   placeholder="Billets, accès, idées à garder…"
                   onFocus={() => {
-                    if (!dirtyNotes.current)
+                    if (!dirtyNotes.current) {
                       base.current = { trip: plan.version, item: item.version };
+                      notesBase.current = item;
+                    }
                   }}
                   onChange={() => {
-                    setSaved(false);
                     dirtyNotes.current = true;
                   }}
                 />
@@ -408,11 +413,6 @@ export function TripPlaceDetails({
                   <Button type="submit" size="sm" variant="secondary" disabled={busy}>
                     Enregistrer les notes
                   </Button>
-                  {saved && (
-                    <span role="status" className="text-xs text-muted-foreground">
-                      <Check className="inline size-3" /> Enregistrées
-                    </span>
-                  )}
                 </div>
               </form>
             ) : (

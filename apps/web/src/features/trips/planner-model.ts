@@ -2,7 +2,16 @@ import type { TripPlanItem, TripPlanStop, TripPlannerDay } from '@nagi/database'
 import type { TripEdit, TripResult } from '@nagi/shared';
 import type { TripPlan, EntryCardRow } from '@nagi/database';
 
-export type PlanMutation = (change: TripEdit, version?: number) => Promise<TripResult>;
+export type TripMutationContext = {
+  item?: TripPlanItem;
+  stop?: TripPlanStop;
+  day?: TripPlannerDay;
+};
+export type PlanMutation = (
+  change: TripEdit,
+  version?: number,
+  context?: TripMutationContext,
+) => Promise<TripResult>;
 export type LanePosition = { day: string | null; before: string | null };
 export type DaySelection = 'all' | 'pending' | string;
 export type WorkspaceViewProps = {
@@ -403,4 +412,31 @@ export function layoutCalendarEvents(items: TripPlanItem[]) {
   }
   flush();
   return result;
+}
+
+/** Colors, notes and acknowledgements do not change overlap geometry. Keep only
+ * derived positions, then attach the latest row references for their rendering. */
+export function createCalendarLayoutCache(compute = layoutCalendarEvents) {
+  const days = new Map<
+    string,
+    { key: string; positions: { id: string; lane: number; lanes: number }[] }
+  >();
+  return (day: string, items: TripPlanItem[]) => {
+    const key = items
+      .map(
+        (item) =>
+          `${item.id}:${item.start_time}:${item.end_time}:${item.estimated_duration_minutes}`,
+      )
+      .join('|');
+    let cached = days.get(day);
+    if (!cached || cached.key !== key) {
+      cached = {
+        key,
+        positions: compute(items).map(({ item, lane, lanes }) => ({ id: item.id, lane, lanes })),
+      };
+      days.set(day, cached);
+    }
+    const latest = new Map(items.map((item) => [item.id, item]));
+    return cached.positions.map(({ id, lane, lanes }) => ({ item: latest.get(id)!, lane, lanes }));
+  };
 }

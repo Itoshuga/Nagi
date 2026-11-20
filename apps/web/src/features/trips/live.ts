@@ -1,70 +1,75 @@
 'use client';
+import { useEffect } from 'react';
+import type { TripMutationQueue } from './mutation-queue';
+import { decodeTripBatch } from './sync-client';
 
-import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-
-export function useTripLive(guild: string, trip: string, version: number) {
-  const router = useRouter();
-  const current = useRef(version);
+/** One private server-verified stream; the replay cursor survives reconnects.
+ * Broadcasts only trigger reads of the SQL journal. No event causes a write. */
+export function useTripLive(guild: string, trip: string, queue: TripMutationQueue) {
   useEffect(() => {
-    current.current = version;
-  }, [version]);
-  useEffect(() => {
+    let events: EventSource | undefined,
+      reconnect: ReturnType<typeof setTimeout> | undefined,
+      disposed = false,
+      attempt = 0;
     const url = `/app/${guild}/trips/${trip}/sync`;
-    const stop = new AbortController();
-    let events: EventSource | undefined;
-    let lastRefresh = 0;
-    function refresh() {
-      if (
-        stop.signal.aborted ||
-        document.visibilityState === 'hidden' ||
-        Date.now() - lastRefresh < 750
-      )
-        return;
-      lastRefresh = Date.now();
-      router.refresh();
+    function close() {
+      events?.close();
+      events = undefined;
+      clearTimeout(reconnect);
     }
     function connect() {
-      if (events || document.visibilityState === 'hidden') return;
-      events = new EventSource(url);
-      events.addEventListener('change', refresh);
-      events.addEventListener('unavailable', () => {
-        events?.close();
-        events = undefined;
-      });
-    }
-    async function poll() {
-      if (document.visibilityState === 'hidden') return;
-      try {
-        const response = await fetch(url, { cache: 'no-store', signal: stop.signal });
-        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
-          if (response.status === 404 || response.redirected) refresh();
-          return;
+      if (
+        disposed ||
+        queue.getSnapshot().revoked ||
+        events ||
+        document.visibilityState === 'hidden' ||
+        !navigator.onLine
+      )
+        return;
+      events = new EventSource(`${url}?since=${queue.getVersion()}`);
+      events.addEventListener('change', (event) => {
+        try {
+          queue.receive(decodeTripBatch(JSON.parse((event as MessageEvent).data)));
+          queue.setConnected(true);
+          attempt = 0;
+        } catch {
+          void queue.recover();
         }
-        const stamp: unknown = (await response.json()).version;
-        if (typeof stamp === 'number' && stamp !== current.current) refresh();
-      } catch {
-        // The next visible poll covers interrupted connections.
-      }
+      });
+      events.addEventListener('revoked', () => {
+        close();
+        queue.revoke('Votre accès à ce voyage a été révoqué.');
+      });
+      events.onerror = () => {
+        close();
+        queue.setConnected(false);
+        if (!disposed) reconnect = setTimeout(connect, Math.min(10000, 1000 * 2 ** attempt++));
+      };
     }
     function visibility() {
-      if (document.visibilityState === 'hidden') {
-        events?.close();
-        events = undefined;
-      } else {
+      if (document.visibilityState === 'hidden') close();
+      else {
         connect();
-        void poll();
+        void queue.recover();
       }
     }
+    function online() {
+      connect();
+      void queue.recover();
+    }
     connect();
-    void poll();
-    const timer = setInterval(() => void poll(), 15_000);
+    void queue.recover();
+    const poll = setInterval(() => {
+      if (document.visibilityState !== 'hidden' && navigator.onLine) void queue.recover();
+    }, 15000);
     document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('online', online);
     return () => {
-      clearInterval(timer);
-      stop.abort();
-      events?.close();
+      disposed = true;
+      close();
+      clearInterval(poll);
       document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('online', online);
     };
-  }, [guild, trip, router]);
+  }, [guild, trip, queue]);
 }
