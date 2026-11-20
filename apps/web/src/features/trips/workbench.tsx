@@ -199,6 +199,9 @@ export function TripWorkbench({
   const [selectedId, setSelectedId] = useState(initialItem),
     [preview, setPreview] = useState<EntryCardRow>();
   const [previewParent, setPreviewParent] = useState<string>();
+  const [expandedStops, setExpandedStops] = useState<Record<string, boolean>>({});
+  const toggleStops = (parent: string) =>
+    setExpandedStops((current) => ({ ...current, [parent]: !(current[parent] ?? true) }));
   const [picker, setPicker] = useState<{
     day: string | null;
     time?: string;
@@ -455,6 +458,8 @@ export function TripWorkbench({
     onDetails: details,
     onAdd: openPicker,
     onAddStop: openStopPicker,
+    expandedStops,
+    onToggleStops: toggleStops,
   };
   const organizers = plan.people.filter((p) => plan.organizers.some((o) => o.user_id === p.id));
   return (
@@ -687,14 +692,14 @@ export function TripWorkbench({
             {editing && (
               <Button
                 className="trip-primary-add"
-                aria-label="Ajouter un lieu"
+                aria-label="Ajouter une étape"
                 size="sm"
                 onClick={() =>
                   openPicker(activeDay === 'all' || activeDay === 'pending' ? null : activeDay)
                 }
               >
                 <Plus className="size-4" />
-                <span>Ajouter un lieu</span>
+                <span>Ajouter une étape</span>
               </Button>
             )}
           </div>
@@ -852,6 +857,8 @@ export function TripWorkbench({
                     onPreview={(entry) => previewEntry(entry, preview ? previewParent : undefined)}
                     parentId={preview ? previewParent : undefined}
                     onAddStop={openStopPicker}
+                    expandedStops={expandedStops}
+                    onToggleStops={toggleStops}
                   />
                 ) : (
                   <div className="p-5">

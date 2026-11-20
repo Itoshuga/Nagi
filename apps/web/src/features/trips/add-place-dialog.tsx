@@ -394,13 +394,13 @@ export function AddPlaceDialog({
         {children ?? (
           <Button variant={trip ? 'secondary' : 'default'} size={trip ? 'sm' : 'default'}>
             <Plus className="size-4" />
-            {trip ? 'Ajouter un lieu' : 'Ajouter à mon voyage'}
+            {trip ? 'Ajouter une étape' : 'Ajouter à mon voyage'}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[90svh] max-w-xl overflow-y-auto">
         <DialogTitle className="pr-6 font-display text-xl font-extrabold">
-          {trip ? 'Ajouter un lieu' : 'Ajouter à mon voyage'}
+          {trip ? 'Ajouter une étape' : 'Ajouter à mon voyage'}
         </DialogTitle>
         <DialogDescription className="mt-1 text-sm text-muted-foreground">
           {trip

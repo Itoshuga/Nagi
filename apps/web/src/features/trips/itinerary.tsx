@@ -21,7 +21,14 @@ import {
   cn,
 } from '@nagi/ui';
 import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
-import { isOutsideTrip, overlappingTripItems, tripDateLabel } from '@nagi/shared';
+import {
+  formatTripDuration,
+  formatTripTime,
+  isOutsideTrip,
+  overlappingTripItems,
+  tripDayLabel,
+  tripStepCount,
+} from '@nagi/shared';
 import { ActivityCardCopy } from './activity-card';
 import { ActivityNestingDialog } from './activity-nesting';
 import { TripDayEditor } from './plan-dialogs';
@@ -34,6 +41,7 @@ import {
   activityNestingIssue,
   stepLocation,
   visibleTripItems,
+  relevantTripConnection,
   type LanePosition,
   type WorkspaceViewProps,
 } from './planner-model';
@@ -76,11 +84,7 @@ export function TripStep({
   const source = tripDragSource(plan.items, active?.data.current, active?.id)?.card;
   const nestingIssue = source ? activityNestingIssue(source, item) : null;
   const title = item.entry?.title ?? 'Fiche indisponible';
-  const connection = plan.connections.find(
-    (c) =>
-      c.fromId === item.entry_id &&
-      plan.items.some((other) => other.entry_id === c.entry.id && other.id !== item.id),
-  );
+  const connection = relevantTripConnection(plan, item.entry_id, item.trip_day_id);
   const { setNodeRef, attributes, listeners, cardListeners, isDragging } = useTripCardDrag(
     item.id,
     { type: 'item', id: item.id },
@@ -136,11 +140,13 @@ export function TripStep({
     >
       <div className="trip-step-time">
         {canEdit ? (
-          <QuickStepEditor item={item} plan={plan} mutate={mutate} busy={busy} />
+          <QuickStepEditor item={item} plan={plan} mutate={mutate} busy={busy} showDuration />
         ) : (
-          <span>{item.start_time?.slice(0, 5) ?? 'Libre'}</span>
+          <>
+            <span>{formatTripTime(item.start_time) ?? 'Libre'}</span>
+            {itemDuration(item) != null && <small>{formatTripDuration(itemDuration(item))}</small>}
+          </>
         )}
-        {itemDuration(item) != null && <small>{itemDuration(item)} min</small>}
       </div>
       <span
         className="trip-timeline-dot"
@@ -168,7 +174,7 @@ export function TripStep({
       >
         <ActivityCardCopy entry={item.entry} notes={item.notes}>
           {connection && (
-            <span className="trip-step-note">
+            <span className="trip-step-note trip-step-relation">
               {connection.label} · {connection.entry.title}
             </span>
           )}
@@ -198,7 +204,7 @@ export function TripStep({
             </DropdownMenuItem>
             {plan.stopsAvailable !== false && (
               <DropdownMenuItem disabled={busy} onSelect={() => props.onAddStop(item.id)}>
-                <Plus className="size-3.5" /> Ajouter à cette activité
+                <Plus className="size-3.5" /> Ajouter un arrêt
               </DropdownMenuItem>
             )}
             {plan.stopsAvailable !== false && (
@@ -258,11 +264,7 @@ function DayHeading({
   return (
     <header className="trip-day-heading">
       <div>
-        <p>
-          {day.date
-            ? tripDateLabel(day.date, { weekday: 'long', day: 'numeric', month: 'long' })
-            : `Jour ${index + 1}`}
-        </p>
+        <p>{day.date ? tripDayLabel(day.date) : `Jour ${index + 1}`}</p>
         {editing ? (
           <form
             className="trip-day-title-form"
@@ -293,7 +295,7 @@ function DayHeading({
         ) : (
           <div className="trip-day-subtitle">
             <span>
-              Jour {index + 1} · {count} étape{count > 1 ? 's' : ''}
+              Jour {index + 1} · {tripStepCount(count)}
               {day.title ? ` · ${day.title}` : ''}
             </span>
             {canEdit && (
@@ -304,6 +306,7 @@ function DayHeading({
                 onClick={() => {
                   setTitle(day.title);
                   setEditing(true);
+                  setError('');
                   base.current = plan.version;
                 }}
               >
@@ -362,7 +365,7 @@ function DayTimeline({
     : items;
   const conflicts = overlappingTripItems(items);
   return (
-    <section ref={setNodeRef} className="trip-day-timeline">
+    <section ref={setNodeRef} className={cn('trip-day-timeline', !items.length && 'is-empty')}>
       {day ? (
         <DayHeading day={day} props={props} count={items.length} />
       ) : (
@@ -379,7 +382,7 @@ function DayTimeline({
         {visible.map((item) => (
           <li key={item.id} className="trip-timeline-entry">
             <TripDropTarget day={day?.id ?? null} before={item.id} />
-            <ol>
+            <ol className="trip-step-shell">
               <TripStep item={item} items={items} props={props} conflict={conflicts.has(item.id)} />
             </ol>
             <ActivityStops
@@ -389,18 +392,18 @@ function DayTimeline({
               busy={props.busy}
               mutate={props.mutate}
               onAdd={() => props.onAddStop(item.id)}
+              expanded={props.expandedStops?.[item.id]}
+              onExpandedChange={
+                props.onToggleStops ? () => props.onToggleStops!(item.id) : undefined
+              }
             />
           </li>
         ))}
       </ol>
       <TripDropTarget day={day?.id ?? null} before={null} className="trip-timeline-end">
-        {!items.length && props.selectedDay !== 'all' && (
+        {!items.length && !day && props.selectedDay !== 'all' && (
           <p className="trip-empty-inline">
-            {search
-              ? 'Aucun lieu trouvé.'
-              : day
-                ? 'Votre journée commence ici.'
-                : 'Gardez ici les idées pour la suite.'}
+            {search ? 'Aucun lieu trouvé.' : 'Gardez ici les idées pour la suite.'}
           </p>
         )}
         {props.canEdit && (
@@ -461,12 +464,13 @@ export function TripItinerary(props: WorkspaceViewProps) {
         <div className="trip-workspace-empty">
           <h2>Le voyage commence avec une idée.</h2>
           <p>Ajoutez une journée, ou gardez des lieux à organiser.</p>
-          {props.canEdit && <Button onClick={() => props.onAdd(null)}>Ajouter un lieu</Button>}
+          {props.canEdit && <Button onClick={() => props.onAdd(null)}>Ajouter une étape</Button>}
         </div>
       )}
       {selectedDay === 'all' && visibleTripItems(plan, 'pending').length > 0 && (
         <button type="button" className="trip-open-ideas" onClick={() => props.onDay('pending')}>
-          {visibleTripItems(plan, 'pending').length} lieux à organiser →
+          {visibleTripItems(plan, 'pending').length} lieu
+          {visibleTripItems(plan, 'pending').length > 1 ? 'x' : ''} à organiser →
         </button>
       )}
     </div>

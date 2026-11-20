@@ -7,8 +7,8 @@ import {
   ArrowUp,
   ArrowUpRight,
   ChevronDown,
-  CornerDownRight,
   GripVertical,
+  Info,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -27,9 +27,13 @@ import {
   DropdownMenuTrigger,
   Input,
   Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   cn,
 } from '@nagi/ui';
 import type { TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
+import { formatTripDuration, tripStopsSummary } from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { ActivityCardCopy } from './activity-card';
 import { useTripCardDrag } from './card-drag';
@@ -40,14 +44,10 @@ import {
   activityNestingIssue,
   minuteTime,
   timeMinutes,
+  relevantTripConnection,
   type PlanMutation,
 } from './planner-model';
 import './activity-stops.css';
-
-const durationLabel = (minutes: number) =>
-  minutes < 60
-    ? `${minutes} min`
-    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${String(minutes % 60).padStart(2, '0')}` : ''}`;
 
 function StopCard({
   stop,
@@ -112,6 +112,132 @@ function StopCard({
       )}
       {children}
     </li>
+  );
+}
+
+function StopTiming({
+  stop,
+  time,
+  plan,
+  canEdit,
+  busy,
+  mutate,
+}: {
+  stop: TripPlanStop;
+  time: string | null;
+  plan: TripPlan;
+  canEdit: boolean;
+  busy: boolean;
+  mutate: PlanMutation;
+}) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [duration, setDuration] = useState(String(stop.duration_minutes ?? ''));
+  const [base, setBase] = useState({ trip: plan.version, stop: stop.version });
+  const [error, setError] = useState('');
+  const label = (
+    <span className="trip-stop-timing-label">
+      <span className="trip-stop-time" data-time-kind={time ? 'indicative' : 'unset'}>
+        {time ? `≈ ${time}` : 'Libre'}
+      </span>
+      <small>{formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}</small>
+    </span>
+  );
+  if (!canEdit)
+    return (
+      <div
+        className="trip-time-stack"
+        title={time ? 'Horaire indicatif, calculé dans l’activité' : undefined}
+      >
+        {label}
+      </div>
+    );
+  return (
+    <Popover
+      modal
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return;
+        setOpen(next);
+        setError('');
+        if (next) {
+          setDuration(String(stop.duration_minutes ?? ''));
+          setBase({ trip: plan.version, stop: stop.version });
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="trip-time-button trip-time-stack"
+          disabled={busy}
+          aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+          title={time ? 'Horaire indicatif · Modifier la durée' : 'Définir une durée'}
+        >
+          {label}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="trip-quick-editor"
+        aria-label="Durée de l’arrêt"
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!busy) setOpen(false);
+        }}
+        onInteractOutside={(event) => {
+          if (busy) event.preventDefault();
+        }}
+      >
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (busy) return;
+            const result = await mutate(
+              {
+                operation: 'edit_stop',
+                data: {
+                  id: stop.id,
+                  stop_version: base.stop,
+                  duration: duration ? Number(duration) : null,
+                  notes: stop.notes,
+                },
+              },
+              base.trip,
+            );
+            if (result.ok) setOpen(false);
+            else setError(result.error);
+          }}
+        >
+          <fieldset disabled={busy} className="space-y-3">
+            <p className="text-sm font-bold">Durée de l’arrêt</p>
+            <div>
+              <Label htmlFor={id}>Durée (min)</Label>
+              <Input
+                id={id}
+                type="number"
+                min={1}
+                max={1440}
+                value={duration}
+                onChange={(event) => setDuration(event.target.value)}
+                placeholder="Durée libre"
+              />
+              {Number(duration) >= 60 && (
+                <p className="trip-duration-preview">{formatTripDuration(Number(duration))}</p>
+              )}
+            </div>
+            <p className="trip-stops-info-text">
+              {time ? `≈ ${time} est une indication calculée selon l’ordre des arrêts. ` : ''}La
+              durée est comprise dans celle de l’activité.
+            </p>
+            {error && <Alert role="alert">{error}</Alert>}
+            <Button type="submit" size="sm">
+              {busy ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </fieldset>
+        </form>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -215,6 +341,9 @@ function StopEditor({
                   onChange={(event) => setDuration(event.target.value)}
                   placeholder="Durée libre"
                 />
+                {Number(duration) >= 60 && (
+                  <p className="trip-duration-preview">{formatTripDuration(Number(duration))}</p>
+                )}
                 <p className="trip-stop-help">
                   Laissez vide pour garder un arrêt sans durée précise.
                 </p>
@@ -236,7 +365,7 @@ function StopEditor({
               <p className="text-sm">
                 {stop.duration_minutes === null
                   ? 'Durée libre'
-                  : durationLabel(stop.duration_minutes)}
+                  : formatTripDuration(stop.duration_minutes)}
               </p>
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                 {stop.notes || 'Aucune note pour cet arrêt.'}
@@ -288,6 +417,8 @@ export function ActivityStops({
   mutate,
   onAdd,
   always = false,
+  expanded: controlledExpanded,
+  onExpandedChange,
 }: {
   item: TripPlanItem;
   plan: TripPlan;
@@ -296,6 +427,8 @@ export function ActivityStops({
   mutate: PlanMutation;
   onAdd?: () => void;
   always?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: () => void;
 }) {
   const id = useId();
   const section = useRef<HTMLElement>(null);
@@ -309,7 +442,8 @@ export function ActivityStops({
     },
     disabled: !canEdit || busy || plan.stopsAvailable === false,
   });
-  const [expanded, setExpanded] = useState(true);
+  const [localExpanded, setLocalExpanded] = useState(true);
+  const expanded = controlledExpanded ?? localExpanded;
   const [editor, setEditor] = useState<{ id: string; removing: boolean }>();
   const [error, setError] = useState('');
   const stops = item.stops ?? [];
@@ -349,151 +483,192 @@ export function ActivityStops({
         section.current = node;
         setDropRef(node);
       }}
-      className={cn('trip-activity-stops', isOver && 'is-stop-drop-over')}
+      className={cn(
+        'trip-activity-stops',
+        expanded && stops.length > 0 && 'is-expanded',
+        isOver && 'is-stop-drop-over',
+      )}
       data-stops-parent={item.id}
       aria-label={`Arrêts dans ${item.entry?.title ?? 'cette activité'}`}
     >
-      <div className="trip-stops-heading">
-        {stops.length ? (
+      {!!stops.length && (
+        <div className="trip-stops-heading">
           <button
             type="button"
             className="trip-stops-toggle"
             aria-expanded={expanded}
             aria-controls={`${id}-list`}
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() =>
+              onExpandedChange ? onExpandedChange() : setLocalExpanded((value) => !value)
+            }
           >
             <ChevronDown className="size-3.5" data-expanded={expanded} aria-hidden="true" />
-            <span>
-              {stops.length} arrêt{stops.length > 1 ? 's' : ''} dans cette activité
-            </span>
+            <span>{tripStopsSummary(stops.length, budget.used)}</span>
           </button>
-        ) : (
-          <p className="trip-stops-empty">Organisez les arrêts à l’intérieur de cette visite.</p>
-        )}
-        {canEdit && onAdd && (
-          <button type="button" className="trip-stops-add" disabled={busy} onClick={onAdd}>
-            <Plus className="size-3.5" aria-hidden="true" />
-            Ajouter à cette activité
-          </button>
-        )}
-      </div>
-      {!!stops.length && (
-        <div className="trip-stops-budget" data-overflow={budget.overflow > 0}>
-          <p>
-            {durationLabel(budget.used)} {budget.unknown ? 'renseignées' : 'd’arrêts'}
-            {budget.available !== null
-              ? ` sur ${durationLabel(budget.available)}`
-              : ' · durée de l’activité libre'}
-            {budget.unknown
-              ? ` · ${budget.unknown} durée${budget.unknown > 1 ? 's' : ''} libre${budget.unknown > 1 ? 's' : ''}`
-              : ''}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="trip-stops-info"
+                aria-label="Comprendre les durées et horaires des arrêts"
+              >
+                <Info className="size-3.5" aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="trip-stops-info-content"
+              onEscapeKeyDown={(event) => event.stopPropagation()}
+            >
+              <p>
+                Les durées des arrêts sont comprises dans celle de l’activité. Les heures précédées
+                de ≈ sont indicatives, calculées selon l’ordre des durées connues.
+              </p>
+              {budget.unknown > 0 && (
+                <p>
+                  {budget.unknown} arrêt{budget.unknown > 1 ? 's' : ''} sans durée définie{' '}
+                  {budget.unknown > 1 ? 'ne sont pas comptés' : 'n’est pas compté'} dans ce total.
+                  Après une durée libre, aucun horaire suivant n’est calculé.
+                </p>
+              )}
+              {canEdit && budget.available === null && budget.canExtend && (
+                <button
+                  type="button"
+                  className="trip-stops-define-duration"
+                  disabled={busy}
+                  onClick={() => void extend()}
+                >
+                  Définir la durée de l’activité à {formatTripDuration(budget.used)}
+                </button>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
+      {budget.overflow > 0 && (
+        <div className="trip-stops-budget">
+          <p role="status">
+            Les arrêts dépassent la durée prévue de {formatTripDuration(budget.overflow)}.
           </p>
-          {budget.overflow > 0 && (
-            <p role="status">
-              {durationLabel(budget.overflow)} de plus que le créneau prévu.{' '}
-              {budget.canExtend
-                ? 'Allongez l’activité ou réduisez certaines durées.'
-                : 'Réduisez certaines durées pour rester dans la journée.'}
-            </p>
-          )}
-          {canEdit && budget.canExtend && (budget.overflow > 0 || budget.available === null) && (
+          {canEdit && budget.canExtend && (
             <button type="button" disabled={busy} onClick={() => void extend()}>
-              {budget.available === null ? 'Définir la durée à' : 'Allonger à'}{' '}
-              {durationLabel(budget.used)}
+              Ajuster à {formatTripDuration(budget.used)}
             </button>
           )}
         </div>
       )}
-      <div id={`${id}-list`} hidden={!expanded}>
-        <ol className="trip-stops-list">
-          {schedule.map(({ stop, time }, index) => (
-            <StopCard
-              key={stop.id}
-              stop={stop}
-              parent={item}
-              plan={plan}
-              canEdit={canEdit}
-              busy={busy}
-            >
-              <div className="trip-step-time" title="Horaire indicatif selon l’ordre des arrêts">
-                <span className="trip-stop-time">
-                  {time ?? <CornerDownRight className="size-3.5" aria-label="Horaire libre" />}
-                </span>
-                <small>
-                  {stop.duration_minutes === null ? 'Durée libre' : `${stop.duration_minutes} min`}
-                </small>
-              </div>
-              <span
-                className="trip-timeline-dot"
-                aria-hidden="true"
-                style={{ backgroundColor: stop.entry?.category?.color ?? undefined }}
-              />
-              <button
-                type="button"
-                className="trip-step-main trip-stop-main"
-                onClick={() => setEditor({ id: stop.id, removing: false })}
-                disabled={busy}
-                aria-label={`Détails de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+      <div
+        id={`${id}-list`}
+        className={cn('trip-stops-disclosure', (expanded || !stops.length) && 'is-expanded')}
+        inert={stops.length > 0 && !expanded}
+        aria-hidden={stops.length > 0 && !expanded}
+      >
+        <div className="trip-stops-disclosure-inner">
+          <ol className="trip-stops-list">
+            {schedule.map(({ stop, time }, index) => (
+              <StopCard
+                key={stop.id}
+                stop={stop}
+                parent={item}
+                plan={plan}
+                canEdit={canEdit && expanded}
+                busy={busy}
               >
-                <ActivityCardCopy entry={stop.entry} notes={stop.notes} />
-              </button>
-              {canEdit && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="trip-step-menu trip-icon-button"
-                      disabled={busy}
-                      aria-label={`Options de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
-                    >
-                      <MoreHorizontal className="size-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem
-                      disabled={busy}
-                      onSelect={() => setEditor({ id: stop.id, removing: false })}
-                    >
-                      <Pencil className="size-3.5" />
-                      Durée et notes
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={busy || index === 0}
-                      onSelect={() => void move(stop, stops[index - 1]!.id)}
-                    >
-                      <ArrowUp className="size-3.5" />
-                      Monter l’arrêt
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={busy || index === stops.length - 1}
-                      onSelect={() => void move(stop, stops[index + 2]?.id ?? null)}
-                    >
-                      <ArrowDown className="size-3.5" />
-                      Descendre l’arrêt
-                    </DropdownMenuItem>
-                    <DropdownMenuItem disabled={busy} onSelect={() => void detach(stop)}>
-                      <ArrowUpRight className="size-3.5" />
-                      Sortir de l’activité
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={busy}
-                      onSelect={() => setEditor({ id: stop.id, removing: true })}
-                    >
-                      <Trash2 className="size-3.5" />
-                      Retirer l’arrêt
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </StopCard>
-          ))}
-        </ol>
-        {!!stops.length && (
-          <p className="trip-stop-help">
-            Les arrêts suivent l’ordre de la visite. Leurs durées sont comprises dans celle de
-            l’activité.
-          </p>
-        )}
+                <div className="trip-step-time">
+                  <StopTiming
+                    stop={stop}
+                    time={time}
+                    plan={plan}
+                    canEdit={canEdit}
+                    busy={busy}
+                    mutate={mutate}
+                  />
+                </div>
+                <span
+                  className="trip-timeline-dot"
+                  aria-hidden="true"
+                  style={{ backgroundColor: stop.entry?.category?.color ?? undefined }}
+                />
+                <button
+                  type="button"
+                  className="trip-step-main trip-stop-main"
+                  onClick={() => setEditor({ id: stop.id, removing: false })}
+                  disabled={busy}
+                  aria-label={`Détails de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+                >
+                  <ActivityCardCopy entry={stop.entry} notes={stop.notes}>
+                    {(() => {
+                      const relation = relevantTripConnection(
+                        plan,
+                        stop.entry_id,
+                        item.trip_day_id,
+                      );
+                      return relation ? (
+                        <span className="trip-step-note trip-step-relation">
+                          {relation.label} · {relation.entry.title}
+                        </span>
+                      ) : null;
+                    })()}
+                  </ActivityCardCopy>
+                </button>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="trip-step-menu trip-icon-button"
+                        disabled={busy}
+                        aria-label={`Options de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        disabled={busy}
+                        onSelect={() => setEditor({ id: stop.id, removing: false })}
+                      >
+                        <Pencil className="size-3.5" />
+                        Durée et notes
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={busy || index === 0}
+                        onSelect={() => void move(stop, stops[index - 1]!.id)}
+                      >
+                        <ArrowUp className="size-3.5" />
+                        Monter l’arrêt
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={busy || index === stops.length - 1}
+                        onSelect={() => void move(stop, stops[index + 2]?.id ?? null)}
+                      >
+                        <ArrowDown className="size-3.5" />
+                        Descendre l’arrêt
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={busy} onSelect={() => void detach(stop)}>
+                        <ArrowUpRight className="size-3.5" />
+                        Sortir de l’activité
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={busy}
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => setEditor({ id: stop.id, removing: true })}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Retirer l’arrêt
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </StopCard>
+            ))}
+          </ol>
+          {canEdit && onAdd && (
+            <button type="button" className="trip-stops-add" disabled={busy} onClick={onAdd}>
+              <Plus className="size-3.5" aria-hidden="true" />
+              Ajouter un arrêt
+            </button>
+          )}
+        </div>
       </div>
       {error && <Alert role="alert">{error}</Alert>}
       {edited && editor && (

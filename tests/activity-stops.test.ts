@@ -8,8 +8,12 @@ import {
   layoutCalendarEvents,
   optimisticTripItems,
   visibleTripItems,
+  groupTripMapPoints,
+  tripMapVisits,
+  relevantTripConnection,
 } from '../apps/web/src/features/trips/planner-model';
-import { tripEditSchema } from '../packages/shared/src/trip-planner';
+import { tripEditSchema, tripPoints } from '../packages/shared/src/trip-planner';
+import type { TripPlan } from '../packages/database/src/collaboration';
 
 const stop = (id: string, duration: number | null) =>
   ({
@@ -32,6 +36,46 @@ const parent = (stops = [stop('nintendo', 40), stop('pokemon', 40), stop('sega',
   }) as TripPlanItem;
 
 describe('Activities with internal stops', () => {
+  it('keeps map numbering and physical stop locations without inheriting the parent coordinates', () => {
+    const entry = { id: 'parco-entry', latitude: 35.66, longitude: 139.7 };
+    const activity = {
+      ...parent(),
+      entry,
+      stops: [
+        { ...stop('pokemon', 30), entry: { ...entry, id: 'pokemon-entry' } },
+        { ...stop('food', 30), entry: { id: 'food-entry', latitude: null, longitude: null } },
+      ],
+    } as unknown as TripPlanItem;
+    const second = { ...activity, id: 'tower', stops: [] };
+    const visits = tripMapVisits([activity, second]);
+    expect(visits.map((visit) => visit.number)).toEqual(['1', '1.1', '1.2', '2']);
+    const { located, missing } = tripPoints(visits, 'all');
+    expect(located.map((point) => point.item.id)).toEqual(['parco', 'pokemon', 'tower']);
+    expect(missing.map((visit) => visit.id)).toEqual(['food']);
+    const grouped = groupTripMapPoints(located);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]?.map((point) => point.item.id)).toEqual(['parco', 'pokemon', 'tower']);
+    expect(activity.stops[1]?.entry?.latitude).toBeNull();
+  });
+  it('prefers real relations to the current day, including its stops, without changing the grouping', () => {
+    const item = parent();
+    const elsewhere = {
+      ...parent([]),
+      id: 'other',
+      entry_id: 'other-entry',
+      trip_day_id: 'other-day',
+    };
+    const plan = {
+      items: [item, elsewhere],
+      connections: [
+        { fromId: 'parco-entry', entry: { id: 'other-entry' }, label: 'Associé à' },
+        { fromId: 'parco-entry', entry: { id: 'pokemon-entry' }, label: 'Abrite' },
+      ],
+    } as unknown as TripPlan;
+    expect(relevantTripConnection(plan, 'parco-entry', 'day')?.label).toBe('Abrite');
+    expect(plan.items).toHaveLength(2);
+    expect(item.stops).toHaveLength(3);
+  });
   it('moves a stop between groups and back to a root at the selected destination without losing its notes', () => {
     const origin = parent();
     const other = {

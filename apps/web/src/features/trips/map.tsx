@@ -5,13 +5,15 @@ import type { LayerGroup, Map as LeafletMap } from 'leaflet';
 import { Compass, List, LoaderCircle, Plus, X } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
-import { tripMapLongitudes, tripPoints } from '@nagi/shared';
+import { tripMapLongitudes, tripPoints, tripStepCount, tripStopCount } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import {
   type PlaceAdder,
   type WorkspaceViewProps,
   stepTime,
   visibleTripItems,
+  tripMapVisits,
+  groupTripMapPoints,
 } from './planner-model';
 import { tripTileProvider } from './map-config';
 
@@ -47,15 +49,16 @@ export default function TripMap(
     () => visibleTripItems({ items: plan.items, days: plan.days }, selectedDay),
     [plan.items, plan.days, selectedDay],
   );
-  const { located, missing } = useMemo(() => tripPoints(visible, 'all'), [visible]);
+  const visits = useMemo(() => tripMapVisits(visible), [visible]);
+  const { located, missing } = useMemo(() => tripPoints(visits, 'all'), [visits]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
     return located.map((p, i) => ({
       ...p,
       longitude: lons[i]!,
-      number: visible.indexOf(p.item) + 1,
+      number: p.item.number,
     }));
-  }, [located, visible]);
+  }, [located]);
   useEffect(() => {
     let mounted = true;
     let observer: ResizeObserver | undefined;
@@ -118,28 +121,55 @@ export default function TripMap(
     if (phase !== 'ready' || !instance || !layer || !leaflet) return;
     layer.clearLayers();
     const b = leaflet.latLngBounds([]);
-    for (const { item, latitude, longitude, number } of points) {
+    for (const group of groupTripMapPoints(points)) {
+      const { item, latitude, longitude, number } = group[0]!;
+      const grouped = group.length > 1;
       const label = document.createElement('span');
-      label.textContent = String(number);
+      label.textContent = grouped ? String(group.length) : number;
       const point: [number, number] = [latitude, longitude];
       b.extend(point);
       const marker = leaflet
         .marker(point, {
-          title: item.entry?.title ?? 'Étape',
-          alt: item.entry?.title ?? 'Étape',
+          title: grouped
+            ? `${group.length} lieux au même emplacement`
+            : (item.entry?.title ?? 'Étape'),
+          alt: grouped
+            ? `${group.length} lieux au même emplacement`
+            : (item.entry?.title ?? 'Étape'),
           icon: leaflet.divIcon({
-            className: `nagi-trip-marker${selectedItem === item.id ? ' is-selected' : ''}`,
+            className: `nagi-trip-marker${group.some((p) => p.item.parent.id === selectedItem) ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop ? ' is-stop' : ''}`,
             html: label,
             iconSize: [32, 32],
             iconAnchor: [16, 16],
           }),
         })
-        .on('click', () => onDetails(item))
         .addTo(layer);
-      marker.getElement()?.setAttribute('aria-label', `${number}. ${item.entry?.title ?? 'Étape'}`);
+      if (grouped) {
+        const choices = document.createElement('div');
+        choices.className = 'trip-map-shared-location';
+        for (const point of group) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = `${point.number}. ${point.item.entry?.title ?? 'Fiche indisponible'}`;
+          button.addEventListener('click', () => {
+            instance.closePopup();
+            onDetails(point.item.parent);
+          });
+          choices.append(button);
+        }
+        marker.bindPopup(choices, { className: 'trip-map-location-popup' });
+      } else marker.on('click', () => onDetails(item.parent));
+      marker
+        .getElement()
+        ?.setAttribute(
+          'aria-label',
+          grouped
+            ? `${group.length} lieux au même emplacement`
+            : `${number}. ${item.entry?.title ?? 'Étape'}`,
+        );
     }
     if (!b.isValid() && fitted.current === null) {
-      const fallback = tripPoints(plan.items, 'all').located;
+      const fallback = tripPoints(tripMapVisits(plan.items), 'all').located;
       const longitudes = tripMapLongitudes(fallback.map((p) => p.longitude));
       fallback.forEach((p, i) => b.extend([p.latitude, longitudes[i]!]));
     }
@@ -147,7 +177,7 @@ export default function TripMap(
       instance.fitBounds(b, { padding: [50, 50], maxZoom: 15, animate: false });
       fitted.current = selectedDay;
     }
-    const chosen = points.find((p) => p.item.id === selectedItem);
+    const chosen = points.find((p) => p.item.parent.id === selectedItem);
     if (chosen)
       instance.panInside([chosen.latitude, chosen.longitude], {
         padding: [45, 45],
@@ -192,15 +222,15 @@ export default function TripMap(
     layer.clearLayers();
     if (!explore) return;
     const included = new Set(
-      plan.items
+      tripMapVisits(plan.items)
         .filter(
           (i) =>
             selectedDay === 'all' ||
             i.trip_day_id === (selectedDay === 'pending' ? null : selectedDay),
         )
-        .map((i) => i.entry_id),
+        .map((i) => i.entry?.id),
     );
-    const otherDays = new Set(plan.items.map((i) => i.entry_id));
+    const otherDays = new Set(tripMapVisits(plan.items).map((i) => i.entry?.id));
     for (const entry of nearby?.rows ?? []) {
       if (
         included.has(entry.id) ||
@@ -265,21 +295,31 @@ export default function TripMap(
                 : selectedDay === 'pending'
                   ? 'À organiser'
                   : `Jour ${plan.days.findIndex((d) => d.id === selectedDay) + 1}`}
-              <small>{visible.length} étapes</small>
+              <small>
+                {tripStepCount(visible.length)}
+                {visits.length > visible.length
+                  ? ` · ${tripStopCount(visits.length - visible.length)}`
+                  : ''}
+              </small>
             </h2>
             <ol>
               {points.map(({ item, number }) => (
-                <li key={item.id}>
+                <li key={item.id} className={item.stop ? 'trip-map-stop' : undefined}>
                   <button
                     type="button"
-                    aria-pressed={item.id === selectedItem}
-                    onClick={() => onDetails(item)}
+                    aria-pressed={item.parent.id === selectedItem}
+                    onClick={() => onDetails(item.parent)}
                   >
                     <span>{number}</span>
                     <div>
                       <strong>{item.entry?.title}</strong>
                       <small>
-                        {[stepTime(item), item.entry?.neighborhood?.name ?? item.entry?.city?.name]
+                        {[
+                          item.stop
+                            ? `Arrêt dans ${item.parent.entry?.title ?? 'cette activité'}`
+                            : stepTime(item.parent),
+                          item.entry?.neighborhood?.name ?? item.entry?.city?.name,
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </small>
@@ -292,7 +332,7 @@ export default function TripMap(
               <div className="trip-map-missing">
                 <p>Sans coordonnées</p>
                 {missing.map((item) => (
-                  <button type="button" key={item.id} onClick={() => onDetails(item)}>
+                  <button type="button" key={item.id} onClick={() => onDetails(item.parent)}>
                     {item.entry?.title ?? 'Fiche indisponible'}
                   </button>
                 ))}
@@ -311,7 +351,7 @@ export default function TripMap(
                   )
                 }
               >
-                <Plus className="size-4" /> Ajouter un lieu
+                <Plus className="size-4" /> Ajouter une étape
               </button>
             )}
           </div>

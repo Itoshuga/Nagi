@@ -18,6 +18,8 @@ export type WorkspaceViewProps = {
   onDetails: (item: TripPlanItem) => void;
   onAdd: (day: string | null, time?: string) => void;
   onAddStop: (parent: string) => void;
+  expandedStops?: Readonly<Record<string, boolean>>;
+  onToggleStops?: (parent: string) => void;
 };
 export type PlaceAdder = (
   entry: EntryCardRow,
@@ -102,6 +104,49 @@ export function activityBudget(item: TripPlanItem) {
     canExtend:
       used > 0 && used <= 1440 && (!item.start_time || timeMinutes(item.start_time) + used <= 1440),
   };
+}
+
+export function relevantTripConnection(plan: TripPlan, entryId: string, day: string | null) {
+  const entries = (items: TripPlanItem[]) =>
+    new Set(items.flatMap((item) => [item.entry_id, ...(item.stops ?? []).map((s) => s.entry_id)]));
+  const sameDay = entries(plan.items.filter((item) => item.trip_day_id === day));
+  const voyage = entries(plan.items);
+  const relevant = plan.connections.filter(
+    (link) => link.fromId === entryId && voyage.has(link.entry.id),
+  );
+  return relevant.find((link) => sameDay.has(link.entry.id)) ?? relevant[0];
+}
+
+export function tripMapVisits(items: TripPlanItem[]) {
+  return items.flatMap((parent, index) => [
+    {
+      id: parent.id,
+      parent,
+      entry: parent.entry,
+      trip_day_id: parent.trip_day_id,
+      number: String(index + 1),
+      stop: undefined as TripPlanStop | undefined,
+    },
+    ...(parent.stops ?? []).map((stop, stopIndex) => ({
+      id: stop.id,
+      parent,
+      stop,
+      entry: stop.entry,
+      trip_day_id: parent.trip_day_id,
+      number: `${index + 1}.${stopIndex + 1}`,
+    })),
+  ]);
+}
+
+export function groupTripMapPoints<T extends { latitude: number; longitude: number }>(points: T[]) {
+  const groups = new Map<string, T[]>();
+  for (const point of points) {
+    const key = `${point.latitude.toFixed(5)}:${point.longitude.toFixed(5)}`;
+    const group = groups.get(key);
+    if (group) group.push(point);
+    else groups.set(key, [point]);
+  }
+  return [...groups.values()];
 }
 
 export function activityNestingIssue(

@@ -205,7 +205,7 @@ export function TripPlacePicker({
         {panel ? (
           <h2>Explorer le catalogue</h2>
         ) : (
-          <DialogTitle>{parentId ? 'Ajouter à cette activité' : 'Ajouter un lieu'}</DialogTitle>
+          <DialogTitle>{parentId ? 'Ajouter un arrêt' : 'Ajouter une étape'}</DialogTitle>
         )}
         {panel ? (
           <p>

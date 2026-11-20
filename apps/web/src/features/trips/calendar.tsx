@@ -13,7 +13,7 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight, GripHorizontal, Plus } from 'lucide-react';
 import { Button, cn } from '@nagi/ui';
 import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
-import { tripDateLabel } from '@nagi/shared';
+import { formatTripDuration, formatTripTime, tripDayLabel, tripDateLabel } from '@nagi/shared';
 import {
   itemDuration,
   layoutCalendarEvents,
@@ -148,8 +148,8 @@ function Event({
       >
         <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
         <span>
-          {item.start_time?.slice(0, 5)}
-          {duration ? ` · ${duration} min` : ' · Durée libre'}
+          {formatTripTime(item.start_time)}
+          {duration ? ` · ${formatTripDuration(duration)}` : ' · Durée libre'}
         </span>
         {duration && duration >= 60 && (
           <small>
@@ -331,7 +331,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                 .slice(0, 3)
                 .map((item) => (
                   <em key={item.id}>
-                    {item.start_time?.slice(0, 5) ?? '—'}{' '}
+                    {formatTripTime(item.start_time) ?? '—'}{' '}
                     {item.entry?.title ?? 'Fiche indisponible'}
                   </em>
                 ))}
@@ -489,16 +489,14 @@ export function TripCalendar(props: WorkspaceViewProps) {
                 {dragged && (
                   <div className="trip-calendar-drag-preview">
                     {dragged.entry?.title}
-                    <small>{dragged.start_time?.slice(0, 5)}</small>
+                    <small>{formatTripTime(dragged.start_time)}</small>
                   </div>
                 )}
               </DragOverlay>
             </DndContext>
           </div>
           <div className="trip-calendar-mobile">
-            <h3>
-              {tripDateLabel(chosen.date!, { weekday: 'long', day: 'numeric', month: 'long' })}
-            </h3>
+            <h3>{tripDayLabel(chosen.date!)}</h3>
             {dayItems(chosen)
               .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'))
               .map((item) => (
@@ -506,13 +504,13 @@ export function TripCalendar(props: WorkspaceViewProps) {
                   {canEdit ? (
                     <QuickStepEditor item={item} plan={plan} busy={busy} mutate={props.mutate} />
                   ) : (
-                    <span>{item.start_time?.slice(0, 5) ?? 'Libre'}</span>
+                    <span>{formatTripTime(item.start_time) ?? 'Libre'}</span>
                   )}
                   <button type="button" onClick={() => props.onDetails(item)}>
                     <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
                     <small>
                       {item.entry?.category?.name}
-                      {itemDuration(item) ? ` · ${itemDuration(item)} min` : ''}
+                      {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
                     </small>
                   </button>
                 </div>

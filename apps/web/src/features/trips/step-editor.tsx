@@ -23,7 +23,12 @@ import type {
   TripPlan,
   TripPlanItem,
 } from '@nagi/database';
-import { catalogButtonsValue, safeCatalogUrl } from '@nagi/shared';
+import {
+  catalogButtonsValue,
+  formatTripDuration,
+  formatTripTime,
+  safeCatalogUrl,
+} from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { EntryImage } from '@/features/media/image';
 import { EntryRichText } from '@/features/entries/rich-text';
@@ -46,17 +51,20 @@ export function QuickStepEditor({
   mutate,
   busy,
   children,
+  showDuration = false,
 }: {
   item: TripPlanItem;
   plan: TripPlan;
   mutate: PlanMutation;
   busy: boolean;
   children?: ReactNode;
+  showDuration?: boolean;
 }) {
   const [open, setOpen] = useState(false),
     [error, setError] = useState('');
   const [base, setBase] = useState({ trip: plan.version, item: item.version });
   const [day, setDay] = useState(item.trip_day_id ?? '');
+  const [duration, setDuration] = useState(String(itemDuration(item) ?? ''));
   const id = useId();
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -97,6 +105,7 @@ export function QuickStepEditor({
         if (v) {
           setBase({ trip: plan.version, item: item.version });
           setDay(item.trip_day_id ?? '');
+          setDuration(String(itemDuration(item) ?? ''));
         }
       }}
     >
@@ -104,13 +113,16 @@ export function QuickStepEditor({
         {children ?? (
           <button
             type="button"
-            className="trip-time-button"
+            className={`trip-time-button${showDuration ? ' trip-time-stack' : ''}`}
             aria-label={`Définir l’horaire de ${item.entry?.title ?? 'l’étape'}`}
           >
-            {item.start_time?.slice(0, 5) ?? (
-              <>
-                <Clock3 className="size-3" /> Horaire
-              </>
+            <span>
+              {formatTripTime(item.start_time) ?? (
+                <span className="trip-time-unset">Définir un horaire</span>
+              )}
+            </span>
+            {showDuration && itemDuration(item) != null && (
+              <small>{formatTripDuration(itemDuration(item))}</small>
             )}
           </button>
         )}
@@ -148,8 +160,12 @@ export function QuickStepEditor({
                   type="number"
                   min={1}
                   max={1440}
-                  defaultValue={itemDuration(item) ?? ''}
+                  value={duration}
+                  onChange={(event) => setDuration(event.target.value)}
                 />
+                {Number(duration) >= 60 && (
+                  <p className="trip-duration-preview">{formatTripDuration(Number(duration))}</p>
+                )}
               </div>
             </div>
             <div>
@@ -186,6 +202,8 @@ export function TripPlaceDetails({
   defaultDay = null,
   parentId,
   onAddStop,
+  expandedStops,
+  onToggleStops,
 }: {
   guild: string;
   plan: TripPlan;
@@ -200,6 +218,8 @@ export function TripPlaceDetails({
   defaultDay?: string | null;
   parentId?: string;
   onAddStop?: (parent: string) => void;
+  expandedStops?: Readonly<Record<string, boolean>>;
+  onToggleStops?: (parent: string) => void;
 }) {
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
@@ -304,8 +324,8 @@ export function TripPlaceDetails({
             <button type="button" className="trip-detail-schedule">
               <Clock3 className="size-4" />
               <span>
-                {item.start_time?.slice(0, 5) ?? 'Définir un horaire'}
-                {itemDuration(item) ? ` · ${itemDuration(item)} min` : ''}
+                {formatTripTime(item.start_time) ?? 'Définir un horaire'}
+                {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
               </span>
               <ArrowLeft className="size-3 rotate-180" />
             </button>
@@ -313,8 +333,8 @@ export function TripPlaceDetails({
         )}
         {!canEdit && item && (
           <p className="text-sm">
-            {item.start_time?.slice(0, 5) ?? 'Horaire libre'}
-            {itemDuration(item) ? ` · ${itemDuration(item)} min` : ''}
+            {formatTripTime(item.start_time) ?? 'Horaire libre'}
+            {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
           </p>
         )}
         {parentId && (
@@ -329,6 +349,8 @@ export function TripPlaceDetails({
             mutate={mutate}
             onAdd={onAddStop ? () => onAddStop(item.id) : undefined}
             always
+            expanded={expandedStops?.[item.id]}
+            onExpandedChange={onToggleStops ? () => onToggleStops(item.id) : undefined}
           />
         )}
         {item && (
@@ -518,8 +540,8 @@ export function TripPlaceDetails({
             {present(entry.id)
               ? 'Ajouter une autre visite'
               : parentId
-                ? 'Ajouter à cette activité'
-                : 'Ajouter au voyage'}
+                ? 'Ajouter un arrêt'
+                : 'Ajouter une étape'}
           </Button>
         )}
         {added && (
