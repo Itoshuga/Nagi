@@ -179,12 +179,17 @@ function changeStops(
 
 export function optimisticTripItems(items: TripPlanItem[], change: TripEdit) {
   switch (change.operation) {
+    case 'color_item':
+      return items.map((item) =>
+        item.id === change.data.id ? { ...item, calendar_color: change.data.color } : item,
+      );
     case 'nest_item': {
       const source = items.find((item) => item.id === change.data.id);
       const parent = items.find((item) => item.id === change.data.parent);
       if (!source || !parent || activityNestingIssue(source, parent)) return items;
       const stop: TripPlanStop = {
         id: source.id,
+        calendar_color: source.calendar_color ?? null,
         trip_item_id: parent.id,
         entry_id: source.entry_id,
         entry: source.entry,

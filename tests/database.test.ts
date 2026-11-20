@@ -1069,6 +1069,178 @@ describe('Collaborative planner transactions', () => {
     );
   }
 
+  it('keeps personal palettes private, normalizes duplicates and does not grant direct palette writes', async () => {
+    await asUser();
+    const saved = await scalar<{ id: string; hex_color: string }>(
+      "select public.save_user_calendar_color('#d98fa6') as value",
+    );
+    expect(saved.hex_color).toBe('#D98FA6');
+    expect(
+      (await scalar<{ id: string }>("select public.save_user_calendar_color('#D98FA6') as value"))
+        .id,
+    ).toBe(saved.id);
+    expect(
+      await scalar<number>('select count(*)::int as value from public.user_calendar_colors'),
+    ).toBe(1);
+    await fails(
+      `insert into public.user_calendar_colors(user_id,hex_color) values('${userId}','#000000')`,
+      /permission denied/i,
+    );
+    await fails(
+      "select public.save_user_calendar_color('var(--primary)')",
+      /calendar_color_invalid/,
+    );
+    await db.exec('reset role');
+    await asUser(otherId);
+    expect(
+      await scalar<number>('select count(*)::int as value from public.user_calendar_colors'),
+    ).toBe(0);
+    await db.exec(`delete from public.user_calendar_colors where id='${saved.id}'`);
+    await scalar("select public.save_user_calendar_color('#D98FA6') as value");
+    await db.exec('reset role');
+    await asUser();
+    expect(
+      await scalar<number>('select count(*)::int as value from public.user_calendar_colors'),
+    ).toBe(1);
+    await db.exec('reset role; set local role anon');
+    await fails('select * from public.user_calendar_colors', /permission denied/i);
+    await fails("select public.save_user_calendar_color('#000000')", /permission denied/i);
+  });
+  it('limits a personal palette to 32 colors while keeping reusing an existing color idempotent', async () => {
+    await asUser();
+    for (let i = 0; i < 32; i++)
+      await scalar(
+        `select public.save_user_calendar_color('#${i.toString(16).padStart(6, '0').toUpperCase()}') as value`,
+      );
+    await fails("select public.save_user_calendar_color('#FFFFFF')", /calendar_palette_full/);
+    await scalar("select public.save_user_calendar_color('#000000') as value");
+    expect(
+      await scalar<number>('select count(*)::int as value from public.user_calendar_colors'),
+    ).toBe(32);
+  });
+  it('shares occurrence colors without sharing the palette or changing notes, duration and included stops', async () => {
+    await activityFixture();
+    const saved = await scalar<{ id: string }>(
+      "select public.save_user_calendar_color('#D98FA6') as value",
+    );
+    expect(
+      await scalar<number>(
+        operation(2, 'color_item', { id: firstItem, item_version: 0, color: '#D98FA6' }),
+      ),
+    ).toBe(3);
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe('#D98FA6');
+    expect(
+      await scalar<number>(
+        `select estimated_duration_minutes as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(120);
+    expect(
+      await scalar<number>(
+        `select duration_minutes as value from public.trip_item_stops where id='${stopOne}'`,
+      ),
+    ).toBe(40);
+    await db.exec(`delete from public.user_calendar_colors where id='${saved.id}'`);
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe('#D98FA6');
+    await fails(
+      operation(2, 'color_item', { id: firstItem, item_version: 1, color: '#69AA91' }),
+      /trip_conflict/,
+    );
+    await fails(
+      operation(3, 'color_item', { id: firstItem, item_version: 0, color: '#69AA91' }),
+      /trip_conflict/,
+    );
+    await fails(
+      operation(3, 'color_item', { id: firstItem, item_version: 1, color: 'red' }),
+      /calendar_color_invalid/,
+    );
+    await db.exec('reset role');
+    await asUser(otherId);
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe('#D98FA6');
+    expect(
+      await scalar<number>('select count(*)::int as value from public.user_calendar_colors'),
+    ).toBe(0);
+    await fails(
+      operation(3, 'color_item', { id: firstItem, item_version: 1, color: '#69AA91' }, guildB),
+      /trip_forbidden/,
+    );
+    await db.exec(
+      `reset role; update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+    );
+    const version = await scalar<number>(
+      `select version as value from public.trips where id='${tripA}'`,
+    );
+    await asUser(otherId);
+    await fails(
+      operation(version, 'color_item', { id: firstItem, item_version: 1, color: '#69AA91' }),
+      /trip_forbidden/,
+    );
+    await db.exec('reset role');
+    await asUser();
+    await scalar(operation(version, 'color_item', { id: firstItem, item_version: 1, color: null }));
+    expect(
+      await scalar<string | null>(
+        `select calendar_color as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBeNull();
+  });
+  it('preserves an occurrence color through nesting, detaching and relocation without extra version increments', async () => {
+    await activityFixture();
+    await scalar(operation(2, 'delete_stop', { id: stopOne }));
+    await scalar(
+      operation(3, 'add_item', {
+        id: secondItem,
+        entry: stopEntry,
+        day: dayTwo,
+        repeat: false,
+        duration: 30,
+      }),
+    );
+    await scalar(operation(4, 'color_item', { id: secondItem, item_version: 0, color: '#A28BC9' }));
+    await scalar(operation(5, 'nest_item', { id: secondItem, parent: firstItem }));
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_item_stops where id='${secondItem}'`,
+      ),
+    ).toBe('#A28BC9');
+    expect(
+      await scalar<number>(
+        `select version as value from public.trip_item_stops where id='${secondItem}'`,
+      ),
+    ).toBe(1);
+    await scalar(operation(6, 'detach_stop', { id: secondItem }));
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toBe('#A28BC9');
+    await scalar(operation(7, 'nest_item', { id: secondItem, parent: firstItem }));
+    await scalar(
+      operation(8, 'relocate_stop', {
+        kind: 'activity',
+        id: secondItem,
+        day: dayTwo,
+        before: null,
+      }),
+    );
+    expect(
+      await scalar<string>(
+        `select calendar_color as value from public.trip_items where id='${secondItem}'`,
+      ),
+    ).toBe('#A28BC9');
+  });
+
   it('atomically nests an existing activity with its identity, notes, author and clock duration intact', async () => {
     await activityFixture();
     await scalar(operation(2, 'delete_stop', { id: stopOne }));

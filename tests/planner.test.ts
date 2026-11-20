@@ -25,6 +25,7 @@ describe('Trip planner model', () => {
       start_time: null,
       end_time: null,
       estimated_duration_minutes: null,
+      calendar_color: null,
     } as TripPlanItem;
     const result = optimisticTripItems([item], {
       operation: 'edit_item',
@@ -140,6 +141,7 @@ describe('Trip planner model', () => {
       end_time: null,
       estimated_duration_minutes: null,
       version: 0,
+      calendar_color: null,
       entry: null,
       stops: [],
     });

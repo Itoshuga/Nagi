@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { tripInputSchema, uuidSchema } from './collaboration';
 import { snowflakeSchema } from './identifiers';
+import { calendarHexSchema } from './calendar-colors';
 
 export const tripStatuses = [
   'draft',
@@ -38,6 +39,14 @@ const localTime = z
   .nullable();
 const dayFields = { title: z.string().trim().max(160), date: z.iso.date().nullable() };
 export const tripEditSchema = z.discriminatedUnion('operation', [
+  z.object({
+    operation: z.literal('color_item'),
+    data: z.object({
+      id: uuidSchema,
+      item_version: z.number().int().nonnegative(),
+      color: calendarHexSchema.nullable(),
+    }),
+  }),
   z.object({ operation: z.literal('add_day'), data: z.object(dayFields) }),
   z.object({ operation: z.literal('edit_day'), data: z.object({ ...dayFields, id: uuidSchema }) }),
   z.object({

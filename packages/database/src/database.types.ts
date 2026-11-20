@@ -735,6 +735,7 @@ export type Database = {
           version: number;
           created_at: string;
           updated_at: string;
+          calendar_color: string | null;
         };
         Insert: {
           id?: string;
@@ -747,6 +748,7 @@ export type Database = {
           version?: number;
           created_at?: string;
           updated_at?: string;
+          calendar_color?: string | null;
         };
         Update: {
           id?: string;
@@ -759,6 +761,7 @@ export type Database = {
           version?: number;
           created_at?: string;
           updated_at?: string;
+          calendar_color?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'trip_item_stops_added_by_fkey'; columns: ["added_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
@@ -781,6 +784,7 @@ export type Database = {
           end_time: string | null;
           estimated_duration_minutes: number | null;
           version: number;
+          calendar_color: string | null;
         };
         Insert: {
           id?: string;
@@ -796,6 +800,7 @@ export type Database = {
           end_time?: string | null;
           estimated_duration_minutes?: number | null;
           version?: number;
+          calendar_color?: string | null;
         };
         Update: {
           id?: string;
@@ -811,6 +816,7 @@ export type Database = {
           end_time?: string | null;
           estimated_duration_minutes?: number | null;
           version?: number;
+          calendar_color?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'trip_items_added_by_fkey'; columns: ["added_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
@@ -898,6 +904,35 @@ export type Database = {
           { foreignKeyName: 'trips_guild_id_fkey'; columns: ["guild_id"]; isOneToOne: false; referencedRelation: 'discord_guilds'; referencedColumns: ["id"]; },
         ];
       };
+      user_calendar_colors: {
+        Row: {
+          id: string;
+          user_id: string;
+          hex_color: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          hex_color: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          hex_color?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'user_calendar_colors_user_id_fkey'; columns: ["user_id"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+        ];
+      };
       user_guild_preferences: {
         Row: {
           user_id: string;
@@ -965,6 +1000,7 @@ export type Database = {
       revoke_discord_credentials: { Args: { p_user_id: string; p_version: number }; Returns: undefined; };
       save_discord_credentials: { Args: { p_user_id: string; p_discord_id: string; p_profile: Json; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: undefined; };
       save_social_customization: { Args: { p_user: string; p_revision: number; p_data: Json }; Returns: number; };
+      save_user_calendar_color: { Args: { p_hex: string }; Returns: Json; };
       set_discord_guild_presence: { Args: { p_application_id: string; p_guild: Json; p_present: boolean }; Returns: undefined; };
       social_profile_trips: { Args: { p_viewer: string; p_target: string; p_app: string; p_offset: number }; Returns: Json; };
       sync_discord_profile: { Args: Record<PropertyKey, never>; Returns: Database['public']['Tables']['profiles']['Row']; };

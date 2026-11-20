@@ -58,6 +58,7 @@ import { TripDragOverlay } from './drag-overlay';
 import { TripDayEditor } from './plan-dialogs';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
+import { CalendarColorsProvider } from './calendar-colors';
 import { useTripLive } from './live';
 import {
   optimisticTripItems,
@@ -282,6 +283,7 @@ export function TripWorkbench({
           start_time: change.data.start_time ?? null,
           end_time: null,
           estimated_duration_minutes: change.data.duration ?? null,
+          calendar_color: null,
           version: 0,
           created_at: now,
           updated_at: now,
@@ -303,6 +305,7 @@ export function TripWorkbench({
                   entry,
                   added_by: viewerId,
                   duration_minutes: change.data.duration,
+                  calendar_color: null,
                   notes: '',
                   sort_order: 0,
                   version: 0,
@@ -502,405 +505,424 @@ export function TripWorkbench({
         },
       }}
     >
-      <div className={cn('trip-workspace', !editing && 'is-reading', dragged && 'is-sorting')}>
-        <header className="trip-workspace-header">
-          <Link
-            href={`/app/${guild}/trips`}
-            className="trip-icon-button trip-back"
-            aria-label="Tous les voyages"
-          >
-            <ArrowLeft className="size-4" />
-          </Link>
-          <EntryImage
-            src={
-              plan.cover_image_url ??
-              (plan.destination?.is_published ? plan.destination.cover_image_url : null)
-            }
-            className="trip-cover-thumb"
-            sizes="72px"
-            eager
-          />
-          <div className="trip-heading-copy">
-            <div>
-              <h1>{plan.title}</h1>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="trip-status"
-                    aria-label={`Informations du voyage · ${tripStatus[plan.status]}`}
-                  >
-                    {tripStatus[plan.status]}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="trip-information" aria-label="Informations du voyage">
-                  <h2 className="text-sm font-bold">À propos du voyage</h2>
-                  {plan.description && (
-                    <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
-                      {plan.description}
+      <CalendarColorsProvider
+        guild={guild}
+        plan={displayed}
+        canEdit={editing}
+        busy={busy}
+        mutate={mutate}
+      >
+        <div className={cn('trip-workspace', !editing && 'is-reading', dragged && 'is-sorting')}>
+          <header className="trip-workspace-header">
+            <Link
+              href={`/app/${guild}/trips`}
+              className="trip-icon-button trip-back"
+              aria-label="Tous les voyages"
+            >
+              <ArrowLeft className="size-4" />
+            </Link>
+            <EntryImage
+              src={
+                plan.cover_image_url ??
+                (plan.destination?.is_published ? plan.destination.cover_image_url : null)
+              }
+              className="trip-cover-thumb"
+              sizes="72px"
+              eager
+            />
+            <div className="trip-heading-copy">
+              <div>
+                <h1>{plan.title}</h1>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="trip-status"
+                      aria-label={`Informations du voyage · ${tripStatus[plan.status]}`}
+                    >
+                      {tripStatus[plan.status]}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="trip-information" aria-label="Informations du voyage">
+                    <h2 className="text-sm font-bold">À propos du voyage</h2>
+                    {plan.description && (
+                      <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
+                        {plan.description}
+                      </p>
+                    )}
+                    <p className="mt-3 text-xs">{tripDates(plan)}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Horaires locaux · {plan.timezone}
                     </p>
-                  )}
-                  <p className="mt-3 text-xs">{tripDates(plan)}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Horaires locaux · {plan.timezone}
-                  </p>
-                  {organizers.length > 0 && (
-                    <div className="mt-4 grid gap-2">
-                      <p className="text-[10px] text-muted-foreground">Organisateurs</p>
-                      {organizers.map((person) => (
-                        <UserIdentity key={person.id} user={person} compact />
-                      ))}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
+                    {organizers.length > 0 && (
+                      <div className="mt-4 grid gap-2">
+                        <p className="text-[10px] text-muted-foreground">Organisateurs</p>
+                        {organizers.map((person) => (
+                          <UserIdentity key={person.id} user={person} compact />
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <p>
+                {[plan.destination?.is_published ? plan.destination.name : null, tripDates(plan)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+              <small>
+                {plan.collaboration_mode === 'all_members'
+                  ? 'Voyage collaboratif'
+                  : 'Organisation réservée aux organisateurs'}
+              </small>
             </div>
-            <p>
-              {[plan.destination?.is_published ? plan.destination.name : null, tripDates(plan)]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-            <small>
-              {plan.collaboration_mode === 'all_members'
-                ? 'Voyage collaboratif'
-                : 'Organisation réservée aux organisateurs'}
-            </small>
-          </div>
-          {organizers.length > 0 && (
-            <div className="trip-organizer-avatars" aria-label="Organisateurs du voyage">
-              {organizers.slice(0, 4).map((person) => (
-                <UserIdentity
-                  key={person.id}
-                  user={person}
-                  compact
-                  className="trip-organizer-avatar"
-                />
-              ))}
-            </div>
-          )}
-          {canManage && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button type="button" className="trip-icon-button" aria-label="Actions du voyage">
-                  <MoreHorizontal className="size-5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem asChild>
-                  <Link href={`${path}/settings`}>
-                    <Settings className="size-4" /> Modifier le voyage
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`${path}/settings#trip-cover`}>Personnaliser la couverture</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`${path}/settings#trip-organizers`}>
-                    <UsersRound className="size-4" /> Gérer les permissions
-                  </Link>
-                </DropdownMenuItem>
-                {plan.status !== 'archived' && (
-                  <DropdownMenuItem
-                    disabled={busy}
-                    onSelect={async () => {
-                      const r = await archivePlannedTrip(guild, plan.id, displayed.version);
-                      if (!r.ok) setError(r.error);
-                    }}
-                  >
-                    <Archive className="size-4" /> Archiver
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem className="text-destructive" onSelect={() => setDeleteOpen(true)}>
-                  <Trash2 className="size-4" /> Supprimer le voyage
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </header>
-        <div className="trip-workspace-toolbar">
-          <button
-            type="button"
-            className="trip-icon-button trip-toggle-days"
-            aria-label={sidebar ? 'Masquer les journées' : 'Afficher les journées'}
-            aria-expanded={sidebar}
-            onClick={() => setSidebar((v) => !v)}
-          >
-            {sidebar ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-          </button>
-          <div role="tablist" aria-label="Vues du voyage" className="trip-view-tabs">
-            {tabs.map(({ id, label, icon: Icon }, index) => (
-              <button
-                key={id}
-                role="tab"
-                id={`${prefix}-${id}`}
-                type="button"
-                aria-selected={view === id}
-                aria-controls={`${prefix}-view`}
-                tabIndex={view === id ? 0 : -1}
-                onClick={() => setView(id)}
-                onKeyDown={(e) => {
-                  const next =
-                    e.key === 'ArrowRight'
-                      ? (index + 1) % 3
-                      : e.key === 'ArrowLeft'
-                        ? (index + 2) % 3
-                        : e.key === 'Home'
-                          ? 0
-                          : e.key === 'End'
-                            ? 2
-                            : -1;
-                  if (next >= 0) {
-                    e.preventDefault();
-                    setView(tabs[next]!.id);
-                    document.getElementById(`${prefix}-${tabs[next]!.id}`)?.focus();
-                  }
-                }}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
-          <span role="status" aria-live="polite" className="trip-save-status">
-            {feedback}
-          </span>
-          <div className="trip-toolbar-actions">
-            {canEdit && (
-              <button
-                type="button"
-                className="trip-mode-toggle"
-                aria-label={organize ? 'Consulter' : 'Organiser'}
-                aria-pressed={!organize}
-                onClick={() => setOrganize((v) => !v)}
-              >
-                {organize ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-                <span>{organize ? 'Consulter' : 'Organiser'}</span>
-              </button>
+            {organizers.length > 0 && (
+              <div className="trip-organizer-avatars" aria-label="Organisateurs du voyage">
+                {organizers.slice(0, 4).map((person) => (
+                  <UserIdentity
+                    key={person.id}
+                    user={person}
+                    compact
+                    className="trip-organizer-avatar"
+                  />
+                ))}
+              </div>
             )}
+            {canManage && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="trip-icon-button" aria-label="Actions du voyage">
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem asChild>
+                    <Link href={`${path}/settings`}>
+                      <Settings className="size-4" /> Modifier le voyage
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`${path}/settings#trip-cover`}>Personnaliser la couverture</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`${path}/settings#trip-organizers`}>
+                      <UsersRound className="size-4" /> Gérer les permissions
+                    </Link>
+                  </DropdownMenuItem>
+                  {plan.status !== 'archived' && (
+                    <DropdownMenuItem
+                      disabled={busy}
+                      onSelect={async () => {
+                        const r = await archivePlannedTrip(guild, plan.id, displayed.version);
+                        if (!r.ok) setError(r.error);
+                      }}
+                    >
+                      <Archive className="size-4" /> Archiver
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onSelect={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="size-4" /> Supprimer le voyage
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </header>
+          <div className="trip-workspace-toolbar">
             <button
               type="button"
-              className="trip-icon-button"
-              aria-label="Explorer le catalogue"
-              aria-expanded={panel === 'catalog'}
-              onClick={() => {
-                lastTrigger.current = document.activeElement as HTMLElement;
-                setPanel(panel === 'catalog' ? null : 'catalog');
-              }}
+              className="trip-icon-button trip-toggle-days"
+              aria-label={sidebar ? 'Masquer les journées' : 'Afficher les journées'}
+              aria-expanded={sidebar}
+              onClick={() => setSidebar((v) => !v)}
             >
-              <Compass className="size-4" />
-            </button>
-            {editing && (
-              <Button
-                className="trip-primary-add"
-                aria-label="Ajouter une étape"
-                size="sm"
-                onClick={() =>
-                  openPicker(activeDay === 'all' || activeDay === 'pending' ? null : activeDay)
-                }
-              >
-                <Plus className="size-4" />
-                <span>Ajouter une étape</span>
-              </Button>
-            )}
-          </div>
-        </div>
-        {error && (
-          <div className="trip-workspace-error" role="alert">
-            <span>{error}</span>
-            <button type="button" aria-label="Fermer le message" onClick={() => setError('')}>
-              <X className="size-4" />
-            </button>
-          </div>
-        )}
-        <div className={cn('trip-workspace-body', !sidebar && 'days-hidden', panel && 'has-panel')}>
-          <nav className="trip-day-navigation" aria-label="Journées du voyage">
-            <div className="trip-days-top">
-              <span>Votre séjour</span>
-              {editing && (
-                <TripDayEditor plan={displayed} mutate={mutate}>
-                  <button
-                    type="button"
-                    className="trip-icon-button"
-                    aria-label="Ajouter une journée"
-                    disabled={busy}
-                  >
-                    <Plus className="size-3.5" />
-                  </button>
-                </TripDayEditor>
+              {sidebar ? (
+                <PanelLeftClose className="size-4" />
+              ) : (
+                <PanelLeftOpen className="size-4" />
               )}
-            </div>
-            <DayNav
-              id="all"
-              active={activeDay === 'all'}
-              label="Tout le voyage"
-              count={displayed.items.length}
-              onClick={() => chooseDay('all')}
-            />
-            <div className="trip-day-links">
-              {plan.days.map((d, i) => (
-                <DayNav
-                  key={d.id}
-                  id={d.id}
-                  active={activeDay === d.id}
-                  label={`Jour ${i + 1}`}
-                  sub={[
-                    d.date
-                      ? new Intl.DateTimeFormat('fr-FR', {
-                          day: 'numeric',
-                          month: 'short',
-                          timeZone: 'UTC',
-                        }).format(new Date(`${d.date}T12:00:00Z`))
-                      : null,
-                    d.title,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  count={displayed.items.filter((item) => item.trip_day_id === d.id).length}
-                  onClick={() => chooseDay(d.id)}
-                />
+            </button>
+            <div role="tablist" aria-label="Vues du voyage" className="trip-view-tabs">
+              {tabs.map(({ id, label, icon: Icon }, index) => (
+                <button
+                  key={id}
+                  role="tab"
+                  id={`${prefix}-${id}`}
+                  type="button"
+                  aria-selected={view === id}
+                  aria-controls={`${prefix}-view`}
+                  tabIndex={view === id ? 0 : -1}
+                  onClick={() => setView(id)}
+                  onKeyDown={(e) => {
+                    const next =
+                      e.key === 'ArrowRight'
+                        ? (index + 1) % 3
+                        : e.key === 'ArrowLeft'
+                          ? (index + 2) % 3
+                          : e.key === 'Home'
+                            ? 0
+                            : e.key === 'End'
+                              ? 2
+                              : -1;
+                    if (next >= 0) {
+                      e.preventDefault();
+                      setView(tabs[next]!.id);
+                      document.getElementById(`${prefix}-${tabs[next]!.id}`)?.focus();
+                    }
+                  }}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
               ))}
             </div>
-            <DayNav
-              id="pending"
-              active={activeDay === 'pending'}
-              label="À organiser"
-              count={displayed.items.filter((i) => !i.trip_day_id).length}
-              onClick={() => chooseDay('pending')}
-            />
-            <p className="trip-timezone">
-              Horaires locaux
-              <br />
-              {plan.timezone}
-            </p>
-          </nav>
-          <motion.section
-            key={view}
-            id={`${prefix}-view`}
-            role="tabpanel"
-            aria-labelledby={`${prefix}-${view}`}
-            aria-busy={busy}
-            className="trip-workspace-canvas"
-            initial={reduced ? false : { opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.14 }}
-          >
-            {view === 'itinerary' && <TripItinerary {...props} />}
-            {view === 'calendar' && <TripCalendar {...props} />}
-            {view === 'map' && <TripMap {...props} onPreview={previewEntry} add={add} />}
-          </motion.section>
-          <AnimatePresence initial={false}>
-            {panel && (
-              <motion.aside
-                ref={panelRef}
-                tabIndex={-1}
-                className="trip-context-panel"
-                aria-label={panel === 'catalog' ? 'Catalogue du voyage' : 'Détails de l’étape'}
-                initial={reduced ? false : { opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: reduced ? 0 : 8 }}
-                transition={{ duration: reduced ? 0 : 0.15 }}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === 'Tab' &&
-                    matchMedia('(max-width: 1023px)').matches &&
-                    e.currentTarget.contains(e.target as Node)
-                  ) {
-                    const controls = [
-                      ...e.currentTarget.querySelectorAll<HTMLElement>(
-                        'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
-                      ),
-                    ].filter((el) => el.getClientRects().length);
-                    const first = controls[0],
-                      last = controls.at(-1);
-                    if (e.shiftKey && (e.target === first || e.target === e.currentTarget)) {
-                      e.preventDefault();
-                      last?.focus();
-                    } else if (!e.shiftKey && e.target === last) {
-                      e.preventDefault();
-                      first?.focus();
-                    }
-                  }
-                  if (e.key === 'Escape' && !e.defaultPrevented) {
-                    e.preventDefault();
-                    closePanel();
-                  }
+            <span role="status" aria-live="polite" className="trip-save-status">
+              {feedback}
+            </span>
+            <div className="trip-toolbar-actions">
+              {canEdit && (
+                <button
+                  type="button"
+                  className="trip-mode-toggle"
+                  aria-label={organize ? 'Consulter' : 'Organiser'}
+                  aria-pressed={!organize}
+                  onClick={() => setOrganize((v) => !v)}
+                >
+                  {organize ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+                  <span>{organize ? 'Consulter' : 'Organiser'}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="trip-icon-button"
+                aria-label="Explorer le catalogue"
+                aria-expanded={panel === 'catalog'}
+                onClick={() => {
+                  lastTrigger.current = document.activeElement as HTMLElement;
+                  setPanel(panel === 'catalog' ? null : 'catalog');
                 }}
               >
-                {panel === 'catalog' ? (
-                  <TripPlacePicker
-                    key={activeDay}
-                    panel
-                    guild={guild}
-                    plan={displayed}
-                    categories={categories}
-                    initialDay={activeDay === 'all' || activeDay === 'pending' ? null : activeDay}
-                    add={add}
-                    mutate={mutate}
-                    busy={busy}
-                    canAdd={editing}
-                    onClose={closePanel}
-                    onPreview={previewEntry}
-                  />
-                ) : detailEntry ? (
-                  <TripPlaceDetails
-                    key={currentItem?.id ?? detailEntry.id}
-                    guild={guild}
-                    plan={displayed}
-                    entry={detailEntry}
-                    item={preview ? undefined : currentItem}
-                    defaultDay={activeDay === 'all' || activeDay === 'pending' ? null : activeDay}
-                    canEdit={editing}
-                    busy={busy}
-                    mutate={mutate}
-                    add={add}
-                    onClose={closePanel}
-                    onPreview={(entry) => previewEntry(entry, preview ? previewParent : undefined)}
-                    parentId={preview ? previewParent : undefined}
-                    onAddStop={openStopPicker}
-                    expandedStops={expandedStops}
-                    onToggleStops={toggleStops}
-                  />
-                ) : (
-                  <div className="p-5">
-                    <button type="button" onClick={closePanel}>
-                      Fermer
+                <Compass className="size-4" />
+              </button>
+              {editing && (
+                <Button
+                  className="trip-primary-add"
+                  aria-label="Ajouter une étape"
+                  size="sm"
+                  onClick={() =>
+                    openPicker(activeDay === 'all' || activeDay === 'pending' ? null : activeDay)
+                  }
+                >
+                  <Plus className="size-4" />
+                  <span>Ajouter une étape</span>
+                </Button>
+              )}
+            </div>
+          </div>
+          {error && (
+            <div className="trip-workspace-error" role="alert">
+              <span>{error}</span>
+              <button type="button" aria-label="Fermer le message" onClick={() => setError('')}>
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
+          <div
+            className={cn('trip-workspace-body', !sidebar && 'days-hidden', panel && 'has-panel')}
+          >
+            <nav className="trip-day-navigation" aria-label="Journées du voyage">
+              <div className="trip-days-top">
+                <span>Votre séjour</span>
+                {editing && (
+                  <TripDayEditor plan={displayed} mutate={mutate}>
+                    <button
+                      type="button"
+                      className="trip-icon-button"
+                      aria-label="Ajouter une journée"
+                      disabled={busy}
+                    >
+                      <Plus className="size-3.5" />
                     </button>
-                    <p>Cette étape n’est plus disponible.</p>
-                  </div>
+                  </TripDayEditor>
                 )}
-              </motion.aside>
-            )}
-          </AnimatePresence>
+              </div>
+              <DayNav
+                id="all"
+                active={activeDay === 'all'}
+                label="Tout le voyage"
+                count={displayed.items.length}
+                onClick={() => chooseDay('all')}
+              />
+              <div className="trip-day-links">
+                {plan.days.map((d, i) => (
+                  <DayNav
+                    key={d.id}
+                    id={d.id}
+                    active={activeDay === d.id}
+                    label={`Jour ${i + 1}`}
+                    sub={[
+                      d.date
+                        ? new Intl.DateTimeFormat('fr-FR', {
+                            day: 'numeric',
+                            month: 'short',
+                            timeZone: 'UTC',
+                          }).format(new Date(`${d.date}T12:00:00Z`))
+                        : null,
+                      d.title,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    count={displayed.items.filter((item) => item.trip_day_id === d.id).length}
+                    onClick={() => chooseDay(d.id)}
+                  />
+                ))}
+              </div>
+              <DayNav
+                id="pending"
+                active={activeDay === 'pending'}
+                label="À organiser"
+                count={displayed.items.filter((i) => !i.trip_day_id).length}
+                onClick={() => chooseDay('pending')}
+              />
+              <p className="trip-timezone">
+                Horaires locaux
+                <br />
+                {plan.timezone}
+              </p>
+            </nav>
+            <motion.section
+              key={view}
+              id={`${prefix}-view`}
+              role="tabpanel"
+              aria-labelledby={`${prefix}-${view}`}
+              aria-busy={busy}
+              className="trip-workspace-canvas"
+              initial={reduced ? false : { opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduced ? 0 : 0.14 }}
+            >
+              {view === 'itinerary' && <TripItinerary {...props} />}
+              {view === 'calendar' && <TripCalendar {...props} />}
+              {view === 'map' && <TripMap {...props} onPreview={previewEntry} add={add} />}
+            </motion.section>
+            <AnimatePresence initial={false}>
+              {panel && (
+                <motion.aside
+                  ref={panelRef}
+                  tabIndex={-1}
+                  className="trip-context-panel"
+                  aria-label={panel === 'catalog' ? 'Catalogue du voyage' : 'Détails de l’étape'}
+                  initial={reduced ? false : { opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: reduced ? 0 : 8 }}
+                  transition={{ duration: reduced ? 0 : 0.15 }}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Tab' &&
+                      matchMedia('(max-width: 1023px)').matches &&
+                      e.currentTarget.contains(e.target as Node)
+                    ) {
+                      const controls = [
+                        ...e.currentTarget.querySelectorAll<HTMLElement>(
+                          'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
+                        ),
+                      ].filter((el) => el.getClientRects().length);
+                      const first = controls[0],
+                        last = controls.at(-1);
+                      if (e.shiftKey && (e.target === first || e.target === e.currentTarget)) {
+                        e.preventDefault();
+                        last?.focus();
+                      } else if (!e.shiftKey && e.target === last) {
+                        e.preventDefault();
+                        first?.focus();
+                      }
+                    }
+                    if (e.key === 'Escape' && !e.defaultPrevented) {
+                      e.preventDefault();
+                      closePanel();
+                    }
+                  }}
+                >
+                  {panel === 'catalog' ? (
+                    <TripPlacePicker
+                      key={activeDay}
+                      panel
+                      guild={guild}
+                      plan={displayed}
+                      categories={categories}
+                      initialDay={activeDay === 'all' || activeDay === 'pending' ? null : activeDay}
+                      add={add}
+                      mutate={mutate}
+                      busy={busy}
+                      canAdd={editing}
+                      onClose={closePanel}
+                      onPreview={previewEntry}
+                    />
+                  ) : detailEntry ? (
+                    <TripPlaceDetails
+                      key={currentItem?.id ?? detailEntry.id}
+                      guild={guild}
+                      plan={displayed}
+                      entry={detailEntry}
+                      item={preview ? undefined : currentItem}
+                      defaultDay={activeDay === 'all' || activeDay === 'pending' ? null : activeDay}
+                      canEdit={editing}
+                      busy={busy}
+                      mutate={mutate}
+                      add={add}
+                      onClose={closePanel}
+                      onPreview={(entry) =>
+                        previewEntry(entry, preview ? previewParent : undefined)
+                      }
+                      parentId={preview ? previewParent : undefined}
+                      onAddStop={openStopPicker}
+                      expandedStops={expandedStops}
+                      onToggleStops={toggleStops}
+                    />
+                  ) : (
+                    <div className="p-5">
+                      <button type="button" onClick={closePanel}>
+                        Fermer
+                      </button>
+                      <p>Cette étape n’est plus disponible.</p>
+                    </div>
+                  )}
+                </motion.aside>
+              )}
+            </AnimatePresence>
+          </div>
+          {picker && editing && (
+            <TripPlacePicker
+              guild={guild}
+              plan={displayed}
+              categories={categories}
+              initialDay={picker.day}
+              initialTime={picker.time}
+              parentId={picker.parent}
+              initialEntry={initialEntry}
+              add={add}
+              mutate={mutate}
+              busy={busy}
+              onClose={() => {
+                setPicker(null);
+                requestAnimationFrame(returnFocus);
+                if (initialEntry) {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('ajouter');
+                  window.history.replaceState(null, '', url);
+                }
+              }}
+              onPreview={(entry) => previewEntry(entry, picker.parent)}
+            />
+          )}
+          {deleteOpen && (
+            <DeleteTripDialog guild={guild} plan={displayed} onClose={() => setDeleteOpen(false)} />
+          )}
         </div>
-        {picker && editing && (
-          <TripPlacePicker
-            guild={guild}
-            plan={displayed}
-            categories={categories}
-            initialDay={picker.day}
-            initialTime={picker.time}
-            parentId={picker.parent}
-            initialEntry={initialEntry}
-            add={add}
-            mutate={mutate}
-            busy={busy}
-            onClose={() => {
-              setPicker(null);
-              requestAnimationFrame(returnFocus);
-              if (initialEntry) {
-                const url = new URL(window.location.href);
-                url.searchParams.delete('ajouter');
-                window.history.replaceState(null, '', url);
-              }
-            }}
-            onPreview={(entry) => previewEntry(entry, picker.parent)}
-          />
-        )}
-        {deleteOpen && (
-          <DeleteTripDialog guild={guild} plan={displayed} onClose={() => setDeleteOpen(false)} />
-        )}
-      </div>
-      <TripDragOverlay item={dragged} reduced={reduced} />
+        <TripDragOverlay item={dragged} reduced={reduced} />
+      </CalendarColorsProvider>
     </DndContext>
   );
 }

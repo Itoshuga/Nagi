@@ -63,6 +63,27 @@ export function DialogContent({
 }
 export const DropdownMenu = DropdownPrimitive.Root;
 export const DropdownMenuTrigger = DropdownPrimitive.Trigger;
+export const DropdownMenuLabel = DropdownPrimitive.Label;
+export const DropdownMenuSeparator = DropdownPrimitive.Separator;
+export const DropdownMenuRadioGroup = DropdownPrimitive.RadioGroup;
+export const DropdownMenuRadioItem = DropdownPrimitive.RadioItem;
+export const DropdownMenuSub = DropdownPrimitive.Sub;
+export const DropdownMenuSubTrigger = DropdownPrimitive.SubTrigger;
+export function DropdownMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownPrimitive.SubContent>) {
+  return (
+    <DropdownPrimitive.Portal>
+      <DropdownPrimitive.SubContent
+        sideOffset={6}
+        collisionPadding={10}
+        className={cn('z-[70] rounded-2xl border border-border bg-card p-1.5 shadow-lg', className)}
+        {...props}
+      />
+    </DropdownPrimitive.Portal>
+  );
+}
 export function DropdownMenuContent({
   className,
   ...props

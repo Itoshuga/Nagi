@@ -36,6 +36,7 @@ import { entryHref } from '@/features/entries/links';
 import { UserIdentity } from '@/features/profiles/identity';
 import { TripDaySelect } from './add-place-dialog';
 import { ActivityStops } from './activity-stops';
+import { CalendarColorAction } from './calendar-colors';
 import {
   itemDuration,
   minuteTime,
@@ -337,6 +338,7 @@ export function TripPlaceDetails({
             {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
           </p>
         )}
+        {canEdit && item && <CalendarColorAction item={item} />}
         {parentId && (
           <p className="trip-stop-help">Ajout dans {parent?.entry?.title ?? 'cette activité'}.</p>
         )}
