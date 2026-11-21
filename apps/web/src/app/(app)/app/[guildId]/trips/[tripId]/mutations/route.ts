@@ -3,6 +3,7 @@ import { TripSyncService, enrichTripChanges } from '@nagi/database';
 import { tripMutationSchema, uuidSchema } from '@nagi/shared';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
 import { tripRequestFailure, tripRequestSession } from '@/features/trips/sync-server';
+import { GooglePlacesError, verifyGooglePlace } from '@/features/integrations/google-places/server';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -37,12 +38,27 @@ export async function POST(
   try {
     const session = await tripRequestSession(guildId),
       before = performance.now();
+    const change = parsed.data.change;
+    if (
+      (change.operation === 'add_place' || change.operation === 'replace_place') &&
+      change.data.place.source === 'google'
+    ) {
+      const access = await new TripSyncService(session.db).read(guildId, tripId, 2147483647);
+      if (!access.can_edit)
+        return Response.json(
+          { ok: false, reason: 'forbidden', error: 'Ce voyage n’est pas modifiable.' },
+          { status: 403, headers },
+        );
+      await verifyGooglePlace(session.userId, change.data.place.placeId);
+    }
     const batch = await new TripSyncService(session.db).mutate(guildId, tripId, parsed.data),
       persisted = performance.now();
     const data = await enrichTripChanges(batch, publicCatalogDatabase(), session.db);
     if (
       [
         'add_item',
+        'add_place',
+        'replace_place',
         'delete_item',
         'add_day',
         'delete_day',
@@ -65,6 +81,11 @@ export async function POST(
       },
     );
   } catch (error) {
+    if (error instanceof GooglePlacesError)
+      return Response.json(
+        { ok: false, reason: 'invalid', error: error.message },
+        { status: error.status === 404 ? 422 : error.status, headers },
+      );
     const failure = tripRequestFailure(error);
     return Response.json(failure.body, { status: failure.status, headers });
   }

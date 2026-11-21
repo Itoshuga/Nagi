@@ -15,10 +15,15 @@ import {
 import type { CatalogLocation, EntryCardRow, TripCatalogLink, TripPlan } from '@nagi/database';
 import { CatalogPicker } from '@/features/catalog/picker';
 import { CatalogSelect } from '@/features/catalog/admin-form';
-import { EntryImage } from '@/features/media/image';
 import { tripPlaceOptions } from './actions';
 import { dayLabel, TripDaySelect } from './add-place-dialog';
-import type { PlaceAdder, PlanMutation } from './planner-model';
+import type { PlaceAdder, PlanMutation, SourcePlaceAdder } from './planner-model';
+import { CustomStepDialog, GooglePlaceSearch } from './source-places';
+import { CatalogPlaceCard } from './catalog-place-card';
+import {
+  defaultGoogleFilters,
+  googlePlaceTypes,
+} from '@/features/integrations/google-places/search-model';
 import { CatalogResult } from './catalog-result';
 import {
   catalogDuration,
@@ -43,6 +48,7 @@ export function TripPlacePicker({
   panel = false,
   canAdd = true,
   parentId,
+  addSource,
 }: {
   guild: string;
   plan: TripPlan;
@@ -58,9 +64,15 @@ export function TripPlacePicker({
   panel?: boolean;
   canAdd?: boolean;
   parentId?: string;
+  addSource?: SourcePlaceAdder;
 }) {
   const [day, setDay] = useState(initialDay ?? ''),
     [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
+  const [source, setSource] = useState<'nagi' | 'google'>('nagi');
+  const [googleRequest, setGoogleRequest] = useState({ query: '', nonce: 0 });
+  const [googleFilters, setGoogleFilters] = useState(defaultGoogleFilters),
+    [googleBusy, setGoogleBusy] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false),
     [category, setCategory] = useState('');
   const [country, setCountry] = useState<CatalogLocation>(),
@@ -140,6 +152,7 @@ export function TripPlacePicker({
   }, []);
   useEffect(() => {
     const controller = new AbortController();
+    if (source !== 'nagi') return () => controller.abort();
     const timer = setTimeout(
       async () => {
         const p = new URLSearchParams({ q: query.trim(), page: String(page) });
@@ -189,7 +202,7 @@ export function TripPlacePicker({
     };
     // Only catalogue criteria refresh these results; successful visit mutations keep them intact.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guild, plan.id, key, page]);
+  }, [guild, plan.id, key, page, source]);
   const rows = ready?.rows ?? [];
   async function insert(entry: CatalogEntry, placement?: CatalogPlacement) {
     if (adding.current || busy || !canAdd) return;
@@ -273,8 +286,8 @@ export function TripPlacePicker({
           role="combobox"
           aria-label="Rechercher un lieu"
           aria-expanded
-          aria-controls={`${id}-results`}
-          aria-activedescendant={rows[active] ? `${id}-${active}` : undefined}
+          aria-controls={source === 'google' ? `${id}-google-results` : `${id}-results`}
+          aria-activedescendant={source === 'nagi' && rows[active] ? `${id}-${active}` : undefined}
           value={query}
           maxLength={100}
           type="search"
@@ -286,6 +299,18 @@ export function TripPlacePicker({
             setActive(0);
           }}
           onKeyDown={(e) => {
+            if (source === 'google') {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const cards = document.querySelectorAll<HTMLElement>('[data-native-google-card]');
+                cards[e.key === 'ArrowDown' ? 0 : cards.length - 1]?.focus();
+              }
+              if (e.key === 'Enter' && !e.repeat) {
+                e.preventDefault();
+                setGoogleRequest({ query: query.trim(), nonce: Date.now() });
+              }
+              return;
+            }
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
               const next =
@@ -309,13 +334,33 @@ export function TripPlacePicker({
             }
           }}
         />
+        {source === 'google' && (
+          <button
+            type="button"
+            className="trip-icon-button"
+            aria-label="Rechercher sur Google Maps"
+            onClick={() => setGoogleRequest({ query: query.trim(), nonce: Date.now() })}
+          >
+            <Search className="size-4" />
+          </button>
+        )}
+        {source === 'google' && googleBusy && (
+          <LoaderCircle
+            className="size-4 animate-spin text-muted-foreground"
+            aria-label="Recherche Google en cours"
+          />
+        )}
         <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
               className="trip-icon-button"
               aria-label="Filtrer le catalogue"
-              data-active={Boolean(category || country || city || area)}
+              data-active={
+                source === 'nagi'
+                  ? Boolean(category || country || city || area)
+                  : Boolean(googleFilters.type || !googleFilters.destination)
+              }
             >
               <SlidersHorizontal className="size-4" />
             </button>
@@ -329,63 +374,94 @@ export function TripPlacePicker({
               setFiltersOpen(false);
             }}
           >
-            <label className="grid gap-1 text-xs font-semibold">
-              Catégorie
-              <CatalogSelect
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <option value="">Toutes les catégories</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </CatalogSelect>
-            </label>
-            <CatalogPicker
-              name="picker-country"
-              label="Pays"
-              value={country}
-              selectedName={(c) => c.name}
-              search={(q) => tripPlaceOptions(guild, 'countries', q)}
-              onSelect={(c) => {
-                setCountry(c);
-                setCity(undefined);
-                setArea(undefined);
-                setPage(0);
-              }}
-            />
-            <CatalogPicker
-              key={country?.id ?? 'country'}
-              name="picker-city"
-              label="Ville"
-              value={city}
-              disabled={!country}
-              selectedName={(c) => c.name}
-              search={(q) => tripPlaceOptions(guild, 'cities', q, country?.id)}
-              onSelect={(c) => {
-                setCity(c);
-                setArea(undefined);
-                setPage(0);
-              }}
-            />
-            {city?.has_neighborhoods && (
-              <CatalogPicker
-                key={city.id}
-                name="picker-area"
-                label="Quartier"
-                value={area}
-                selectedName={(c) => c.name}
-                search={(q) => tripPlaceOptions(guild, 'neighborhoods', q, city.id)}
-                onSelect={(c) => {
-                  setArea(c);
-                  setPage(0);
-                }}
-              />
+            {source === 'google' ? (
+              <>
+                <label className="grid gap-1 text-xs font-semibold">
+                  Type de lieu
+                  <CatalogSelect
+                    value={googleFilters.type}
+                    onChange={(e) => setGoogleFilters((f) => ({ ...f, type: e.target.value }))}
+                  >
+                    <option value="">Tous les types</option>
+                    {googlePlaceTypes.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </CatalogSelect>
+                </label>
+                <label className="trip-google-bias">
+                  <input
+                    type="checkbox"
+                    checked={googleFilters.destination}
+                    onChange={(e) =>
+                      setGoogleFilters((f) => ({ ...f, destination: e.target.checked }))
+                    }
+                  />
+                  Privilégier la destination du voyage
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="grid gap-1 text-xs font-semibold">
+                  Catégorie
+                  <CatalogSelect
+                    value={category}
+                    onChange={(e) => {
+                      setCategory(e.target.value);
+                      setPage(0);
+                    }}
+                  >
+                    <option value="">Toutes les catégories</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </CatalogSelect>
+                </label>
+                <CatalogPicker
+                  name="picker-country"
+                  label="Pays"
+                  value={country}
+                  selectedName={(c) => c.name}
+                  search={(q) => tripPlaceOptions(guild, 'countries', q)}
+                  onSelect={(c) => {
+                    setCountry(c);
+                    setCity(undefined);
+                    setArea(undefined);
+                    setPage(0);
+                  }}
+                />
+                <CatalogPicker
+                  key={country?.id ?? 'country'}
+                  name="picker-city"
+                  label="Ville"
+                  value={city}
+                  disabled={!country}
+                  selectedName={(c) => c.name}
+                  search={(q) => tripPlaceOptions(guild, 'cities', q, country?.id)}
+                  onSelect={(c) => {
+                    setCity(c);
+                    setArea(undefined);
+                    setPage(0);
+                  }}
+                />
+                {city?.has_neighborhoods && (
+                  <CatalogPicker
+                    key={city.id}
+                    name="picker-area"
+                    label="Quartier"
+                    value={area}
+                    selectedName={(c) => c.name}
+                    search={(q) => tripPlaceOptions(guild, 'neighborhoods', q, city.id)}
+                    onSelect={(c) => {
+                      setArea(c);
+                      setPage(0);
+                    }}
+                  />
+                )}
+              </>
             )}
             {canAdd && (
               <label className="grid gap-1 text-xs font-semibold">
@@ -415,175 +491,237 @@ export function TripPlacePicker({
           </PopoverContent>
         </Popover>
       </div>
-      {(category || country || city || area) && (
-        <div className="trip-picker-chips">
-          {category && (
+      {addSource && (
+        <div className="trip-source-tabs" role="tablist" aria-label="Source des lieux">
+          {(['nagi', 'google'] as const).map((value) => (
             <button
+              key={value}
               type="button"
-              onClick={() => {
-                setCategory('');
-                setPage(0);
+              role="tab"
+              aria-selected={source === value}
+              onClick={() => setSource(value)}
+              onKeyDown={(event) => {
+                if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+                  event.preventDefault();
+                  const next =
+                    event.key === 'Home'
+                      ? 'nagi'
+                      : event.key === 'End'
+                        ? 'google'
+                        : value === 'nagi'
+                          ? 'google'
+                          : 'nagi';
+                  setSource(next);
+                  (
+                    event.currentTarget.parentElement?.querySelectorAll('button')[
+                      next === 'nagi' ? 0 : 1
+                    ] as HTMLButtonElement | undefined
+                  )?.focus();
+                }
               }}
             >
-              {categories.find((c) => c.id === category)?.name}
-              <X className="size-3" />
+              {value === 'nagi' ? 'Nagi' : 'Google Maps'}
             </button>
-          )}
-          {country && (
-            <button
-              type="button"
-              onClick={() => {
-                setCountry(undefined);
-                setCity(undefined);
-                setArea(undefined);
-                setPage(0);
-              }}
-            >
-              {country.name}
-              <X className="size-3" />
-            </button>
-          )}
-          {city && (
-            <button
-              type="button"
-              onClick={() => {
-                setCity(undefined);
-                setArea(undefined);
-                setPage(0);
-              }}
-            >
-              {city.name}
-              <X className="size-3" />
-            </button>
-          )}
-          {area && (
-            <button
-              type="button"
-              onClick={() => {
-                setArea(undefined);
-                setPage(0);
-              }}
-            >
-              {area.name}
-              <X className="size-3" />
-            </button>
-          )}
+          ))}
         </div>
       )}
-      {canAdd && !parentId && !panel && (
-        <div className="trip-picker-target">
-          <label htmlFor={`${id}-target`}>Ajouter à</label>
-          <TripDaySelect
-            id={`${id}-target`}
-            days={plan.days}
-            value={day}
-            onChange={(v) => {
-              setDay(v);
-              setPage(0);
-            }}
+      {addSource && (
+        <div hidden={source !== 'google'}>
+          <GooglePlaceSearch
+            resultsId={`${id}-google-results`}
+            query={query}
+            active={source === 'google'}
+            filters={googleFilters}
+            onLoading={setGoogleBusy}
+            request={googleRequest}
+            plan={plan}
+            day={day || null}
+            parent={parentId}
+            time={initialTime}
+            defaultDuration={defaultDuration}
+            canAdd={canAdd}
+            panel={panel}
+            add={addSource}
           />
         </div>
       )}
-      {panel && canAdd && hint && (
-        <p className="trip-catalog-hint">Glissez un lieu directement dans votre itinéraire.</p>
-      )}
-      <div className="trip-picker-results">
-        <p className="trip-section-caption">
-          {ready?.suggested
-            ? parentId
-              ? 'Fiches liées à cette activité et lieux proches'
-              : 'Pour votre voyage'
-            : 'Catalogue mondial'}
-        </p>
-        <ul role="listbox" aria-label="Lieux du catalogue" id={`${id}-results`}>
-          {rows.map((entry, i) => {
-            const relation = ready?.links.find((l) => l.entry.id === entry.id);
-            return (
-              <CatalogResult
-                key={entry.id}
-                entry={entry}
-                plan={plan}
-                initialDay={day || null}
-                defaultDuration={defaultDuration}
-                draggable={panel}
-                canAdd={canAdd}
-                active={active === i}
-                id={`${id}-${i}`}
-                onActive={() => setActive(i)}
-                insert={(placement) => insert(entry, placement)}
+      <div className="trip-source-nagi" hidden={source !== 'nagi'}>
+        {(category || country || city || area) && (
+          <div className="trip-picker-chips">
+            {category && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory('');
+                  setPage(0);
+                }}
               >
-                <button
-                  type="button"
-                  className="trip-picker-preview"
-                  onClick={() => onPreview(entry)}
-                  aria-label={`Aperçu de ${entry.title}`}
+                {categories.find((c) => c.id === category)?.name}
+                <X className="size-3" />
+              </button>
+            )}
+            {country && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCountry(undefined);
+                  setCity(undefined);
+                  setArea(undefined);
+                  setPage(0);
+                }}
+              >
+                {country.name}
+                <X className="size-3" />
+              </button>
+            )}
+            {city && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCity(undefined);
+                  setArea(undefined);
+                  setPage(0);
+                }}
+              >
+                {city.name}
+                <X className="size-3" />
+              </button>
+            )}
+            {area && (
+              <button
+                type="button"
+                onClick={() => {
+                  setArea(undefined);
+                  setPage(0);
+                }}
+              >
+                {area.name}
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        )}
+        {canAdd && !parentId && !panel && (
+          <div className="trip-picker-target">
+            <label htmlFor={`${id}-target`}>Ajouter à</label>
+            <TripDaySelect
+              id={`${id}-target`}
+              days={plan.days}
+              value={day}
+              onChange={(v) => {
+                setDay(v);
+                setPage(0);
+              }}
+            />
+          </div>
+        )}
+        {panel && canAdd && hint && (
+          <p className="trip-catalog-hint">Glissez un lieu directement dans votre itinéraire.</p>
+        )}
+        <div className="trip-picker-results">
+          <p className="trip-section-caption">
+            {ready?.suggested
+              ? parentId
+                ? 'Fiches liées à cette activité et lieux proches'
+                : 'Pour votre voyage'
+              : 'Catalogue mondial'}
+          </p>
+          <ul role="listbox" aria-label="Lieux du catalogue" id={`${id}-results`}>
+            {rows.map((entry, i) => {
+              const relation = ready?.links.find((l) => l.entry.id === entry.id);
+              return (
+                <CatalogResult
+                  key={entry.id}
+                  entry={entry}
+                  plan={plan}
+                  initialDay={day || null}
+                  defaultDuration={defaultDuration}
+                  draggable={panel}
+                  canAdd={canAdd}
+                  active={active === i}
+                  id={`${id}-${i}`}
+                  onActive={() => setActive(i)}
+                  insert={(placement) => insert(entry, placement)}
                 >
-                  <EntryImage
-                    src={entry.cover_image_url}
-                    className="size-11 shrink-0 rounded-xl"
-                    sizes="44px"
-                  />
-                  <span>
-                    <strong>{entry.title}</strong>
-                    <small>
-                      {[
-                        entry.category?.name,
-                        entry.neighborhood?.name ?? entry.city?.name,
-                        entry.country?.name,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </small>
+                  <CatalogPlaceCard entry={entry} onClick={() => onPreview(entry)}>
                     {relation && (
                       <em>
                         {relation.from} · {relation.label}
                       </em>
                     )}
-                  </span>
+                  </CatalogPlaceCard>
+                  {canAdd && !panel && (
+                    <button
+                      type="button"
+                      className="trip-picker-add"
+                      disabled={busy || (!!parentId && !parent)}
+                      aria-label={`Ajouter ${entry.title}`}
+                      onClick={() => void insert(entry)}
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                  )}
+                </CatalogResult>
+              );
+            })}
+          </ul>
+          {!ready ? (
+            <p role="status" className="trip-empty-inline">
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> Recherche…
+            </p>
+          ) : ready.error ? (
+            <p role="alert" className="trip-empty-inline">
+              {ready.error}
+              <button type="button" onClick={() => setRetry((v) => v + 1)}>
+                Réessayer
+              </button>
+            </p>
+          ) : !rows.length ? (
+            <p role="status" className="trip-empty-inline">
+              Aucun lieu trouvé dans Nagi.
+              {addSource && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSource('google');
+                    setGoogleRequest({ query: query.trim(), nonce: Date.now() });
+                  }}
+                >
+                  Rechercher sur Google Maps
                 </button>
-                {canAdd && !panel && (
-                  <button
-                    type="button"
-                    className="trip-picker-add"
-                    disabled={busy || (!!parentId && !parent)}
-                    aria-label={`Ajouter ${entry.title}`}
-                    onClick={() => void insert(entry)}
-                  >
-                    <Plus className="size-4" />
-                  </button>
-                )}
-              </CatalogResult>
-            );
-          })}
-        </ul>
-        {!ready ? (
-          <p role="status" className="trip-empty-inline">
-            <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> Recherche…
-          </p>
-        ) : ready.error ? (
-          <p role="alert" className="trip-empty-inline">
-            {ready.error}
-            <button type="button" onClick={() => setRetry((v) => v + 1)}>
-              Réessayer
-            </button>
-          </p>
-        ) : !rows.length ? (
-          <p role="status" className="trip-empty-inline">
-            Aucun lieu trouvé. Essayez un autre nom ou filtre.
-          </p>
-        ) : null}
-        {ready?.hasMore && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="w-full"
-            disabled={ready.page !== page}
-            onClick={() => setPage((v) => v + 1)}
-          >
-            Voir plus de lieux
-          </Button>
-        )}
+              )}
+            </p>
+          ) : null}
+          {ready?.hasMore && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full"
+              disabled={ready.page !== page}
+              onClick={() => setPage((v) => v + 1)}
+            >
+              Voir plus de lieux
+            </Button>
+          )}
+        </div>
       </div>
+      {addSource && canAdd && (
+        <button type="button" className="trip-custom-create" onClick={() => setCustomOpen(true)}>
+          Créer une étape personnalisée
+        </button>
+      )}
+      {addSource && customOpen && (
+        <CustomStepDialog
+          open
+          onClose={() => setCustomOpen(false)}
+          add={addSource}
+          placement={{
+            day: (parent?.trip_day_id ?? day) || null,
+            parent: parentId,
+            time: initialTime,
+          }}
+        />
+      )}
       <footer className="trip-picker-footer">
         <div aria-live="polite">
           {receipt ? (

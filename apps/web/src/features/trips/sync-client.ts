@@ -20,13 +20,15 @@ export async function tripResponse(response: Response) {
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
     throw new TripMutationError(
-      response.status === 401 || response.status === 403 || response.status === 404
-        ? 'forbidden'
-        : response.status === 409
-          ? 'conflict'
-          : response.status >= 500 || response.status === 429
-            ? 'temporary'
-            : 'invalid',
+      result.reason === 'invalid'
+        ? 'invalid'
+        : response.status === 401 || response.status === 403 || response.status === 404
+          ? 'forbidden'
+          : response.status === 409
+            ? 'conflict'
+            : response.status >= 500 || response.status === 429
+              ? 'temporary'
+              : 'invalid',
       result.error ?? 'La modification n’a pas pu être enregistrée.',
     );
   }

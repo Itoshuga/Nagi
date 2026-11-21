@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { uuidSchema } from './collaboration';
 import { calendarHexSchema } from './calendar-colors';
 import { tripEditSchema, tripStatuses, collaborationModes } from './trip-planner';
+import { placeSourceDefaults, googlePlaceIdSchema } from './trip-places';
 
 const clock = z
   .string()
@@ -96,11 +97,20 @@ export type TripMutationRequest = z.output<typeof tripMutationSchema>;
 export type TripTransportChange = TripMutationRequest['change'];
 
 const timestamps = { created_at: z.string(), updated_at: z.string() };
+const sourceFields = {
+  source: z.enum(['nagi', 'google', 'custom']),
+  google_place_id: googlePlaceIdSchema.nullable(),
+  custom_title: z.string().max(160).nullable(),
+  custom_location: z.string().max(500).nullable(),
+  custom_latitude: z.number().min(-90).max(90).nullable(),
+  custom_longitude: z.number().min(-180).max(180).nullable(),
+};
 const itemRow = z.object({
+  ...sourceFields,
   id: uuidSchema,
   trip_id: uuidSchema,
   trip_day_id: uuidSchema.nullable(),
-  entry_id: uuidSchema,
+  entry_id: uuidSchema.nullable(),
   added_by: uuidSchema.nullable(),
   notes: z.string().max(4000),
   sort_order: z.number(),
@@ -112,9 +122,10 @@ const itemRow = z.object({
   ...timestamps,
 });
 const stopRow = z.object({
+  ...sourceFields,
   id: uuidSchema,
   trip_item_id: uuidSchema,
-  entry_id: uuidSchema,
+  entry_id: uuidSchema.nullable(),
   added_by: uuidSchema.nullable(),
   notes: z.string().max(4000),
   sort_order: z.number(),
@@ -134,7 +145,15 @@ const dayRow = z.object({
 });
 const delta = <T extends z.ZodObject>(row: T) =>
   z.object({
-    upsert: z.array(row).max(20000),
+    upsert: z
+      .array(
+        z.preprocess(
+          (value) =>
+            value && typeof value === 'object' ? { ...placeSourceDefaults, ...value } : value,
+          row,
+        ),
+      )
+      .max(20000),
     patch: z.array(row.partial().extend({ id: uuidSchema })).max(20000),
     remove: z.array(uuidSchema).max(20000),
   });

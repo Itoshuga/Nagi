@@ -1,3 +1,4 @@
+import { tripSourceEntry } from './trip-places';
 import {
   destinationNamePattern,
   sortTripDays,
@@ -151,8 +152,10 @@ export class TripService {
     const { items, days, ...trip } = data;
     const entryIds = [
       ...new Set([
-        ...items.map((item) => item.entry_id),
-        ...items.flatMap((item) => item.stops.map((stop) => stop.entry_id)),
+        ...items.map((item) => item.entry_id).filter((id): id is string => !!id),
+        ...items
+          .flatMap((item) => item.stops.map((stop) => stop.entry_id))
+          .filter((id): id is string => !!id),
       ]),
     ];
     const [entries, people, connections] = await Promise.all([
@@ -171,10 +174,16 @@ export class TripService {
         .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
         .map((item) => ({
           ...item,
-          entry: entries.get(item.entry_id) ?? null,
+          entry:
+            tripSourceEntry(item) ?? (item.entry_id ? (entries.get(item.entry_id) ?? null) : null),
           stops: item.stops
             .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
-            .map((stop) => ({ ...stop, entry: entries.get(stop.entry_id) ?? null })),
+            .map((stop) => ({
+              ...stop,
+              entry:
+                tripSourceEntry(stop) ??
+                (stop.entry_id ? (entries.get(stop.entry_id) ?? null) : null),
+            })),
         })),
     };
   }

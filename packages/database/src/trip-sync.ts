@@ -40,7 +40,13 @@ export async function enrichTripChanges(
   db?: NagiDatabase,
 ): Promise<TripSyncPayload> {
   const ids = [...new Set(batch.events.flatMap((event) => event.entry_ids))];
-  if (!ids.length) return { ...batch, entries: [], connections: [] };
+  if (
+    !ids.length &&
+    !batch.events.some(
+      (event) => event.changes.items.upsert.length || event.changes.stops.upsert.length,
+    )
+  )
+    return { ...batch, entries: [], connections: [] };
   const [entries, connections, contributors] = await Promise.all([
     catalogEntriesById(catalog, ids),
     tripCatalogLinks(catalog, ids),

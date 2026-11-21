@@ -17,7 +17,8 @@ try {
   const files = (await readdir('supabase/migrations'))
     .filter((file) => file.endsWith('.sql'))
     .sort();
-  for (const file of files) await db.exec(await readFile(`supabase/migrations/${file}`, 'utf8'));
+  for (const file of files)
+    await db.exec((await readFile(`supabase/migrations/${file}`, 'utf8')).replaceAll('\r\n', '\n'));
   const { rows: types } = await db.query(
     `select t.oid,t.typname,t.typtype,t.typelem,n.nspname from pg_type t join pg_namespace n on n.oid=t.typnamespace`,
   );
@@ -73,11 +74,15 @@ try {
   }
   output += `    };\n    Views: { [_ in never]: never };\n    Functions: {\n`;
   const { rows: functions } = await db.query(
-    `select p.proname,p.proargnames,p.proargtypes::oid[] as argtypes,p.prorettype,p.proretset from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prorettype<>'trigger'::regtype order by p.proname`,
+    `select p.proname,p.proargnames,p.proargtypes::oid[] as argtypes,p.pronargdefaults,p.prorettype,p.proretset from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prorettype<>'trigger'::regtype order by p.proname`,
   );
   for (const fn of functions) {
     const args = fn.argtypes
-      .map((oid, index) => `${fn.proargnames[index]}: ${tsType(oid)}`)
+      .map((oid, index) =>
+        index >= fn.argtypes.length - fn.pronargdefaults
+          ? `${fn.proargnames[index]}?: ${tsType(oid)} | null`
+          : `${fn.proargnames[index]}: ${tsType(oid)}`,
+      )
       .join('; ');
     output += `      ${fn.proname}: { Args: ${args ? `{ ${args} }` : 'Record<PropertyKey, never>'}; Returns: ${tsType(fn.prorettype)}${fn.proretset ? '[]' : ''}; };\n`;
   }

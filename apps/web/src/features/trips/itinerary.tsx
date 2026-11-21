@@ -176,7 +176,7 @@ export function TripStep({
         onClick={() => onDetails(item)}
         aria-label={`Détails de ${title}`}
       >
-        <ActivityCardCopy entry={item.entry} notes={item.notes}>
+        <ActivityCardCopy entry={item.entry} notes={item.notes} place={item}>
           {connection && (
             <span className="trip-step-note trip-step-relation">
               {connection.label} · {connection.entry.title}

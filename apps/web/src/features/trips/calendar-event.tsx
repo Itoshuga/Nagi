@@ -29,18 +29,27 @@ import {
   type CalendarSchedule,
 } from './calendar-model';
 import { useCalendarColors } from './calendar-colors';
+import { CalendarPlaceTitle } from './calendar-place-title';
+export { CalendarPlaceTitle } from './calendar-place-title';
 
 export const CalendarEventCopy = memo(
   function CalendarEventCopy({
     item,
     schedule,
+    unconstrained,
   }: {
     item: TripPlanItem;
     schedule: CalendarSchedule;
+    unconstrained?: boolean;
   }) {
     return (
       <>
-        <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
+        <CalendarPlaceTitle
+          item={item}
+          availableHeight={
+            unconstrained ? undefined : (schedule.duration ?? 30) * calendarMinuteHeight - 12
+          }
+        />
         {(schedule.duration == null || schedule.duration > 30) && (
           <span>
             {calendarScheduleLabel(schedule)}
@@ -62,6 +71,7 @@ export const CalendarEventCopy = memo(
   },
   (before, after) =>
     before.item === after.item &&
+    before.unconstrained === after.unconstrained &&
     before.schedule.day === after.schedule.day &&
     before.schedule.start === after.schedule.start &&
     before.schedule.end === after.schedule.end &&

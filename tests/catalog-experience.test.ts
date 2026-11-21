@@ -6,6 +6,7 @@ import {
   catalogCalendarSchedule,
   catalogPlacement,
   catalogVisitChange,
+  sourceVisitChange,
   type CatalogDragData,
 } from '../apps/web/src/features/trips/catalog-drag';
 import { optimisticTripChange } from '../apps/web/src/features/trips/mutation-model';
@@ -36,6 +37,62 @@ const event = (target?: object, y = 112) =>
   }) as unknown as Parameters<typeof catalogPlacement>[2];
 
 describe('Reusable catalogue visit placement', () => {
+  it('creates Google calendar occurrences through the same clock placement and clips at midnight', () => {
+    const place = { source: 'google' as const, placeId: 'google-place-example' };
+    const drag: CatalogDragData = { ...source, provider: 'google', reference: place };
+    const placement = catalogPlacement(
+      plan,
+      drag,
+      event({ type: 'calendar', day: id(1) }, (870 * 56) / 60),
+    )!;
+    const change = sourceVisitChange(place, placement, id(2));
+    expect(change.success && change.data).toMatchObject({
+      operation: 'add_place',
+      data: { place, day: id(1), start_time: '14:30', duration: 30 },
+    });
+    expect(
+      sourceVisitChange(place, { day: id(1), time: '23:45', duration: 60 }, id(3)),
+    ).toMatchObject({ success: true, data: { data: { start_time: '23:45', duration: 15 } } });
+  });
+  it('validates and normalizes custom authored data before an optimistic insertion', () => {
+    const valid = sourceVisitChange(
+      {
+        source: 'custom',
+        title: '  Pause libre  ',
+        location: ' Hall ',
+        latitude: null,
+        longitude: null,
+      },
+      { day: null },
+      id(2),
+      { color: '#739fd0', notes: 'Notes' },
+    );
+    expect(valid).toMatchObject({
+      success: true,
+      data: {
+        data: {
+          place: { title: 'Pause libre', location: 'Hall' },
+          color: '#739FD0',
+          notes: 'Notes',
+        },
+      },
+    });
+    expect(
+      sourceVisitChange(
+        { source: 'custom', title: ' ', location: '', latitude: null, longitude: null },
+        { day: null },
+        id(2),
+      ).success,
+    ).toBe(false);
+  });
+  it('retains long Google address references without truncating them', () => {
+    const placeId = 'E'.repeat(4000),
+      change = sourceVisitChange({ source: 'google', placeId }, { day: null }, id(2));
+    expect(change).toMatchObject({
+      success: true,
+      data: { data: { place: { source: 'google', placeId } } },
+    });
+  });
   it('snaps the actual pointer to 15 minutes, independently of the grabbed card position', () => {
     const target = { type: 'calendar', day: id(1) };
     const at1430 = event(target, (870 * 56) / 60);

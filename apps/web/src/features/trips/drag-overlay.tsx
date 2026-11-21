@@ -7,6 +7,7 @@ import type { TripPlanItem, TripPlanStop } from '@nagi/database';
 import type { CatalogEntry } from './catalog-drag';
 import { Copy } from 'lucide-react';
 import { EntryImage } from '@/features/media/image';
+import { GooglePlaceView } from '@/features/integrations/google-places/components';
 
 // The preview is narrower than the source row. Keep its centre on the pointer,
 // regardless of where the user originally grabbed the card.
@@ -49,10 +50,12 @@ export function TripDragOverlay({
   item,
   entry,
   reduced,
+  googlePlaceId,
 }: {
   item?: TripPlanItem | TripPlanStop;
   entry?: CatalogEntry;
   reduced: boolean | null;
+  googlePlaceId?: string;
 }) {
   const container = useSyncExternalStore<HTMLElement | null>(
     subscribe,
@@ -68,12 +71,22 @@ export function TripDragOverlay({
     >
       {(item || entry) && (
         <div className="trip-drag-preview">
-          <EntryImage
-            src={(entry ?? item?.entry)?.cover_image_url}
-            className="size-10 shrink-0 rounded-lg"
-            sizes="40px"
-          />
-          <span>{(entry ?? item?.entry)?.title ?? 'Étape'}</span>
+          {googlePlaceId || (item?.source === 'google' && item.google_place_id) ? (
+            <GooglePlaceView
+              placeId={googlePlaceId ?? item!.google_place_id!}
+              occurrence="drag-overlay"
+              appearance="thumbnail"
+            />
+          ) : (
+            <>
+              <EntryImage
+                src={(entry ?? item?.entry)?.cover_image_url}
+                className="size-10 shrink-0 rounded-lg"
+                sizes="40px"
+              />
+              <span>{(entry ?? item?.entry)?.title ?? 'Étape'}</span>
+            </>
+          )}
           {entry && <Copy className="size-3 shrink-0" aria-label="Nouvelle visite" />}
         </div>
       )}

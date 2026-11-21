@@ -14,7 +14,7 @@ const rect = (top: number, height: number) => ({
   width: 400,
   height,
 });
-function collisions(y: number | null, active = 'source', type = 'item') {
+function collisions(y: number | null, active = 'source', type = 'item', reference?: object) {
   const targets = [
     { id: 'step:parent', data: { day: 'day', before: 'parent' }, rect: rect(100, 100) },
     {
@@ -27,7 +27,7 @@ function collisions(y: number | null, active = 'source', type = 'item') {
   return tripCollision({
     active: {
       id: active,
-      data: { current: { type } },
+      data: { current: { type, reference } },
       rect: { current: { initial: null, translated: null } },
     },
     pointerCoordinates: y === null ? null : { x: 200, y },
@@ -45,6 +45,15 @@ function collisions(y: number | null, active = 'source', type = 'item') {
 }
 
 describe('Itinerary drop intentions', () => {
+  it('accepts an external creation reference at the activity centre while preserving catalogue drop zones', () => {
+    expect(
+      collisions(150, 'new', 'catalog-entry', {
+        source: 'google',
+        placeId: 'google-place-example',
+      })[0],
+    ).toBe('activity:parent');
+    expect(collisions(150, 'new', 'catalog-entry')).not.toContain('activity:parent');
+  });
   const parent = {
     id: 'parent',
     entry_id: 'parco',

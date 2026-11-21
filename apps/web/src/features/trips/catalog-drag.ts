@@ -1,6 +1,6 @@
 import type { DragEndEvent, DragMoveEvent } from '@dnd-kit/core';
 import type { EntryCardRow, TripPlan } from '@nagi/database';
-import type { TripEdit } from '@nagi/shared';
+import { tripEditSchema, type TripEdit, type TripPlaceReference } from '@nagi/shared';
 import { calendarMinuteHeight, calendarSnapMinutes, type CalendarSchedule } from './calendar-model';
 import { minuteTime } from './planner-model';
 import { isActivityDrop, isStopDrop } from './planner-dnd';
@@ -10,7 +10,9 @@ export type CatalogEntry = EntryCardRow & { suggested_duration_minutes?: number 
 // Additional providers can resolve to this same placement contract later.
 export type CatalogDragData = {
   type: 'catalog-entry';
-  provider: 'nagi';
+  provider: 'nagi' | 'google' | 'custom';
+  reference?: TripPlaceReference;
+  onCommit?: () => void;
   entry: CatalogEntry;
   defaultDuration: number;
 };
@@ -24,6 +26,32 @@ export type CatalogPlacement = {
 };
 export const catalogHintKey = 'nagi:catalog-drag-used';
 export const catalogDurationKey = 'nagi:catalog-default-duration';
+export function sourceVisitChange(
+  place: TripPlaceReference,
+  placement: CatalogPlacement,
+  id: string,
+  metadata?: { notes?: string; color?: string | null },
+) {
+  return tripEditSchema.safeParse({
+    operation: 'add_place',
+    data: {
+      id,
+      place,
+      day: placement.day,
+      parent: placement.parent,
+      before: placement.before ?? null,
+      start_time: placement.time ?? null,
+      duration: placement.time
+        ? Math.min(
+            placement.duration ?? 30,
+            1440 - Number(placement.time.slice(0, 2)) * 60 - Number(placement.time.slice(3, 5)),
+          )
+        : (placement.duration ?? null),
+      notes: metadata?.notes ?? '',
+      color: metadata?.color ?? null,
+    },
+  });
+}
 export const isCatalogDrag = (data: Record<string, unknown> | undefined): data is CatalogDragData =>
   data?.type === 'catalog-entry' && !!data.entry;
 export const isCalendarDrop = (data: Record<string, unknown> | undefined): data is CalendarDrop =>
@@ -75,7 +103,11 @@ export function catalogPlacement(
     return { day: schedule.day, time: minuteTime(schedule.start), duration: schedule.duration };
   }
   // Catalogue nesting is explicit: only the stops section accepts creation.
-  if (isActivityDrop(target)) return;
+  if (isActivityDrop(target)) {
+    if (!data.reference) return;
+    const parent = plan.items.find((i) => i.id === target.parent);
+    return parent ? { day: parent.trip_day_id, parent: parent.id, before: null } : undefined;
+  }
   if (isStopDrop(target)) {
     const parent = plan.items.find((i) => i.id === target.parent);
     if (

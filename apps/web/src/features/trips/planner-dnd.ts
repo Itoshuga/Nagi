@@ -83,7 +83,8 @@ export const tripCollision: CollisionDetection = (args) => {
         (catalog || args.active.data.current?.type === 'calendar-item') &&
         (!pointed || !!pointed.closest('.trip-calendar-scroll'))
       );
-    if (catalog && isActivityDrop(container.data.current)) return false;
+    if (catalog && !args.active.data.current?.reference && isActivityDrop(container.data.current))
+      return false;
     if (isStopDrop(container.data.current)) {
       return !!args.pointerCoordinates || args.active.data.current?.type === 'stop';
     }

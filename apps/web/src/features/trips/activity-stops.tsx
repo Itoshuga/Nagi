@@ -36,6 +36,11 @@ import type { TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
 import { formatTripDuration, tripStopsSummary } from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { ActivityCardCopy } from './activity-card';
+import { CustomPlaceEditor } from './source-places';
+import {
+  GooglePlaceView,
+  useExternalPlaces,
+} from '@/features/integrations/google-places/components';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
 import { isCatalogDrag } from './catalog-drag';
@@ -264,6 +269,7 @@ function StopEditor({
 }) {
   const id = useId();
   const cancel = useRef<HTMLButtonElement>(null);
+  const external = useExternalPlaces();
   const [duration, setDuration] = useState(String(stop.duration_minutes ?? ''));
   const [notes, setNotes] = useState(stop.notes);
   const [version, setVersion] = useState(stop.version);
@@ -323,13 +329,35 @@ function StopEditor({
         }}
       >
         <DialogTitle>
-          {removing ? 'Retirer cet arrêt ?' : (stop.entry?.title ?? 'Fiche indisponible')}
+          {removing
+            ? 'Retirer cet arrêt ?'
+            : stop.source === 'google'
+              ? 'Détails de l’arrêt'
+              : (stop.entry?.title ?? 'Fiche indisponible')}
         </DialogTitle>
         <DialogDescription>
           {removing
             ? 'Cet arrêt et ses notes seront retirés de l’activité. La fiche du catalogue est conservée.'
             : 'Sa durée est comprise dans le créneau de l’activité principale.'}
         </DialogDescription>
+        {!removing && stop.source === 'google' && stop.google_place_id && (
+          <GooglePlaceView occurrence={stop.id} placeId={stop.google_place_id} full />
+        )}
+        {!removing && canEdit && stop.source === 'custom' && (
+          <CustomPlaceEditor place={stop} mutate={mutate} />
+        )}
+        {!removing && canEdit && stop.source !== 'nagi' && external?.replace && (
+          <button
+            type="button"
+            className="trip-remove-link"
+            onClick={() => {
+              external.replace?.(stop.id);
+              onClose();
+            }}
+          >
+            Remplacer le lieu associé
+          </button>
+        )}
         <form onSubmit={submit} aria-busy={busy}>
           {!removing && canEdit && (
             <fieldset disabled={busy} className="space-y-4">
@@ -633,7 +661,7 @@ export function ActivityStops({
                   disabled={busy}
                   aria-label={`Détails de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
                 >
-                  <ActivityCardCopy entry={stop.entry} notes={stop.notes}>
+                  <ActivityCardCopy entry={stop.entry} notes={stop.notes} place={stop}>
                     {(() => {
                       const relation = relevantTripConnection(
                         plan,

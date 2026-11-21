@@ -6,6 +6,8 @@ import {
   type TripTransportChange,
 } from '@nagi/shared';
 import type { EntryCardRow, TripPlan, TripPlanStop, TripSyncPayload } from '@nagi/database';
+import { placeSourceFields, tripSourceEntry } from '@nagi/database/trip-places';
+import { placeSourceDefaults } from '@nagi/shared';
 import { calendarDateAt, dayRange, movedTripItems, optimisticTripItems } from './planner-model';
 
 type Guard = TripMutationRequest['expected'];
@@ -169,6 +171,21 @@ export function tripMutationGuards(plan: TripPlan, change: TripTransportChange):
     ))
       root(row.id);
   if (change.operation === 'move_day') for (const row of plan.days) day(row.id);
+  if (change.operation === 'replace_place') {
+    const item = plan.items.find((i) => i.id === change.data.id),
+      nested = plan.items.flatMap((i) => i.stops).find((s) => s.id === change.data.id),
+      row = item ?? nested;
+    if (row)
+      guards[item ? 'items' : 'stops'][row.id] = {
+        source: row.source ?? 'nagi',
+        entry_id: row.entry_id,
+        google_place_id: row.google_place_id ?? null,
+        custom_title: row.custom_title ?? null,
+        custom_location: row.custom_location ?? null,
+        custom_latitude: row.custom_latitude ?? null,
+        custom_longitude: row.custom_longitude ?? null,
+      };
+  }
   return guards;
 }
 
@@ -213,6 +230,78 @@ export function optimisticTripChange(
   entry?: EntryCardRow,
 ): TripPlan {
   const now = new Date().toISOString();
+  if (change.operation === 'replace_place') {
+    const fields = placeSourceFields(change.data.place);
+    const update = <T extends { id: string; updated_at: string; entry: EntryCardRow | null }>(
+      row: T,
+    ) => {
+      if (row.id !== change.data.id) return row;
+      const next = { ...row, ...fields };
+      return { ...next, entry: tripSourceEntry(next) ?? entry ?? null };
+    };
+    return {
+      ...plan,
+      items: plan.items.map((item) => ({ ...update(item), stops: item.stops.map(update) })),
+    };
+  }
+  if (change.operation === 'add_place') {
+    const fields = placeSourceFields(change.data.place),
+      d = change.data;
+    const common = {
+      ...fields,
+      id: d.id,
+      added_by: viewer,
+      notes: d.notes,
+      calendar_color: d.color,
+      version: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    const rendered = tripSourceEntry(common) ?? entry ?? null;
+    if (d.parent)
+      return {
+        ...plan,
+        items: plan.items.map((item) =>
+          item.id === d.parent
+            ? {
+                ...item,
+                stops: insertStop(item.stops, d.before, {
+                  ...common,
+                  entry: rendered,
+                  trip_item_id: item.id,
+                  duration_minutes: d.duration,
+                  sort_order: (item.stops.at(-1)?.sort_order ?? 0) + 1024,
+                }),
+              }
+            : item,
+        ),
+      };
+    return {
+      ...plan,
+      items: movedTripItems(
+        [
+          ...plan.items,
+          {
+            ...common,
+            entry: rendered,
+            stops: [],
+            trip_id: plan.id,
+            trip_day_id: d.day,
+            start_time: d.start_time ?? null,
+            end_time: null,
+            estimated_duration_minutes: d.duration,
+            sort_order:
+              Math.max(
+                0,
+                ...plan.items.filter((i) => i.trip_day_id === d.day).map((i) => i.sort_order),
+              ) + 1024,
+          },
+        ],
+        d.id,
+        { day: d.day, before: d.before },
+      ),
+    };
+  }
   if (change.operation === 'patch_item' && 'trip_day_id' in change.data.patch) {
     const previous = plan.items.find((item) => item.id === change.data.id);
     if (previous && previous.trip_day_id !== change.data.patch.trip_day_id) {
@@ -269,6 +358,7 @@ export function optimisticTripChange(
           ...plan.items,
           {
             id: change.data.id,
+            ...placeSourceDefaults,
             trip_id: plan.id,
             trip_day_id: change.data.day,
             entry_id: entry.id,
@@ -301,6 +391,7 @@ export function optimisticTripChange(
               ...i,
               stops: insertStop(i.stops, change.data.before, {
                 id: change.data.id,
+                ...placeSourceDefaults,
                 trip_item_id: i.id,
                 entry_id: entry.id,
                 entry,
@@ -367,6 +458,18 @@ export function optimisticTripChange(
   return { ...plan, items: optimisticTripItems(plan.items, change as TripEdit) };
 }
 
+const changesPlace = (row: object | undefined) =>
+  !!row &&
+  [
+    'source',
+    'entry_id',
+    'google_place_id',
+    'custom_title',
+    'custom_location',
+    'custom_latitude',
+    'custom_longitude',
+  ].some((key) => key in row);
+
 export function applyTripEvent(
   plan: TripPlan,
   event: TripRealtimeEvent,
@@ -374,7 +477,10 @@ export function applyTripEvent(
 ): TripPlan {
   if (event.trip_id !== plan.id || event.version <= plan.version) return plan;
   const catalog = new Map(
-    (event.changes.items.upsert.length || event.changes.stops.upsert.length
+    (event.changes.items.upsert.length ||
+    event.changes.stops.upsert.length ||
+    event.changes.items.patch.some(changesPlace) ||
+    event.changes.stops.patch.some(changesPlace)
       ? [...plan.items.flatMap((i) => [i.entry, ...i.stops.map((s) => s.entry)]), ...extra.entries]
       : []
     )
@@ -386,7 +492,17 @@ export function applyTripEvent(
   let items = plan.items
     .filter((i) => !remove.has(i.id))
     .map((i) =>
-      upsert.has(i.id) ? { ...i, ...upsert.get(i.id)!, entry: catalog.get(i.entry_id) ?? null } : i,
+      upsert.has(i.id)
+        ? {
+            ...i,
+            ...upsert.get(i.id)!,
+            entry:
+              tripSourceEntry(upsert.get(i.id)!) ??
+              (upsert.get(i.id)!.entry_id
+                ? (catalog.get(upsert.get(i.id)!.entry_id!) ?? null)
+                : null),
+          }
+        : i,
     );
   const patches = new Map(event.changes.items.patch.map((row) => [row.id, row]));
   if (patches.size)
@@ -396,7 +512,11 @@ export function applyTripEvent(
   const known = new Set(items.map((i) => i.id));
   for (const row of upsert.values())
     if (!known.has(row.id))
-      items.push({ ...row, stops: [], entry: catalog.get(row.entry_id) ?? null });
+      items.push({
+        ...row,
+        stops: [],
+        entry: tripSourceEntry(row) ?? (row.entry_id ? (catalog.get(row.entry_id) ?? null) : null),
+      });
   const stopRemove = new Set([
     ...event.changes.stops.remove,
     ...event.changes.stops.upsert.map((s) => s.id),
@@ -412,9 +532,15 @@ export function applyTripEvent(
       i.id === row.trip_item_id
         ? {
             ...i,
-            stops: [...i.stops, { ...row, entry: catalog.get(row.entry_id) ?? null }].sort(
-              (a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id),
-            ),
+            stops: [
+              ...i.stops,
+              {
+                ...row,
+                entry:
+                  tripSourceEntry(row) ??
+                  (row.entry_id ? (catalog.get(row.entry_id) ?? null) : null),
+              },
+            ].sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id)),
           }
         : i,
     );
@@ -444,6 +570,20 @@ export function applyTripEvent(
         ].sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id)),
       };
     });
+  if (
+    event.changes.items.patch.some(changesPlace) ||
+    event.changes.stops.patch.some(changesPlace)
+  ) {
+    const entryFor = (row: TripPlan['items'][number] | TripPlanStop) =>
+      tripSourceEntry(row) ?? (row.entry_id ? (catalog.get(row.entry_id) ?? null) : null);
+    items = items.map((item) => ({
+      ...item,
+      ...(changesPlace(patches.get(item.id)) ? { entry: entryFor(item) } : {}),
+      stops: item.stops.map((stop) =>
+        changesPlace(stopPatches.get(stop.id)) ? { ...stop, entry: entryFor(stop) } : stop,
+      ),
+    }));
+  }
   const deletedDays = new Set(event.changes.days.remove),
     newDays = new Map(event.changes.days.upsert.map((d) => [d.id, d]));
   const days = plan.days.filter((d) => !deletedDays.has(d.id)).map((d) => newDays.get(d.id) ?? d),

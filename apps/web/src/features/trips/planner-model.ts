@@ -1,5 +1,7 @@
+import { preservedPlaceSource } from '@nagi/database/trip-places';
 import type { TripPlanItem, TripPlanStop, TripPlannerDay } from '@nagi/database';
-import type { TripEdit, TripResult } from '@nagi/shared';
+import type { TripEdit, TripResult, TripPlaceReference } from '@nagi/shared';
+import type { CatalogPlacement } from './catalog-drag';
 import type { TripPlan, EntryCardRow } from '@nagi/database';
 
 export type TripMutationContext = {
@@ -38,6 +40,11 @@ export type PlaceAdder = (
   parent?: string,
   placement?: { before?: string | null; duration?: number | null },
 ) => Promise<TripResult & { id?: string }>;
+export type SourcePlaceAdder = (
+  place: TripPlaceReference,
+  placement: CatalogPlacement,
+  metadata?: { notes?: string; color?: string | null },
+) => Promise<TripResult & { id?: string }>;
 export type TripDetailEntry = Omit<EntryCardRow, 'country' | 'city' | 'category'> & {
   country: EntryCardRow['country'] | null;
   city: EntryCardRow['city'] | null;
@@ -45,7 +52,7 @@ export type TripDetailEntry = Omit<EntryCardRow, 'country' | 'city' | 'category'
 };
 export function unavailableTripEntry(item: TripPlanItem): TripDetailEntry {
   return {
-    id: item.entry_id,
+    id: item.entry_id ?? item.id,
     title: 'Fiche indisponible',
     slug: 'fiche-indisponible',
     summary: '',
@@ -137,7 +144,7 @@ export function activityBudget(item: TripPlanItem) {
   };
 }
 
-export function relevantTripConnection(plan: TripPlan, entryId: string, day: string | null) {
+export function relevantTripConnection(plan: TripPlan, entryId: string | null, day: string | null) {
   const entries = (items: TripPlanItem[]) =>
     new Set(items.flatMap((item) => [item.entry_id, ...(item.stops ?? []).map((s) => s.entry_id)]));
   const sameDay = entries(plan.items.filter((item) => item.trip_day_id === day));
@@ -213,6 +220,7 @@ export function optimisticTripItems(items: TripPlanItem[], change: TripEdit) {
       const parent = items.find((item) => item.id === change.data.parent);
       if (!source || !parent || activityNestingIssue(source, parent)) return items;
       const stop: TripPlanStop = {
+        ...preservedPlaceSource(source),
         id: source.id,
         calendar_color: source.calendar_color ?? null,
         trip_item_id: parent.id,

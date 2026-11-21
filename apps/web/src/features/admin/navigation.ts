@@ -23,6 +23,7 @@ export const adminNavigation = [
     items: [
       { label: 'Utilisateurs', href: '/admin/users', icon: 'users' },
       { label: 'Paramètres', href: '/admin/settings', icon: 'settings' },
+      { label: 'Intégrations', href: '/admin/settings/integrations', icon: 'settings' },
     ],
   },
 ];

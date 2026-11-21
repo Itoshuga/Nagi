@@ -84,7 +84,7 @@ export async function GET(
         .maybeSingle();
       if (activity.error) throw activity.error;
       if (!activity.data) return new Response(null, { status: 404, headers });
-      activityEntry = activity.data.entry_id;
+      activityEntry = activity.data.entry_id ?? undefined;
     }
     async function search(entries: string[]) {
       const result = await searchTripPlaces(
@@ -104,7 +104,7 @@ export async function GET(
     if (v.day) items = items.eq('trip_day_id', v.day);
     const context = await items.order('sort_order').limit(40).abortSignal(signal);
     if (context.error) throw context.error;
-    return await search(context.data.map((r) => r.entry_id));
+    return await search(context.data.map((r) => r.entry_id).filter((id): id is string => !!id));
   } catch {
     return Response.json(
       { error: 'Le catalogue est momentanément indisponible.' },

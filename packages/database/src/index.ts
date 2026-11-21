@@ -8,3 +8,4 @@ export * from './profiles';
 export * from './trip-catalog';
 export * from './calendar-colors';
 export * from './trip-sync';
+export * from './trip-places';

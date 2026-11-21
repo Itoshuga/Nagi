@@ -85,7 +85,7 @@ beforeAll(async () => {
         "select to_jsonb(t) as value from public.relation_types t where slug='archive-link'",
       );
     }
-    await db.exec(await readFile(new URL(file, directory), 'utf8'));
+    await db.exec((await readFile(new URL(file, directory), 'utf8')).replaceAll('\r\n', '\n'));
     if (graphMigration) {
       legacyRelationsAfter = await scalar(
         "select jsonb_agg(to_jsonb(r)-'created_by' order by id) as value from public.entry_relations r",
@@ -1077,6 +1077,216 @@ describe('Collaborative planner transactions', () => {
       }),
     );
   }
+  const freePlace = {
+    source: 'custom',
+    title: 'Temps libre',
+    location: 'Rendez-vous devant le logement',
+    latitude: null,
+    longitude: null,
+  };
+  const externalAdd = (
+    id = firstItem,
+    place: Record<string, unknown> = freePlace,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id,
+    place,
+    day: null,
+    before: null,
+    duration: 30,
+    notes: 'Notes du groupe',
+    color: '#739FD0',
+    ...extra,
+  });
+  it('creates custom visits without any catalog destination and retains idempotency after deletion', async () => {
+    await asUser();
+    const add = externalAdd();
+    expect(await scalar<number>(operation(0, 'add_place', add))).toBe(1);
+    expect(
+      await scalar(
+        `select jsonb_build_object('source',source,'entry',entry_id,'title',custom_title,'notes',notes,'color',calendar_color) as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toEqual({
+      source: 'custom',
+      entry: null,
+      title: 'Temps libre',
+      notes: 'Notes du groupe',
+      color: '#739FD0',
+    });
+    expect(await scalar<number>(operation(0, 'add_place', add))).toBe(1);
+    expect(await scalar<number>(`select count(*)::integer as value from public.entries`)).toBe(0);
+    await scalar(operation(1, 'delete_item', { id: firstItem }));
+    expect(await scalar<number>(operation(0, 'add_place', add))).toBe(2);
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(0);
+  });
+  it('accepts only recently verified Google IDs, never imports catalog data and allows independent repeated visits', async () => {
+    await asUser();
+    const place = { source: 'google', placeId: 'google-place-example' };
+    await fails(operation(0, 'add_place', externalAdd(firstItem, place)), /trip_google_unverified/);
+    await fails(
+      `select public.google_place_reference('google-place-example',true,null)`,
+      /permission denied/,
+    );
+    await asService();
+    await db.exec(`select public.google_place_reference('google-place-example',true,null)`);
+    await asUser();
+    await scalar(operation(0, 'add_place', externalAdd(firstItem, place)));
+    await scalar(operation(1, 'add_place', externalAdd(secondItem, place)));
+    expect(
+      await scalar<number>(
+        `select count(*)::integer as value from public.trip_items where google_place_id='google-place-example'`,
+      ),
+    ).toBe(2);
+    expect(await scalar<number>(`select count(*)::integer as value from public.entries`)).toBe(0);
+    expect(await scalar<number>(`select count(*)::integer as value from public.countries`)).toBe(0);
+    await db.exec(
+      `reset role; update private.google_place_references set verified_at=now()-interval '2 days'`,
+    );
+    await asUser();
+    await fails(operation(2, 'add_place', externalAdd(stopThree, place)), /trip_google_unverified/);
+  });
+  it('preserves all custom source metadata through nesting, transfer and detachment', async () => {
+    await asUser();
+    await scalar(operation(0, 'add_place', externalAdd()));
+    await scalar(
+      operation(
+        1,
+        'add_place',
+        externalAdd(secondItem, { ...freePlace, title: 'Centre commercial' }),
+      ),
+    );
+    await scalar(operation(2, 'nest_item', { id: firstItem, parent: secondItem }));
+    expect(
+      await scalar(
+        `select jsonb_build_object('source',source,'title',custom_title,'location',custom_location,'notes',notes,'color',calendar_color) as value from public.trip_item_stops where id='${firstItem}'`,
+      ),
+    ).toEqual({
+      source: 'custom',
+      title: 'Temps libre',
+      location: 'Rendez-vous devant le logement',
+      notes: 'Notes du groupe',
+      color: '#739FD0',
+    });
+    await scalar(
+      operation(3, 'relocate_stop', { kind: 'activity', id: firstItem, day: null, before: null }),
+    );
+    expect(
+      await scalar(`select source::text as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('custom');
+    expect(
+      await scalar(`select custom_title as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('Temps libre');
+    expect(
+      await scalar(`select notes as value from public.trip_items where id='${firstItem}'`),
+    ).toBe('Notes du groupe');
+  });
+  it('enforces coherent source combinations even for privileged writes', async () => {
+    await asService();
+    await fails(
+      `insert into public.trip_items(trip_id,source) values('${tripA}','google')`,
+      /trip_items_place_source/,
+    );
+    await fails(
+      `insert into public.trip_items(trip_id,source) values('${tripA}','custom')`,
+      /trip_items_place_source/,
+    );
+    await fails(
+      `insert into public.trip_items(trip_id,source,custom_title,custom_latitude) values('${tripA}','custom','Pause',35)`,
+      /trip_items_place_source/,
+    );
+    await fails(
+      `insert into public.trip_items(trip_id,source,custom_title,google_place_id) values('${tripA}','custom','Pause','google-place-example')`,
+      /trip_items_place_source/,
+    );
+  });
+  it('stores full long Google IDs without btree-size failures or truncation', async () => {
+    const longId = Array.from({ length: 128 }, () => crypto.randomUUID().replaceAll('-', '')).join(
+      '',
+    );
+    await asService();
+    await db.exec(`select public.google_place_reference('${longId}',true,null)`);
+    await asUser();
+    await scalar(
+      operation(0, 'add_place', externalAdd(firstItem, { source: 'google', placeId: longId })),
+    );
+    expect(
+      await scalar(
+        `select google_place_id as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(longId);
+  });
+  it('meters native autocomplete and thematic search separately without exposing private counters', async () => {
+    await asService();
+    await db.exec(
+      `select public.reserve_google_places('${userId}','autocomplete',150,2000,20);select public.reserve_google_places('${userId}','text_search',150,2000,20);`,
+    );
+    await asUser(adminId);
+    const state = await scalar<{ today: Record<string, number> }>(
+      `select public.google_places_admin(null) as value`,
+    );
+    expect(state.today.autocomplete).toBe(1);
+    expect(state.today.text_search).toBe(1);
+    expect(state.today.ui_search).toBeUndefined();
+  });
+  it('keeps replacement separate from planning data and emits source-only journal changes without null catalog IDs', async () => {
+    await asUser();
+    await scalar(operation(0, 'add_place', externalAdd()));
+    await scalar(
+      operation(1, 'replace_place', {
+        id: firstItem,
+        place: { ...freePlace, title: 'Retrouver des amis' },
+      }),
+    );
+    expect(
+      await scalar(
+        `select jsonb_build_object('notes',notes,'duration',estimated_duration_minutes,'color',calendar_color,'title',custom_title) as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toEqual({
+      notes: 'Notes du groupe',
+      duration: 30,
+      color: '#739FD0',
+      title: 'Retrouver des amis',
+    });
+    const batch = await scalar<{ events: { entry_ids: unknown[] }[] }>(
+      `select public.read_trip_changes('${guildA}','${tripA}',0) as value`,
+    );
+    expect(batch.events.every((event) => event.entry_ids.length === 0)).toBe(true);
+    await asUser(adminId);
+    await fails(
+      operation(2, 'replace_place', { id: firstItem, place: freePlace }),
+      /trip_forbidden/,
+    );
+  });
+  it('requires server privileges for Google budgets and records atomic rate limits and admin switches', async () => {
+    await asUser();
+    await fails(
+      `select public.reserve_google_places('${userId}','verify',2,10,2)`,
+      /permission denied/,
+    );
+    await fails(`select public.google_places_admin(false)`, /forbidden/);
+    await asService();
+    await db.exec(`select public.reserve_google_places('${userId}','verify',2,10,2)`);
+    await db.exec(`select public.reserve_google_places('${userId}','ui_search',2,10,2)`);
+    await fails(
+      `select public.reserve_google_places('${userId}','coordinates',2,10,2)`,
+      /google_quota/,
+    );
+    await asUser(adminId);
+    const stats = await scalar<{ today: Record<string, number> }>(
+      `select public.google_places_admin(null) as value`,
+    );
+    expect(stats.today).toEqual({ verify: 1, ui_search: 1 });
+    await scalar(`select public.google_places_admin(false) as value`);
+    await asService();
+    await fails(
+      `select public.reserve_google_places('${userId}','verify',20,100,20)`,
+      /google_disabled/,
+    );
+  });
 
   const queued = (
     id: number,

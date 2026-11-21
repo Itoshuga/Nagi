@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { placeSourceDefaults } from '../packages/shared/src/trip-places';
 import {
   isOutsideTrip,
   overlappingTripItems,
@@ -128,6 +129,7 @@ describe('Trip planner model', () => {
 
   it('moves a step optimistically without mutating the saved projection', () => {
     const item = (id: string, day: string | null): TripPlanItem => ({
+      ...placeSourceDefaults,
       id,
       trip_id: 'trip',
       trip_day_id: day,

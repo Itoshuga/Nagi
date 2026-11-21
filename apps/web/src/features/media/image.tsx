@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { Image as ImageIcon } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import { isPrivateImage, privateImageLoader } from './private-loader';
+import { imageSourceUrl } from '@nagi/shared';
 
 export function EntryImage({
   src,
@@ -20,6 +21,7 @@ export function EntryImage({
   eager?: boolean;
   fit?: 'cover' | 'contain';
 }) {
+  src = imageSourceUrl(src);
   return (
     <div
       className={cn(
@@ -29,6 +31,7 @@ export function EntryImage({
     >
       {src ? (
         <Image
+          draggable={false}
           src={src}
           alt={alt}
           fill

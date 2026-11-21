@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { placeSourceDefaults } from '../packages/shared/src/trip-places';
 import type {
   EntryCardRow,
   TripPlan,
@@ -26,6 +27,7 @@ const viewer = uuid(1),
   trip = uuid(2),
   day = uuid(3);
 const item = (n: number): TripPlanItem => ({
+  ...placeSourceDefaults,
   id: uuid(n),
   trip_id: trip,
   trip_day_id: day,
@@ -81,6 +83,101 @@ function fixture(count = 3): TripPlan {
   };
 }
 const empty = () => ({ upsert: [], patch: [], remove: [] });
+describe('Universal source occurrences', () => {
+  it('creates independent Google visits with no copied provider names and preserves references through nesting', () => {
+    let plan = fixture(1);
+    const add = (id: string) => ({
+      operation: 'add_place' as const,
+      data: {
+        id,
+        place: { source: 'google' as const, placeId: 'google-place-example' },
+        day,
+        before: null,
+        start_time: '12:00',
+        duration: 30,
+        notes: 'Notre note',
+        color: '#739FD0',
+      },
+    });
+    plan = optimisticTripChange(plan, add(uuid(80)), viewer);
+    plan = optimisticTripChange(plan, add(uuid(81)), viewer);
+    expect(plan.items.slice(1).map((i) => i.id)).toEqual([uuid(80), uuid(81)]);
+    expect(
+      plan.items
+        .slice(1)
+        .every(
+          (i) =>
+            i.entry_id === null &&
+            i.google_place_id === 'google-place-example' &&
+            i.entry?.title === 'Lieu Google Maps',
+        ),
+    ).toBe(true);
+    plan = optimisticTripChange(
+      plan,
+      { operation: 'nest_item', data: { id: uuid(80), parent: plan.items[0]!.id } },
+      viewer,
+    );
+    expect(plan.items[0]!.stops[0]).toMatchObject({
+      id: uuid(80),
+      source: 'google',
+      google_place_id: 'google-place-example',
+      notes: 'Notre note',
+      calendar_color: '#739FD0',
+    });
+  });
+  it('updates shared presentation when only the custom title or location changes in a delta', () => {
+    const added = optimisticTripChange(
+      fixture(0),
+      {
+        operation: 'add_place',
+        data: {
+          id: uuid(80),
+          place: {
+            source: 'custom',
+            title: 'Pause',
+            location: 'Entrée',
+            latitude: null,
+            longitude: null,
+          },
+          day,
+          before: null,
+          start_time: null,
+          duration: 30,
+          notes: 'Notre note',
+          color: null,
+        },
+      },
+      viewer,
+    );
+    const plan = applyTripEvent(
+      added,
+      {
+        event_id: uuid(91),
+        previous_version: 0,
+        trip_id: trip,
+        version: 1,
+        mutation_id: uuid(90),
+        entry_ids: [],
+        changes: {
+          trip: {},
+          items: {
+            ...empty(),
+            patch: [{ id: uuid(80), custom_title: 'Pause café', custom_location: 'Étage 2' }],
+          },
+          stops: empty(),
+          days: empty(),
+        },
+      },
+      { entries: [], connections: [], people: [] },
+    );
+    expect(plan.items[0]).toMatchObject({
+      source: 'custom',
+      custom_title: 'Pause café',
+      notes: 'Notre note',
+      entry: { title: 'Pause café', summary: 'Étage 2' },
+    });
+  });
+});
 const color = (id: string, value: string) => ({
   operation: 'color_item' as const,
   data: { id, item_version: 0, color: value },

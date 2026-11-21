@@ -20,7 +20,7 @@ import {
 } from './planner-model';
 import { QuickStepEditor } from './step-editor';
 import { TripItinerary } from './itinerary';
-import { CalendarEvent, CalendarEventCopy } from './calendar-event';
+import { CalendarEvent, CalendarEventCopy, CalendarPlaceTitle } from './calendar-event';
 import { useCalendarColors } from './calendar-colors';
 import { useDragPointer } from './drag-pointer';
 import {
@@ -276,8 +276,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                       calendarEventColor(item.calendar_color, item.entry?.category?.color),
                     )}
                   >
-                    {formatTripTime(item.start_time) ?? '—'}{' '}
-                    {item.entry?.title ?? 'Fiche indisponible'}
+                    {formatTripTime(item.start_time) ?? '—'} <CalendarPlaceTitle item={item} />
                   </em>
                 ))}
             </CalendarDayTarget>
@@ -347,7 +346,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                             }
                           }}
                         >
-                          {item.entry?.title ?? 'Fiche indisponible'}
+                          <CalendarPlaceTitle item={item} />
                         </button>
                       ))}
                   </CalendarDayTarget>
@@ -489,7 +488,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                         }}
                       >
                         <div className="trip-calendar-event-copy">
-                          <CalendarEventCopy item={dragged} schedule={current} />
+                          <CalendarEventCopy item={dragged} schedule={current} unconstrained />
                         </div>
                         <span className="trip-calendar-drag-time" role="status">
                           {calendarScheduleLabel(current)}
@@ -519,7 +518,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     <span>{formatTripTime(item.start_time) ?? 'Libre'}</span>
                   )}
                   <button type="button" onClick={() => props.onDetails(item)}>
-                    <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>
+                    <CalendarPlaceTitle item={item} />
                     <small>
                       {item.entry?.category?.name}
                       {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}

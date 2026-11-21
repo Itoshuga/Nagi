@@ -16,11 +16,25 @@ import {
   groupTripMapPoints,
 } from './planner-model';
 import { tripTileProvider } from './map-config';
+import {
+  GooglePlaceView,
+  useExternalPlaces,
+} from '@/features/integrations/google-places/components';
+import {
+  googleClientRequest,
+  watchGoogleCoordinateExpiry,
+} from '@/features/integrations/google-places/client';
 
 export default function TripMap(
   props: WorkspaceViewProps & { onPreview: (entry: EntryCardRow) => void; add: PlaceAdder },
 ) {
   const { plan, selectedDay, selectedItem, onDetails, canEdit, add } = props;
+  const external = useExternalPlaces();
+  const [googlePoints, setGooglePoints] = useState<
+    Record<string, { latitude: number; longitude: number; expiresAt: number }>
+  >({});
+  const [googleError, setGoogleError] = useState(''),
+    [googleRetry, setGoogleRetry] = useState(0);
   const node = useRef<HTMLDivElement>(null),
     map = useRef<LeafletMap>(null),
     markers = useRef<LayerGroup>(null),
@@ -50,7 +64,72 @@ export default function TripMap(
     [plan.items, plan.days, selectedDay],
   );
   const visits = useMemo(() => tripMapVisits(visible), [visible]);
-  const { located, missing } = useMemo(() => tripPoints(visits, 'all'), [visits]);
+  const googleIds = JSON.stringify(
+    [
+      ...new Set(
+        visits.map((v) => (v.stop ?? v.parent).google_place_id).filter((id): id is string => !!id),
+      ),
+    ].sort(),
+  );
+  useEffect(() => {
+    if (!external) return;
+    const ids = JSON.parse(googleIds) as string[];
+    if (!ids.length) return;
+    let cancelled = false;
+    let stopExpiry: (() => void) | undefined;
+    const resolve = async () => {
+      try {
+        for (const [id, point] of external.coordinates)
+          if (point.expiresAt <= Date.now()) external.coordinates.delete(id);
+        const missing = ids.filter((id) => !external.coordinates.has(id));
+        for (let index = 0; index < missing.length; index += 30) {
+          const data = (await googleClientRequest(external.url, {
+            operation: 'coordinates',
+            ids: missing.slice(index, index + 30),
+          })) as {
+            points: Record<
+              string,
+              { latitude: number; longitude: number; expiresAt: number } | null
+            >;
+          };
+          for (const [id, point] of Object.entries(data.points))
+            if (point) external.coordinates.set(id, point);
+        }
+        if (cancelled) return;
+        setGooglePoints(Object.fromEntries(external.coordinates));
+        setGoogleError('');
+        stopExpiry = watchGoogleCoordinateExpiry(external.coordinates, () => {
+          setGooglePoints(Object.fromEntries(external.coordinates));
+          setGoogleError('Actualisez les lieux Google Maps pour les localiser à nouveau.');
+        });
+      } catch (error) {
+        if (!cancelled)
+          setGoogleError(
+            error instanceof Error ? error.message : 'Les lieux Google Maps sont indisponibles.',
+          );
+      }
+    };
+    void resolve();
+    return () => {
+      cancelled = true;
+      stopExpiry?.();
+    };
+  }, [external, googleIds, googleRetry]);
+  const locatedVisits = useMemo(
+    () =>
+      visits.map((visit) => {
+        const id = (visit.stop ?? visit.parent).google_place_id,
+          point = id ? googlePoints[id] : undefined;
+        return point && visit.entry
+          ? {
+              ...visit,
+              entry: { ...visit.entry, latitude: point.latitude, longitude: point.longitude },
+            }
+          : visit;
+      }),
+    [visits, googlePoints],
+  );
+  const { located, missing } = useMemo(() => tripPoints(locatedVisits, 'all'), [locatedVisits]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
     return located.map((p, i) => ({
@@ -173,9 +252,10 @@ export default function TripMap(
       const longitudes = tripMapLongitudes(fallback.map((p) => p.longitude));
       fallback.forEach((p, i) => b.extend([p.latitude, longitudes[i]!]));
     }
-    if (b.isValid() && fitted.current !== selectedDay) {
+    const fitKey = `${selectedDay}:${points.map((p) => `${p.item.parent.id}:${p.latitude}:${p.longitude}`).join('|')}`;
+    if (b.isValid() && fitted.current !== fitKey) {
       instance.fitBounds(b, { padding: [50, 50], maxZoom: 15, animate: false });
-      fitted.current = selectedDay;
+      fitted.current = fitKey;
     }
     const chosen = points.find((p) => p.item.parent.id === selectedItem);
     if (chosen)
@@ -264,6 +344,16 @@ export default function TripMap(
   return (
     <div className="trip-map-workspace">
       <div className="trip-map-toolbar">
+        {googleError && (
+          <button
+            type="button"
+            className="trip-explore-button"
+            onClick={() => setGoogleRetry((v) => v + 1)}
+            title={googleError}
+          >
+            Actualiser les lieux Google Maps
+          </button>
+        )}
         <button
           type="button"
           className="trip-icon-button"
@@ -312,7 +402,16 @@ export default function TripMap(
                   >
                     <span>{number}</span>
                     <div>
-                      <strong>{item.entry?.title}</strong>
+                      {(item.stop ?? item.parent).source === 'google' &&
+                      (item.stop ?? item.parent).google_place_id ? (
+                        <GooglePlaceView
+                          occurrence={item.id}
+                          placeId={(item.stop ?? item.parent).google_place_id!}
+                          appearance="thumbnail"
+                        />
+                      ) : (
+                        <strong>{item.entry?.title}</strong>
+                      )}
                       <small>
                         {[
                           item.stop

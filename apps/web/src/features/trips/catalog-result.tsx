@@ -4,9 +4,11 @@ import { useDraggable } from '@dnd-kit/core';
 import { MoreHorizontal } from 'lucide-react';
 import { Button, Input, Popover, PopoverContent, PopoverTrigger, cn } from '@nagi/ui';
 import type { TripPlan } from '@nagi/database';
+import type { TripPlaceReference } from '@nagi/shared';
 import { CatalogSelect } from '@/features/catalog/admin-form';
 import { dayLabel } from './add-place-dialog';
 import type { CatalogEntry, CatalogPlacement } from './catalog-drag';
+import { GooglePlaceView } from '@/features/integrations/google-places/components';
 
 export function CatalogResult({
   entry,
@@ -20,6 +22,8 @@ export function CatalogResult({
   onActive,
   insert,
   children,
+  reference,
+  onCommit,
 }: {
   entry: CatalogEntry;
   plan: TripPlan;
@@ -32,18 +36,32 @@ export function CatalogResult({
   onActive: () => void;
   insert: (placement: CatalogPlacement) => Promise<void>;
   children: ReactNode;
+  reference?: TripPlaceReference;
+  onCommit?: () => void;
 }) {
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: `catalog:${id}`,
-    data: { type: 'catalog-entry', provider: 'nagi', entry, defaultDuration },
+    data: {
+      type: 'catalog-entry',
+      provider: reference?.source ?? 'nagi',
+      entry,
+      reference,
+      onCommit,
+      defaultDuration,
+    },
     disabled: !draggable || !canAdd,
   });
   const [open, setOpen] = useState(false);
   const [destination, setDestination] = useState(initialDay ?? '');
   const [time, setTime] = useState('');
-  const action = (target: EventTarget | null) =>
-    target instanceof Element &&
-    target.closest('.trip-catalog-action,[role="dialog"],input,select');
+  const action = (event: React.MouseEvent | React.TouchEvent) =>
+    event.nativeEvent
+      .composedPath()
+      .some(
+        (node) =>
+          node instanceof Element &&
+          node.matches('.trip-catalog-action,[role="dialog"],input,select,a'),
+      );
   return (
     <li
       ref={setNodeRef}
@@ -55,10 +73,10 @@ export function CatalogResult({
       className={cn(draggable && canAdd && 'trip-catalog-draggable', isDragging && 'is-copying')}
       onMouseMove={onActive}
       onMouseDown={(e) => {
-        if (!action(e.target)) listeners?.onMouseDown?.(e);
+        if (!action(e)) listeners?.onMouseDown?.(e);
       }}
       onTouchStart={(e) => {
-        if (!action(e.target)) listeners?.onTouchStart?.(e);
+        if (!action(e)) listeners?.onTouchStart?.(e);
       }}
       onDragStartCapture={(e) => e.preventDefault()}
       onContextMenu={(e) => {
@@ -99,6 +117,7 @@ export function CatalogResult({
                     ? plan.items.find((i) => i.id === destination.slice(5))
                     : undefined;
                   if (destination.startsWith('stop:') && !parent) return;
+                  onCommit?.();
                   await insert({
                     day: parent ? parent.trip_day_id : destination || null,
                     parent: parent?.id,
@@ -109,7 +128,15 @@ export function CatalogResult({
               >
                 <div className="trip-catalog-destination-heading">
                   <strong>Ajouter au voyage</strong>
-                  <span>{entry.title}</span>
+                  {reference?.source === 'google' ? (
+                    <GooglePlaceView
+                      placeId={reference.placeId}
+                      occurrence={`add:${id}`}
+                      appearance="label"
+                    />
+                  ) : (
+                    <span>{entry.title}</span>
+                  )}
                 </div>
                 <label>
                   Destination
@@ -126,10 +153,12 @@ export function CatalogResult({
                     ))}
                     {plan.stopsAvailable !== false && plan.items.length > 0 && (
                       <optgroup label="Arrêt dans une activité">
-                        {plan.items.map((item) => (
+                        {plan.items.map((item, index) => (
                           <option key={item.id} value={`stop:${item.id}`}>
-                            {item.entry?.title ?? 'Activité'} ·{' '}
-                            {item.start_time?.slice(0, 5) ?? 'Libre'} ·{' '}
+                            {item.source === 'google'
+                              ? `Étape ${index + 1}`
+                              : (item.entry?.title ?? 'Activité')}{' '}
+                            · {item.start_time?.slice(0, 5) ?? 'Libre'} ·{' '}
                             {item.trip_day_id
                               ? dayLabel(
                                   plan.days.find((d) => d.id === item.trip_day_id)!,

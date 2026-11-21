@@ -1,4 +1,9 @@
 'use client';
+
+import {
+  GooglePlaceView,
+  useExternalPlaces,
+} from '@/features/integrations/google-places/components';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
@@ -37,6 +42,7 @@ import { UserIdentity } from '@/features/profiles/identity';
 import { TripDaySelect } from './add-place-dialog';
 import { ActivityStops } from './activity-stops';
 import { CalendarColorAction } from './calendar-colors';
+import { CustomPlaceEditor } from './source-places';
 import {
   itemDuration,
   minuteTime,
@@ -185,6 +191,14 @@ export function QuickStepEditor({
   );
 }
 
+function ReplaceExternalPlace({ id }: { id: string }) {
+  const external = useExternalPlaces();
+  return external?.replace ? (
+    <button type="button" className="trip-remove-link" onClick={() => external.replace?.(id)}>
+      Remplacer le lieu associé
+    </button>
+  ) : null;
+}
 export type PlaceDetailData = {
   entry: CatalogEntryDetail;
   fields: CategoryField[];
@@ -206,6 +220,8 @@ export function TripPlaceDetails({
   onAddStop,
   expandedStops,
   onToggleStops,
+  externalPlaceId,
+  addSource,
 }: {
   guild: string;
   plan: TripPlan;
@@ -222,7 +238,10 @@ export function TripPlaceDetails({
   onAddStop?: (parent: string) => void;
   expandedStops?: Readonly<Record<string, boolean>>;
   onToggleStops?: (parent: string) => void;
+  externalPlaceId?: string;
+  addSource?: import('./planner-model').SourcePlaceAdder;
 }) {
+  const googleId = externalPlaceId ?? (item?.source === 'google' ? item.google_place_id : null);
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -272,6 +291,8 @@ export function TripPlaceDetails({
   }
   useEffect(() => {
     const controller = new AbortController();
+    if (externalPlaceId || (item?.source && item.source !== 'nagi'))
+      return () => controller.abort();
     fetch(`/app/${guild}/trips/${plan.id}/places?mode=detail&entry=${entry.id}`, {
       signal: controller.signal,
       cache: 'no-store',
@@ -291,7 +312,7 @@ export function TripPlaceDetails({
           setLoadError('Les informations du lieu sont indisponibles.');
       });
     return () => controller.abort();
-  }, [guild, plan.id, entry.id, retry]);
+  }, [guild, plan.id, entry.id, retry, item?.source, externalPlaceId]);
   const person = plan.people.find((p) => p.id === item?.added_by);
   const custom = detail?.entry.custom_values;
   return (
@@ -308,20 +329,26 @@ export function TripPlaceDetails({
         <h2>Détails du lieu</h2>
       </div>
       <div className="trip-detail-content">
-        <EntryImage
-          src={entry.cover_image_url}
-          className="trip-detail-photo"
-          sizes="(max-width: 639px) 100vw, 380px"
-        />
-        <div>
-          <p className="trip-detail-category">{entry.category?.name}</p>
-          <h3>{entry.title}</h3>
-          <p className="trip-detail-location">
-            {[entry.neighborhood?.name, entry.city?.name, entry.country?.name]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-        </div>
+        {googleId ? (
+          <GooglePlaceView occurrence={item?.id ?? `preview:${googleId}`} placeId={googleId} full />
+        ) : (
+          <EntryImage
+            src={entry.cover_image_url}
+            className="trip-detail-photo"
+            sizes="(max-width: 639px) 100vw, 380px"
+          />
+        )}
+        {!googleId && (
+          <div>
+            <p className="trip-detail-category">{entry.category?.name}</p>
+            <h3>{entry.title}</h3>
+            <p className="trip-detail-location">
+              {[entry.neighborhood?.name, entry.city?.name, entry.country?.name]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
+        )}
         {canEdit && item && (
           <QuickStepEditor item={item} plan={plan} busy={busy} mutate={mutate}>
             <button type="button" className="trip-detail-schedule">
@@ -341,6 +368,11 @@ export function TripPlaceDetails({
           </p>
         )}
         {canEdit && item && <CalendarColorAction item={item} />}
+        {item?.source === 'custom' && item.custom_location && (
+          <p className="trip-detail-location">{item.custom_location}</p>
+        )}
+        {canEdit && item && item.source !== 'nagi' && <ReplaceExternalPlace id={item.id} />}
+        {canEdit && item?.source === 'custom' && <CustomPlaceEditor place={item} mutate={mutate} />}
         {parentId && (
           <p className="trip-stop-help">Ajout dans {parent?.entry?.title ?? 'cette activité'}.</p>
         )}
@@ -544,6 +576,22 @@ export function TripPlaceDetails({
               : parentId
                 ? 'Ajouter un arrêt'
                 : 'Ajouter une étape'}
+          </Button>
+        )}
+        {!item && canEdit && externalPlaceId && addSource && (
+          <Button
+            onClick={async () => {
+              const result = await addSource(
+                { source: 'google', placeId: externalPlaceId },
+                { day: targetDay, parent: parentId },
+              );
+              if (result.ok) {
+                setAdded(true);
+                setError('');
+              } else setError(result.error);
+            }}
+          >
+            {added ? 'Ajouter une autre visite' : 'Ajouter une étape'}
           </Button>
         )}
         {added && (

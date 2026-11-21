@@ -308,7 +308,7 @@ export async function tripRelatedPlaces(guild: string, trip: string, item: strin
     .eq('id', item)
     .maybeSingle();
   if (result.error) throw result.error;
-  if (!result.data) return [];
+  if (!result.data?.entry_id) return [];
   const catalog = publicCatalogDatabase();
   const entry = await findCatalogEntry(catalog, result.data.entry_id);
   return entry ? listEntryRelations(catalog, entry.id) : [];
