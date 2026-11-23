@@ -48,8 +48,8 @@ import {
   cn,
 } from '@nagi/ui';
 import type { EntryCardRow, TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
-import { tripSourceEntry } from '@nagi/database/trip-places';
-import { tripPlaceReferenceSchema, type TripEdit } from '@nagi/shared';
+import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
+import { tripPlaceReferenceSchema, type TripEdit, type CatalogPlace } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import { UserIdentity } from '@/features/profiles/identity';
 import { archivePlannedTrip, removeTrip } from './actions';
@@ -58,7 +58,7 @@ import { TripDragOverlay } from './drag-overlay';
 import { TripDayEditor } from './plan-dialogs';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
-import { ExternalPlacesProvider } from '@/features/integrations/google-places/components';
+import { ExternalPlacesProvider } from '@/features/integrations/mapbox/components';
 import { CalendarColorsProvider } from './calendar-colors';
 import { useTripMutations } from './use-trip-mutations';
 import { TripSaveStatus } from './save-status';
@@ -214,18 +214,10 @@ export function TripWorkbench({
   const [selectedId, setSelectedId] = useState(initialItem),
     [preview, setPreview] = useState<EntryCardRow>();
   const [previewParent, setPreviewParent] = useState<string>();
-  const [previewGoogle, setPreviewGoogle] = useState<string>();
-  const previewGooglePlace = useCallback((placeId: string) => {
-    setPreview(
-      tripSourceEntry({
-        id: crypto.randomUUID(),
-        source: 'google',
-        entry_id: null,
-        google_place_id: placeId,
-        updated_at: '',
-      })!,
-    );
-    setPreviewGoogle(placeId);
+  const [previewMapbox, setPreviewMapbox] = useState<CatalogPlace>();
+  const previewMapboxPlace = useCallback((place: CatalogPlace) => {
+    setPreview(catalogPlaceEntry(place));
+    setPreviewMapbox(place);
     setSelectedId(undefined);
     setPreviewParent(undefined);
     setPicker(null);
@@ -248,7 +240,6 @@ export function TripWorkbench({
     [localError, setLocalError] = useState('');
   const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
   const [draggedEntry, setDraggedEntry] = useState<CatalogEntry>();
-  const [draggedGoogle, setDraggedGoogle] = useState<string>();
   const dragPointer = useDragPointer(!!draggedEntry);
   const { state: sync, queue } = useTripMutations(
     guild,
@@ -369,7 +360,7 @@ export function TripWorkbench({
     setPicker({ day: targetDay, time });
   }
   function details(item: TripPlanItem) {
-    setPreviewGoogle(undefined);
+    setPreviewMapbox(undefined);
     setReplacement(undefined);
     lastTrigger.current = document.activeElement as HTMLElement;
     setSelectedId(item.id);
@@ -378,7 +369,7 @@ export function TripWorkbench({
     setPanel('detail');
   }
   function closePanel() {
-    setPreviewGoogle(undefined);
+    setPreviewMapbox(undefined);
     setReplacement(undefined);
     setPanel(null);
     setPreview(undefined);
@@ -418,7 +409,7 @@ export function TripWorkbench({
     setPicker({ day: item.trip_day_id, parent });
   }
   function previewEntry(entry: EntryCardRow, parent?: string) {
-    setPreviewGoogle(undefined);
+    setPreviewMapbox(undefined);
     setPicker(null);
     setPreview(entry);
     setPreviewParent(parent);
@@ -459,11 +450,6 @@ export function TripWorkbench({
       collisionDetection={tripCollision}
       autoScroll={{ threshold: { x: 0.12, y: 0.12 }, acceleration: 5 }}
       onDragStart={({ active }) => {
-        setDraggedGoogle(
-          isCatalogDrag(active.data.current) && active.data.current.reference?.source === 'google'
-            ? active.data.current.reference.placeId
-            : undefined,
-        );
         dragVersion.current = displayed.version;
         setDragged(
           active.data.current?.type === 'calendar-item'
@@ -473,12 +459,10 @@ export function TripWorkbench({
         setDraggedEntry(isCatalogDrag(active.data.current) ? active.data.current.entry : undefined);
       }}
       onDragCancel={() => {
-        setDraggedGoogle(undefined);
         setDragged(undefined);
         setDraggedEntry(undefined);
       }}
       onDragEnd={(event) => {
-        setDraggedGoogle(undefined);
         const { active, over } = event;
         setDragged(undefined);
         setDraggedEntry(undefined);
@@ -495,29 +479,38 @@ export function TripWorkbench({
             dragPointer.current,
           );
           if (!placement) return;
-          active.data.current.onCommit?.();
-          const reference = active.data.current.reference;
-          const resultPromise = reference
-            ? addSource(reference, placement)
-            : add(
-                active.data.current.entry,
-                placement.day,
-                placement.time,
-                undefined,
-                placement.parent,
-                placement,
-              );
-          void resultPromise.then((result) => {
-            if (!result.ok) setError(result.error);
-            else {
-              try {
-                localStorage.setItem(catalogHintKey, '1');
-              } catch {
-                /* Storage can be disabled. */
+          const source = active.data.current;
+          void (async () => {
+            try {
+              const resolved = await source.onCommit?.();
+              const reference = resolved ?? source.reference;
+              const result = reference
+                ? await addSource(reference, placement)
+                : await add(
+                    source.entry,
+                    placement.day,
+                    placement.time,
+                    undefined,
+                    placement.parent,
+                    placement,
+                  );
+              if (!result.ok) setError(result.error);
+              else {
+                try {
+                  localStorage.setItem(catalogHintKey, '1');
+                } catch {
+                  /* Optional preference. */
+                }
+                window.dispatchEvent(new Event('nagi:catalog-dropped'));
               }
-              window.dispatchEvent(new Event('nagi:catalog-dropped'));
+            } catch (error) {
+              setError(
+                error instanceof Error
+                  ? error.message
+                  : 'La localisation du lieu est indisponible.',
+              );
             }
-          });
+          })();
           return;
         }
         if (isCalendarDrop(over?.data.current)) return;
@@ -555,8 +548,9 @@ export function TripWorkbench({
       <ExternalPlacesProvider
         guild={guild}
         trip={plan.id}
+        plan={displayed}
         onReplace={replacePlace}
-        onPreview={previewGooglePlace}
+        onPreview={previewMapboxPlace}
       >
         <CalendarColorsProvider
           guild={guild}
@@ -935,7 +929,8 @@ export function TripWorkbench({
                       />
                     ) : detailEntry ? (
                       <TripPlaceDetails
-                        externalPlaceId={preview ? previewGoogle : undefined}
+                        externalPlaceId={preview ? previewMapbox?.id : undefined}
+                        externalQuery={preview ? previewMapbox?.query : undefined}
                         addSource={addSource}
                         key={currentItem?.id ?? detailEntry.id}
                         guild={guild}
@@ -1003,12 +998,7 @@ export function TripWorkbench({
               />
             )}
           </div>
-          <TripDragOverlay
-            item={dragged}
-            entry={draggedEntry}
-            googlePlaceId={draggedGoogle}
-            reduced={reduced}
-          />
+          <TripDragOverlay item={dragged} entry={draggedEntry} reduced={reduced} />
         </CalendarColorsProvider>
       </ExternalPlacesProvider>
     </DndContext>

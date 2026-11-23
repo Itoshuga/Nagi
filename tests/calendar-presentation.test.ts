@@ -6,16 +6,9 @@ import {
 
 describe('Calendar content budgets', () => {
   it('keeps short events readable and adds secondary details only when they fit', () => {
-    expect(calendarEventPresentation(14, 180, false)).toEqual({ time: false, details: false });
-    expect(calendarEventPresentation(44, 180, false)).toEqual({ time: true, details: false });
-    expect(calendarEventPresentation(100, 180, false)).toEqual({ time: true, details: true });
-  });
-  it('reserves room for official attribution before adding Google event metadata', () => {
-    expect(calendarEventPresentation(60, 170, true)).toEqual({ time: false, details: false });
-    expect(calendarEventPresentation(75, 170, true)).toEqual({ time: true, details: false });
-    expect(calendarEventPresentation(100, 170, true)).toEqual({ time: true, details: true });
-    // An overlapping, narrow event uses the compact popover anchor.
-    expect(calendarEventPresentation(44, 80, true)).toEqual({ time: true, details: false });
+    expect(calendarEventPresentation(14)).toEqual({ time: false, details: false });
+    expect(calendarEventPresentation(44)).toEqual({ time: true, details: false });
+    expect(calendarEventPresentation(100)).toEqual({ time: true, details: true });
   });
 });
 

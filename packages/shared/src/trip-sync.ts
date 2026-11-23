@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { uuidSchema } from './collaboration';
 import { calendarHexSchema } from './calendar-colors';
 import { tripEditSchema, tripStatuses, collaborationModes } from './trip-planner';
-import { placeSourceDefaults, googlePlaceIdSchema } from './trip-places';
+import { placeSourceDefaults, externalPlaceIdSchema } from './trip-places';
 
 const clock = z
   .string()
@@ -98,8 +98,10 @@ export type TripTransportChange = TripMutationRequest['change'];
 
 const timestamps = { created_at: z.string(), updated_at: z.string() };
 const sourceFields = {
-  source: z.enum(['nagi', 'google', 'custom']),
-  google_place_id: googlePlaceIdSchema.nullable(),
+  source: z.enum(['nagi', 'mapbox', 'custom']),
+  external_place_id: externalPlaceIdSchema.nullable(),
+  external_query: z.string().max(256).nullable().default(null),
+  needs_place_relink: z.boolean().default(false),
   custom_title: z.string().max(160).nullable(),
   custom_location: z.string().max(500).nullable(),
   custom_latitude: z.number().min(-90).max(90).nullable(),

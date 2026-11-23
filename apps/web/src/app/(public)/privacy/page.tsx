@@ -13,45 +13,40 @@ export default function PrivacyPage() {
         traitées pour fournir ce service. Les accès aux voyages sont limités aux membres autorisés
         de leur espace.
       </p>
-      <h2 className="text-lg font-semibold">Recherche de lieux Google Maps</h2>
+      <h2 className="text-lg font-semibold">Recherche et cartes Mapbox</h2>
       <p>
-        La recherche Google Maps est facultative. Quand vous l’utilisez, les composants officiels
-        Google reçoivent votre recherche et, si vous activez cette préférence, un contexte
-        géographique issu du voyage. Le navigateur communique directement avec Google, qui peut
-        recevoir notamment votre adresse IP et les informations techniques de connexion. Nagi ne
-        demande pas votre position réelle.
+        La recherche Mapbox est facultative. Votre recherche et, si vous activez cette préférence,
+        un contexte géographique du voyage sont transmis par le serveur Nagi à Mapbox. Les notes et
+        identifiants Discord ne lui sont pas transmis. Nagi ne demande pas votre position réelle. Le
+        navigateur charge directement les tuiles cartographiques Mapbox ; le fournisseur reçoit
+        alors votre adresse IP et les informations techniques nécessaires à cette connexion.
       </p>
       <p>
-        Nagi conserve les identifiants des lieux Google et vos informations de planification :
-        journées, horaires, durées, notes, couleurs et positions. Les réponses Google, noms,
-        adresses, avis et photographies ne sont pas importés dans le catalogue ni conservés dans le
-        stockage Nagi. Les coordonnées nécessaires à la carte sont traitées temporairement en
-        mémoire et expirent ; elles ne sont pas sauvegardées dans les tables de voyage.
+        Nagi conserve l’identifiant Mapbox, votre recherche saisie et vos données de planification :
+        journées, horaires, durées, notes, couleurs et positions dans le voyage. Les noms, adresses,
+        coordonnées et informations enrichies du fournisseur sont utilisés temporairement pour
+        l’affichage, sans import dans le catalogue ni stockage durable dans Nagi. Une référence
+        devenue indisponible peut être réassociée sans perdre votre planification.
       </p>
       <p>
-        Les notes du voyage et les identifiants Discord ne sont pas envoyés à Google. Le texte que
-        vous saisissez dans une recherche de lieu est transmis à Google pour répondre à cette
-        recherche. Vous pouvez continuer à utiliser le catalogue Nagi et les étapes personnalisées
-        sans utiliser Google Maps.
-      </p>
-      <p>
-        Le traitement réalisé par Google est décrit dans sa{' '}
+        Vous pouvez organiser un voyage avec le catalogue Nagi et les étapes personnalisées.
+        Consultez la{' '}
         <a
           className="text-primary-ink underline"
-          href="https://policies.google.com/privacy"
+          href="https://www.mapbox.com/legal/privacy"
           target="_blank"
           rel="noreferrer"
         >
-          politique de confidentialité
-        </a>
-        . L’utilisation de ces services est également soumise aux{' '}
+          politique de confidentialité Mapbox
+        </a>{' '}
+        et ses{' '}
         <a
           className="text-primary-ink underline"
-          href="https://maps.google.com/help/terms_maps/"
+          href="https://www.mapbox.com/legal/tos"
           target="_blank"
           rel="noreferrer"
         >
-          conditions Google Maps
+          conditions d’utilisation
         </a>
         .
       </p>

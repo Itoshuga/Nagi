@@ -1,16 +1,6 @@
 /** Presentation budgets are in CSS pixels; the scheduling scale stays unchanged. */
-export const calendarGoogleTitleHeight = 53;
-export const calendarGoogleTitleWidth = 160;
-
-export function calendarEventPresentation(height: number, width: number, google: boolean) {
-  const titleHeight =
-    google && height >= calendarGoogleTitleHeight && width >= calendarGoogleTitleWidth
-      ? calendarGoogleTitleHeight
-      : 16;
-  return {
-    time: height >= titleHeight + 18,
-    details: height >= titleHeight + 36,
-  };
+export function calendarEventPresentation(height: number) {
+  return { time: height >= 34, details: height >= 52 };
 }
 
 export function calendarLocalTime(now: Date, timezone: string) {

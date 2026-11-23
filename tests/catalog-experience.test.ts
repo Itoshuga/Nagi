@@ -37,9 +37,13 @@ const event = (target?: object, y = 112) =>
   }) as unknown as Parameters<typeof catalogPlacement>[2];
 
 describe('Reusable catalogue visit placement', () => {
-  it('creates Google calendar occurrences through the same clock placement and clips at midnight', () => {
-    const place = { source: 'google' as const, placeId: 'google-place-example' };
-    const drag: CatalogDragData = { ...source, provider: 'google', reference: place };
+  it('creates Mapbox calendar occurrences through the same clock placement and clips at midnight', () => {
+    const place = {
+      source: 'mapbox' as const,
+      placeId: 'mapbox-place-example',
+      query: 'My search',
+    };
+    const drag: CatalogDragData = { ...source, provider: 'mapbox', reference: place };
     const placement = catalogPlacement(
       plan,
       drag,
@@ -85,12 +89,16 @@ describe('Reusable catalogue visit placement', () => {
       ).success,
     ).toBe(false);
   });
-  it('retains long Google address references without truncating them', () => {
+  it('retains long Mapbox address references without truncating them', () => {
     const placeId = 'E'.repeat(4000),
-      change = sourceVisitChange({ source: 'google', placeId }, { day: null }, id(2));
+      change = sourceVisitChange(
+        { source: 'mapbox', placeId, query: 'My search' },
+        { day: null },
+        id(2),
+      );
     expect(change).toMatchObject({
       success: true,
-      data: { data: { place: { source: 'google', placeId } } },
+      data: { data: { place: { source: 'mapbox', placeId, query: 'My search' } } },
     });
   });
   it('snaps the actual pointer to 15 minutes, independently of the grabbed card position', () => {

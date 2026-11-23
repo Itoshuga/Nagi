@@ -347,7 +347,6 @@ export type Database = {
           custom_values: Json;
           cover_image_url: string | null;
           search_key: string | null;
-          google_place_id: string | null;
         };
         Insert: {
           id?: string;
@@ -369,7 +368,6 @@ export type Database = {
           custom_values?: Json;
           cover_image_url?: string | null;
           search_key?: string | null;
-          google_place_id?: string | null;
         };
         Update: {
           id?: string;
@@ -391,7 +389,6 @@ export type Database = {
           custom_values?: Json;
           cover_image_url?: string | null;
           search_key?: string | null;
-          google_place_id?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'entries_category_id_fkey'; columns: ["category_id"]; isOneToOne: false; referencedRelation: 'categories'; referencedColumns: ["id"]; },
@@ -740,11 +737,13 @@ export type Database = {
           updated_at: string;
           calendar_color: string | null;
           source: Database['public']['Enums']['trip_item_source'];
-          google_place_id: string | null;
+          external_place_id: string | null;
           custom_title: string | null;
           custom_location: string | null;
           custom_latitude: number | null;
           custom_longitude: number | null;
+          external_query: string | null;
+          needs_place_relink: boolean;
         };
         Insert: {
           id?: string;
@@ -759,11 +758,13 @@ export type Database = {
           updated_at?: string;
           calendar_color?: string | null;
           source?: Database['public']['Enums']['trip_item_source'];
-          google_place_id?: string | null;
+          external_place_id?: string | null;
           custom_title?: string | null;
           custom_location?: string | null;
           custom_latitude?: number | null;
           custom_longitude?: number | null;
+          external_query?: string | null;
+          needs_place_relink?: boolean;
         };
         Update: {
           id?: string;
@@ -778,11 +779,13 @@ export type Database = {
           updated_at?: string;
           calendar_color?: string | null;
           source?: Database['public']['Enums']['trip_item_source'];
-          google_place_id?: string | null;
+          external_place_id?: string | null;
           custom_title?: string | null;
           custom_location?: string | null;
           custom_latitude?: number | null;
           custom_longitude?: number | null;
+          external_query?: string | null;
+          needs_place_relink?: boolean;
         };
         Relationships: [
           { foreignKeyName: 'trip_item_stops_added_by_fkey'; columns: ["added_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
@@ -807,11 +810,13 @@ export type Database = {
           version: number;
           calendar_color: string | null;
           source: Database['public']['Enums']['trip_item_source'];
-          google_place_id: string | null;
+          external_place_id: string | null;
           custom_title: string | null;
           custom_location: string | null;
           custom_latitude: number | null;
           custom_longitude: number | null;
+          external_query: string | null;
+          needs_place_relink: boolean;
         };
         Insert: {
           id?: string;
@@ -829,11 +834,13 @@ export type Database = {
           version?: number;
           calendar_color?: string | null;
           source?: Database['public']['Enums']['trip_item_source'];
-          google_place_id?: string | null;
+          external_place_id?: string | null;
           custom_title?: string | null;
           custom_location?: string | null;
           custom_latitude?: number | null;
           custom_longitude?: number | null;
+          external_query?: string | null;
+          needs_place_relink?: boolean;
         };
         Update: {
           id?: string;
@@ -851,11 +858,13 @@ export type Database = {
           version?: number;
           calendar_color?: string | null;
           source?: Database['public']['Enums']['trip_item_source'];
-          google_place_id?: string | null;
+          external_place_id?: string | null;
           custom_title?: string | null;
           custom_location?: string | null;
           custom_latitude?: number | null;
           custom_longitude?: number | null;
+          external_query?: string | null;
+          needs_place_relink?: boolean;
         };
         Relationships: [
           { foreignKeyName: 'trip_items_added_by_fkey'; columns: ["added_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
@@ -1022,14 +1031,14 @@ export type Database = {
       enqueue_bot_sync: { Args: { p_application_id: string; p_scope: string; p_reason: string }; Returns: string; };
       finish_bot_sync: { Args: { p_id: string; p_token: string; p_success: boolean; p_error: string; p_commands: Json }; Returns: undefined; };
       finish_discord_refresh: { Args: { p_user_id: string; p_lease: string; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: boolean; };
-      google_place_reference: { Args: { p_id: string; p_available?: boolean | null; p_replacement?: string | null }; Returns: Json; };
-      google_places_admin: { Args: { p_enabled?: boolean | null }; Returns: Json; };
-      google_places_available: { Args: Record<PropertyKey, never>; Returns: boolean; };
-      google_places_error: { Args: { p_code: string }; Returns: undefined; };
       is_guild_admin: { Args: { p_guild_id: string }; Returns: boolean; };
       is_guild_member: { Args: { p_guild_id: string }; Returns: boolean; };
       is_nagi_admin: { Args: Record<PropertyKey, never>; Returns: boolean; };
       is_trip_organizer: { Args: { p_trip_id: string }; Returns: boolean; };
+      mapbox_admin: { Args: { p_enabled?: boolean | null }; Returns: Json; };
+      mapbox_available: { Args: Record<PropertyKey, never>; Returns: boolean; };
+      mapbox_error: { Args: { p_code: string }; Returns: undefined; };
+      mapbox_place_reference: { Args: { p_actor: string; p_id: string; p_query: string }; Returns: undefined; };
       mutate_trip_plan: { Args: { p_guild: string; p_trip: string; p_request: Json }; Returns: Json; };
       read_discord_credentials: { Args: { p_user_id: string }; Returns: Json; };
       read_discord_guild_snapshot: { Args: { p_user_id: string; p_application_id: string }; Returns: Json; };
@@ -1041,7 +1050,7 @@ export type Database = {
       release_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: undefined; };
       release_discord_refresh: { Args: { p_user_id: string; p_lease: string }; Returns: undefined; };
       renew_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string; p_connected: boolean }; Returns: boolean; };
-      reserve_google_places: { Args: { p_actor: string; p_kind: string; p_user_daily: number; p_global_daily: number; p_user_minute: number }; Returns: undefined; };
+      reserve_mapbox_places: { Args: { p_actor: string; p_kind: string; p_user_daily: number; p_global_daily: number; p_user_minute: number; p_details_monthly: number }; Returns: undefined; };
       resolve_social_profile: { Args: { p_handle: string }; Returns: Json; };
       revoke_discord_credentials: { Args: { p_user_id: string; p_version: number }; Returns: undefined; };
       save_discord_credentials: { Args: { p_user_id: string; p_discord_id: string; p_profile: Json; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: undefined; };
@@ -1058,7 +1067,7 @@ export type Database = {
       app_role: "user" | "admin" | "owner";
       catalog_field_type: "short_text" | "long_text" | "number" | "boolean" | "url" | "date" | "select" | "multi_select" | "buttons";
       trip_collaboration_mode: "all_members" | "organizers_only";
-      trip_item_source: "nagi" | "google" | "custom";
+      trip_item_source: "nagi" | "mapbox" | "custom";
       trip_status: "planned" | "ongoing" | "completed" | "cancelled" | "draft" | "archived";
     };
     CompositeTypes: { [_ in never]: never };

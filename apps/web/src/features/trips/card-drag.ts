@@ -11,12 +11,6 @@ export function useTripCardDrag(id: string, data: TripDragData, disabled: boolea
   const allowed = (event: MouseEvent | TouchEvent) => {
     if (event.defaultPrevented || !(event.target instanceof Element)) return false;
     if (
-      event.nativeEvent
-        .composedPath()
-        .some((node) => node instanceof Element && node.matches('gmp-place-link'))
-    )
-      return false;
-    if (
       event.target.closest(
         'input,textarea,select,a,[contenteditable="true"],[role="dialog"],[role="menu"],[role="menuitem"]',
       )

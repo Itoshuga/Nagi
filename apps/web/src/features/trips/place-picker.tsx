@@ -18,12 +18,12 @@ import { CatalogSelect } from '@/features/catalog/admin-form';
 import { tripPlaceOptions } from './actions';
 import { dayLabel, TripDaySelect } from './add-place-dialog';
 import type { PlaceAdder, PlanMutation, SourcePlaceAdder } from './planner-model';
-import { CustomStepDialog, GooglePlaceSearch } from './source-places';
+import { CustomStepDialog, MapboxPlaceSearch } from './source-places';
 import { CatalogPlaceCard } from './catalog-place-card';
 import {
-  defaultGoogleFilters,
-  googlePlaceTypes,
-} from '@/features/integrations/google-places/search-model';
+  defaultMapboxFilters,
+  mapboxPlaceTypes,
+} from '@/features/integrations/mapbox/search-model';
 import { CatalogResult } from './catalog-result';
 import {
   catalogDuration,
@@ -68,10 +68,10 @@ export function TripPlacePicker({
 }) {
   const [day, setDay] = useState(initialDay ?? ''),
     [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
-  const [source, setSource] = useState<'nagi' | 'google'>('nagi');
-  const [googleRequest, setGoogleRequest] = useState({ query: '', nonce: 0 });
-  const [googleFilters, setGoogleFilters] = useState(defaultGoogleFilters),
-    [googleBusy, setGoogleBusy] = useState(false);
+  const [source, setSource] = useState<'nagi' | 'mapbox'>('nagi');
+  const [mapboxRequest, setMapboxRequest] = useState({ query: '', nonce: 0 });
+  const [mapboxFilters, setMapboxFilters] = useState(defaultMapboxFilters),
+    [mapboxBusy, setMapboxBusy] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false),
     [category, setCategory] = useState('');
@@ -286,7 +286,7 @@ export function TripPlacePicker({
           role="combobox"
           aria-label="Rechercher un lieu"
           aria-expanded
-          aria-controls={source === 'google' ? `${id}-google-results` : `${id}-results`}
+          aria-controls={source === 'mapbox' ? `${id}-mapbox-results` : `${id}-results`}
           aria-activedescendant={source === 'nagi' && rows[active] ? `${id}-${active}` : undefined}
           value={query}
           maxLength={100}
@@ -299,15 +299,15 @@ export function TripPlacePicker({
             setActive(0);
           }}
           onKeyDown={(e) => {
-            if (source === 'google') {
+            if (source === 'mapbox') {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
-                const cards = document.querySelectorAll<HTMLElement>('[data-native-google-card]');
+                const cards = document.querySelectorAll<HTMLElement>('[data-external-place-card]');
                 cards[e.key === 'ArrowDown' ? 0 : cards.length - 1]?.focus();
               }
               if (e.key === 'Enter' && !e.repeat) {
                 e.preventDefault();
-                setGoogleRequest({ query: query.trim(), nonce: Date.now() });
+                setMapboxRequest({ query: query.trim(), nonce: Date.now() });
               }
               return;
             }
@@ -334,20 +334,20 @@ export function TripPlacePicker({
             }
           }}
         />
-        {source === 'google' && (
+        {source === 'mapbox' && (
           <button
             type="button"
             className="trip-icon-button"
-            aria-label="Rechercher sur Google Maps"
-            onClick={() => setGoogleRequest({ query: query.trim(), nonce: Date.now() })}
+            aria-label="Rechercher sur Mapbox"
+            onClick={() => setMapboxRequest({ query: query.trim(), nonce: Date.now() })}
           >
             <Search className="size-4" />
           </button>
         )}
-        {source === 'google' && googleBusy && (
+        {source === 'mapbox' && mapboxBusy && (
           <LoaderCircle
             className="size-4 animate-spin text-muted-foreground"
-            aria-label="Recherche Google en cours"
+            aria-label="Recherche Mapbox en cours"
           />
         )}
         <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -359,7 +359,7 @@ export function TripPlacePicker({
               data-active={
                 source === 'nagi'
                   ? Boolean(category || country || city || area)
-                  : Boolean(googleFilters.type || !googleFilters.destination)
+                  : Boolean(mapboxFilters.type || !mapboxFilters.destination)
               }
             >
               <SlidersHorizontal className="size-4" />
@@ -374,28 +374,28 @@ export function TripPlacePicker({
               setFiltersOpen(false);
             }}
           >
-            {source === 'google' ? (
+            {source === 'mapbox' ? (
               <>
                 <label className="grid gap-1 text-xs font-semibold">
                   Type de lieu
                   <CatalogSelect
-                    value={googleFilters.type}
-                    onChange={(e) => setGoogleFilters((f) => ({ ...f, type: e.target.value }))}
+                    value={mapboxFilters.type}
+                    onChange={(e) => setMapboxFilters((f) => ({ ...f, type: e.target.value }))}
                   >
                     <option value="">Tous les types</option>
-                    {googlePlaceTypes.map(([value, label]) => (
+                    {mapboxPlaceTypes.map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
                       </option>
                     ))}
                   </CatalogSelect>
                 </label>
-                <label className="trip-google-bias">
+                <label className="trip-external-bias">
                   <input
                     type="checkbox"
-                    checked={googleFilters.destination}
+                    checked={mapboxFilters.destination}
                     onChange={(e) =>
-                      setGoogleFilters((f) => ({ ...f, destination: e.target.checked }))
+                      setMapboxFilters((f) => ({ ...f, destination: e.target.checked }))
                     }
                   />
                   Privilégier la destination du voyage
@@ -493,7 +493,7 @@ export function TripPlacePicker({
       </div>
       {addSource && (
         <div className="trip-source-tabs" role="tablist" aria-label="Source des lieux">
-          {(['nagi', 'google'] as const).map((value) => (
+          {(['nagi', 'mapbox'] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -507,9 +507,9 @@ export function TripPlacePicker({
                     event.key === 'Home'
                       ? 'nagi'
                       : event.key === 'End'
-                        ? 'google'
+                        ? 'mapbox'
                         : value === 'nagi'
-                          ? 'google'
+                          ? 'mapbox'
                           : 'nagi';
                   setSource(next);
                   (
@@ -520,20 +520,20 @@ export function TripPlacePicker({
                 }
               }}
             >
-              {value === 'nagi' ? 'Nagi' : 'Google Maps'}
+              {value === 'nagi' ? 'Nagi' : 'Mapbox'}
             </button>
           ))}
         </div>
       )}
       {addSource && (
-        <div hidden={source !== 'google'}>
-          <GooglePlaceSearch
-            resultsId={`${id}-google-results`}
+        <div hidden={source !== 'mapbox'}>
+          <MapboxPlaceSearch
+            resultsId={`${id}-mapbox-results`}
             query={query}
-            active={source === 'google'}
-            filters={googleFilters}
-            onLoading={setGoogleBusy}
-            request={googleRequest}
+            active={source === 'mapbox'}
+            filters={mapboxFilters}
+            onLoading={setMapboxBusy}
+            request={mapboxRequest}
             plan={plan}
             day={day || null}
             parent={parentId}
@@ -683,11 +683,11 @@ export function TripPlacePicker({
                 <button
                   type="button"
                   onClick={() => {
-                    setSource('google');
-                    setGoogleRequest({ query: query.trim(), nonce: Date.now() });
+                    setSource('mapbox');
+                    setMapboxRequest({ query: query.trim(), nonce: Date.now() });
                   }}
                 >
-                  Rechercher sur Google Maps
+                  Rechercher sur Mapbox
                 </button>
               )}
             </p>

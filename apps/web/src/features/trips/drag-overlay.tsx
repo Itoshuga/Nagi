@@ -6,8 +6,8 @@ import { DragOverlay, type Modifier } from '@dnd-kit/core';
 import type { TripPlanItem, TripPlanStop } from '@nagi/database';
 import type { CatalogEntry } from './catalog-drag';
 import { Copy } from 'lucide-react';
-import { EntryImage } from '@/features/media/image';
-import { GooglePlaceView } from '@/features/integrations/google-places/components';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { usePlacePresentation } from '@/features/integrations/mapbox/components';
 
 // The preview is narrower than the source row. Keep its centre on the pointer,
 // regardless of where the user originally grabbed the card.
@@ -50,13 +50,12 @@ export function TripDragOverlay({
   item,
   entry,
   reduced,
-  googlePlaceId,
 }: {
   item?: TripPlanItem | TripPlanStop;
   entry?: CatalogEntry;
   reduced: boolean | null;
-  googlePlaceId?: string;
 }) {
+  const { observe, title, imageUrl, category } = usePlacePresentation(item, entry ?? item?.entry);
   const container = useSyncExternalStore<HTMLElement | null>(
     subscribe,
     clientContainer,
@@ -71,22 +70,14 @@ export function TripDragOverlay({
     >
       {(item || entry) && (
         <div className="trip-drag-preview">
-          {googlePlaceId || (item?.source === 'google' && item.google_place_id) ? (
-            <GooglePlaceView
-              placeId={googlePlaceId ?? item!.google_place_id!}
-              occurrence="drag-overlay"
-              appearance="thumbnail"
-            />
-          ) : (
-            <>
-              <EntryImage
-                src={(entry ?? item?.entry)?.cover_image_url}
-                className="size-10 shrink-0 rounded-lg"
-                sizes="40px"
-              />
-              <span>{(entry ?? item?.entry)?.title ?? 'Étape'}</span>
-            </>
-          )}
+          <PlaceImage
+            src={imageUrl}
+            source={item?.source}
+            category={category}
+            className="size-10 shrink-0 rounded-lg"
+            sizes="40px"
+          />
+          <span ref={observe}>{title}</span>
           {entry && <Copy className="size-3 shrink-0" aria-label="Nouvelle visite" />}
         </div>
       )}

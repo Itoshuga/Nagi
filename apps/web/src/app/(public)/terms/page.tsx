@@ -13,22 +13,22 @@ export default function TermsPage() {
         des réservations, horaires et modalités de déplacement auprès des prestataires concernés.
       </p>
       <p>
-        Le catalogue Nagi, les étapes personnalisées et les lieux Google Maps sont des sources
-        distinctes. Ajouter un lieu Google à un voyage ne crée pas de fiche éditoriale Nagi. Les
+        Le catalogue Nagi, les étapes personnalisées et les lieux Mapbox sont des sources
+        distinctes. Ajouter un lieu Mapbox à un voyage ne crée pas de fiche éditoriale Nagi. Les
         informations du catalogue et des fournisseurs externes peuvent changer ou devenir
         indisponibles ; cette indisponibilité ne supprime pas vos notes et votre planification.
       </p>
       <p>
-        Les fonctionnalités Google Maps facultatives sont soumises aux{' '}
+        Les fonctionnalités Mapbox facultatives sont soumises aux{' '}
         <a
           className="text-primary-ink underline"
-          href="https://maps.google.com/help/terms_maps/"
+          href="https://www.mapbox.com/legal/tos"
           target="_blank"
           rel="noreferrer"
         >
-          conditions d’utilisation supplémentaires de Google Maps/Google Earth
+          conditions d’utilisation Mapbox
         </a>{' '}
-        et aux règles du fournisseur. Les attributions, liens et mentions Google présents dans les
+        et aux règles du fournisseur. Les attributions, liens et mentions Mapbox présents dans les
         composants doivent être respectés. Vous ne devez pas détourner le service pour extraire
         massivement des données, contourner des restrictions ou épuiser les quotas des autres
         utilisateurs.
@@ -38,14 +38,14 @@ export default function TermsPage() {
         <Link className="text-primary-ink underline" href="/privacy">
           politique de confidentialité Nagi
         </Link>{' '}
-        et, pour les services Google, dans la{' '}
+        et, pour les services Mapbox, dans la{' '}
         <a
           className="text-primary-ink underline"
-          href="https://policies.google.com/privacy"
+          href="https://www.mapbox.com/legal/privacy"
           target="_blank"
           rel="noreferrer"
         >
-          politique de confidentialité Google
+          politique de confidentialité Mapbox
         </a>
         .
       </p>

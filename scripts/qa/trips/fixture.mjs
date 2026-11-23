@@ -265,10 +265,12 @@ const original = globalThis.fetch,
 function cfg() {
   return JSON.parse(readFileSync(configFile, 'utf8'));
 }
-async function authQuery(fn, actor = uid) {
+async function authQuery(fn, actor = uid, service = false) {
   return db.transaction(async (tx) => {
     await tx.exec(
-      `set local role authenticated;set local request.jwt.claim.sub='${actor}';set local request.jwt.claim.role='authenticated'`,
+      service
+        ? "set local role service_role;set local request.jwt.claim.sub='';set local request.jwt.claim.role='service_role'"
+        : `set local role authenticated;set local request.jwt.claim.sub='${actor}';set local request.jwt.claim.role='authenticated'`,
     );
     return fn(tx);
   });
@@ -365,6 +367,7 @@ const profile = {
   avatar_url: null,
   created_at: stamp(),
 };
+let mapboxCalls = 0;
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(input instanceof Request ? input.url : String(input)),
     h = new Headers(init.headers),
@@ -396,6 +399,16 @@ globalThis.fetch = async (input, init = {}) => {
         : [{ id: guild, name: 'Équipe Nagi', icon: null, owner: true, permissions: '8' }],
     );
   if (url.hostname === 'localhost' && url.port === port) return original(input, init);
+  if (
+    process.env.NAGI_QA_MAPBOX_LIVE === '1' &&
+    url.hostname === 'api.mapbox.com' &&
+    /^\/(search\/searchbox\/v1\/(suggest|forward|retrieve\/[^/]+)|places\/v1\/details\/retrieve\/[^/]+)$/.test(
+      url.pathname,
+    )
+  ) {
+    if (++mapboxCalls > 45) return json({ message: 'Bounded QA provider cap' }, 429);
+    return original(input, init);
+  }
   if (url.hostname !== 'fixture.supabase.test')
     throw new Error('Unexpected remote QA request ' + url.hostname);
   if (url.pathname.startsWith('/auth/v1/'))
@@ -496,6 +509,12 @@ globalThis.fetch = async (input, init = {}) => {
             Object.values(body),
           ),
         actor,
+        [
+          'reserve_mapbox_places',
+          'mapbox_place_reference',
+          'mapbox_error',
+          'mapbox_available',
+        ].includes(table) && h.get('apikey') === process.env.SUPABASE_SERVICE_ROLE_KEY,
       );
       if (
         table === 'edit_trip_plan' ||
@@ -582,6 +601,15 @@ globalThis.fetch = async (input, init = {}) => {
         target: await hydrateEntry(
           (await db.query('select * from public.entries where id=$1', [r.target_id])).rows[0],
         ),
+      })),
+    );
+  if (table === 'trip_items' && url.searchParams.get('select')?.includes('stops:trip_item_stops'))
+    data = await Promise.all(
+      data.map(async (item) => ({
+        ...item,
+        stops: (
+          await db.query('select * from public.trip_item_stops where trip_item_id=$1', [item.id])
+        ).rows,
       })),
     );
   if (table === 'trips')

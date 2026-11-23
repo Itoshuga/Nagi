@@ -8,7 +8,7 @@ import type { TripPlaceReference } from '@nagi/shared';
 import { CatalogSelect } from '@/features/catalog/admin-form';
 import { dayLabel } from './add-place-dialog';
 import type { CatalogEntry, CatalogPlacement } from './catalog-drag';
-import { GooglePlaceView } from '@/features/integrations/google-places/components';
+import { useExternalPlaces } from '@/features/integrations/mapbox/components';
 
 export function CatalogResult({
   entry,
@@ -37,8 +37,9 @@ export function CatalogResult({
   insert: (placement: CatalogPlacement) => Promise<void>;
   children: ReactNode;
   reference?: TripPlaceReference;
-  onCommit?: () => void;
+  onCommit?: () => void | TripPlaceReference | Promise<void | TripPlaceReference>;
 }) {
+  const external = useExternalPlaces();
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: `catalog:${id}`,
     data: {
@@ -117,26 +118,22 @@ export function CatalogResult({
                     ? plan.items.find((i) => i.id === destination.slice(5))
                     : undefined;
                   if (destination.startsWith('stop:') && !parent) return;
-                  onCommit?.();
-                  await insert({
-                    day: parent ? parent.trip_day_id : destination || null,
-                    parent: parent?.id,
-                    time: parent || !time ? undefined : time,
-                  });
-                  setOpen(false);
+                  try {
+                    await onCommit?.();
+                    await insert({
+                      day: parent ? parent.trip_day_id : destination || null,
+                      parent: parent?.id,
+                      time: parent || !time ? undefined : time,
+                    });
+                    setOpen(false);
+                  } catch {
+                    /* Resolution errors remain in the source panel. */
+                  }
                 }}
               >
                 <div className="trip-catalog-destination-heading">
                   <strong>Ajouter au voyage</strong>
-                  {reference?.source === 'google' ? (
-                    <GooglePlaceView
-                      placeId={reference.placeId}
-                      occurrence={`add:${id}`}
-                      appearance="label"
-                    />
-                  ) : (
-                    <span>{entry.title}</span>
-                  )}
+                  <span>{entry.title}</span>
                 </div>
                 <label>
                   Destination
@@ -155,8 +152,9 @@ export function CatalogResult({
                       <optgroup label="Arrêt dans une activité">
                         {plan.items.map((item, index) => (
                           <option key={item.id} value={`stop:${item.id}`}>
-                            {item.source === 'google'
-                              ? `Étape ${index + 1}`
+                            {item.source === 'mapbox'
+                              ? (external?.get(item.external_place_id ?? '').place?.title ??
+                                `Étape ${index + 1}`)
                               : (item.entry?.title ?? 'Activité')}{' '}
                             · {item.start_time?.slice(0, 5) ?? 'Libre'} ·{' '}
                             {item.trip_day_id

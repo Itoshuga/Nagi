@@ -10,29 +10,29 @@ import {
   Input,
   Label,
 } from '@nagi/ui';
-import { tripPlaceReferenceSchema, type TripPlaceReference } from '@nagi/shared';
+import { tripPlaceReferenceSchema, type TripPlaceReference, type CatalogPlace } from '@nagi/shared';
 import type { TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
-import { tripSourceEntry } from '@nagi/database/trip-places';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
+import { externalStatus, useExternalPlaces } from '@/features/integrations/mapbox/components';
 import {
-  externalStatus,
-  useExternalPlaces,
-} from '@/features/integrations/google-places/components';
-import { loadGooglePlaces } from '@/features/integrations/google-places/client';
+  MapboxSearchController,
+  type MapboxSearchState,
+} from '@/features/integrations/mapbox/search-client';
 import {
-  GoogleSearchController,
-  type GoogleSearchState,
-} from '@/features/integrations/google-places/search-client';
+  mapboxSearchContext,
+  type MapboxSearchFilters,
+} from '@/features/integrations/mapbox/search-model';
 import {
-  googleSearchContext,
-  type GoogleSearchFilters,
-} from '@/features/integrations/google-places/search-model';
+  catalogPlaceEntry,
+  mapboxAttribution,
+  mapboxAttributionUrl,
+} from '@/features/integrations/mapbox/model';
 import type { SourcePlaceAdder, PlanMutation } from './planner-model';
 import { CatalogResult } from './catalog-result';
 import { CatalogPlaceCard } from './catalog-place-card';
 import type { CatalogEntry, CatalogPlacement } from './catalog-drag';
 
-export function GooglePlaceSearch({
+export function MapboxPlaceSearch({
   query,
   request,
   active,
@@ -51,7 +51,7 @@ export function GooglePlaceSearch({
   query: string;
   request: { query: string; nonce: number };
   active: boolean;
-  filters: GoogleSearchFilters;
+  filters: MapboxSearchFilters;
   plan: TripPlan;
   day: string | null;
   parent?: string;
@@ -64,66 +64,112 @@ export function GooglePlaceSearch({
   resultsId: string;
 }) {
   const session = useExternalPlaces(),
-    id = useId(),
-    [state, setState] = useState<GoogleSearchState>({ phase: 'idle', ids: [] }),
-    [error, setError] = useState('');
-  const handled = useRef(0);
-  const [minCharacters, setMinCharacters] = useState(3);
+    id = useId();
+  const [state, setState] = useState<MapboxSearchState>({ phase: 'idle', places: [] }),
+    [error, setError] = useState(''),
+    [resolving, setResolving] = useState<string>();
+  const [available, setAvailable] = useState<boolean>(),
+    [minCharacters, setMinCharacters] = useState(3),
+    handled = useRef(0);
   const controller = useMemo(
     () =>
       session
-        ? new GoogleSearchController(session.url, (next) => {
-            setState(next);
-            onLoading(next.phase === 'loading');
-          })
+        ? new MapboxSearchController(
+            session.url,
+            (next) => {
+              setState(next);
+              if (next.phase === 'loading' || next.phase === 'idle') setError('');
+              onLoading(next.phase === 'loading');
+            },
+            session.put,
+          )
         : null,
     [session, onLoading],
   );
-  const context = googleSearchContext(plan, day, filters.destination);
-  const criteria = JSON.stringify({ query, kind: 'autocomplete', type: filters.type, context });
+  const criteria = JSON.stringify({
+    query,
+    kind: 'suggest',
+    category: filters.type,
+    context: mapboxSearchContext(plan, day, filters.destination),
+  });
   useEffect(() => {
-    if (active) controller?.search(JSON.parse(criteria), minCharacters);
+    if (active && available === true) controller?.search(JSON.parse(criteria), minCharacters);
     return () => controller?.cancel();
-  }, [controller, criteria, active, minCharacters]);
+  }, [controller, criteria, active, minCharacters, available]);
   useEffect(() => {
     if (active && session)
       void externalStatus(session)
         .then((status) => {
+          setAvailable(status.available);
           setMinCharacters(status.minCharacters);
-          if (status.available) return loadGooglePlaces();
+          if (!status.available)
+            setError(
+              'La recherche Mapbox est indisponible. Vous pouvez utiliser Nagi ou créer une étape personnalisée.',
+            );
         })
-        .catch(() => {});
+        .catch(() => {
+          setAvailable(false);
+          setError(
+            'La recherche Mapbox est momentanément indisponible. Le catalogue Nagi et les étapes personnalisées restent accessibles.',
+          );
+        });
   }, [active, session]);
   useEffect(() => {
-    if (!active || !request.nonce || handled.current === request.nonce) return;
+    if (!active || !request.nonce || handled.current === request.nonce || available !== true)
+      return;
     handled.current = request.nonce;
-    controller?.search({ ...JSON.parse(criteria), kind: 'text_search', query: request.query });
-  }, [request, controller, active, criteria]);
+    controller?.search({ ...JSON.parse(criteria), kind: 'forward', query: request.query });
+  }, [request, controller, active, criteria, available]);
   useEffect(() => () => controller?.dispose(), [controller]);
-  const insert = async (placeId: string, placement: CatalogPlacement) => {
-    const result = await add(
-      { source: 'google', placeId },
-      {
+  useEffect(() => {
+    if (!session || !controller) return;
+    const cleanups = state.places.map((place) =>
+      session.register(place.id, () => controller.resolve(place)),
+    );
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [session, controller, state.places]);
+  const reference = async (place: CatalogPlace) => {
+    if (!session) throw new Error('La recherche n’est pas disponible.');
+    controller?.finishSearch();
+    setResolving(place.id);
+    setError('');
+    try {
+      return await session.reference(place.id, place.query ?? query);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : 'La localisation du lieu est indisponible.',
+      );
+      throw error;
+    } finally {
+      setResolving(undefined);
+    }
+  };
+  const insert = async (place: CatalogPlace, placement: CatalogPlacement) => {
+    try {
+      const result = await add(await reference(place), {
         ...placement,
         parent: placement.parent ?? parent,
         time: placement.time ?? time,
         duration: placement.duration ?? (placement.time || time ? defaultDuration : null),
-      },
-    );
-    if (!result.ok) setError(result.error);
-    else setError('');
+      });
+      setError(result.ok ? '' : result.error);
+    } catch {
+      /* The targeted resolution error is already displayed; no occurrence exists. */
+    }
   };
   return (
-    <div className="trip-google-search" aria-busy={state.phase === 'loading'}>
+    <div className="trip-mapbox-search" aria-busy={state.phase === 'loading'}>
       {state.phase === 'idle' && (
         <p className="trip-empty-inline">
           Recherchez un lieu, une activité ou un établissement. Entrée affiche plus de résultats.
         </p>
       )}
       {state.phase === 'loading' && (
-        <div className="trip-google-search-loading" role="status">
-          <span className="trip-google-skeleton" />
-          {state.ids.length ? 'Mise à jour des résultats…' : 'Recherche en cours…'}
+        <div className="trip-external-search-loading" role="status">
+          <span className="trip-external-spinner" />
+          {state.places.length ? 'Mise à jour des résultats…' : 'Recherche en cours…'}
         </div>
       )}
       {(state.phase === 'error' || error) && (
@@ -131,34 +177,44 @@ export function GooglePlaceSearch({
           {error || state.error}
           <button
             type="button"
-            onClick={() => controller?.search({ ...JSON.parse(criteria), kind: 'text_search' })}
+            onClick={() => {
+              setError('');
+              controller?.search({ ...JSON.parse(criteria), kind: 'forward' });
+            }}
           >
             Réessayer
           </button>
         </Alert>
       )}
-      {state.phase === 'ready' && !state.ids.length && (
-        <p className="trip-empty-inline">Aucun lieu correspondant à votre recherche.</p>
+      {state.phase === 'ready' && !state.places.length && (
+        <p className="trip-empty-inline">
+          Aucun lieu correspondant à votre recherche. Essayez un autre nom ou créez une étape
+          personnalisée.
+        </p>
+      )}
+      {resolving && (
+        <p className="trip-external-status" role="status">
+          Vérification de la localisation…
+        </p>
       )}
       <ul
         role="listbox"
-        aria-label="Lieux Google Maps"
+        aria-label="Lieux Mapbox"
         id={resultsId}
-        className="trip-google-result-list"
+        className="trip-picker-results trip-external-result-list"
       >
-        {state.ids.map((placeId, index) => {
-          const entry = tripSourceEntry({
-            id: placeId,
-            source: 'google',
-            entry_id: null,
-            google_place_id: placeId,
-            updated_at: '',
-          }) as CatalogEntry;
+        {state.places.map((place, index) => {
+          const entry = catalogPlaceEntry(place) as CatalogEntry;
           return (
             <CatalogResult
-              key={placeId}
+              key={place.id}
               entry={entry}
-              reference={{ source: 'google', placeId }}
+              reference={{
+                source: 'mapbox',
+                placeId: place.id,
+                query: place.query ?? query,
+                proof: place.proof,
+              }}
               plan={plan}
               initialDay={day}
               defaultDuration={defaultDuration}
@@ -167,32 +223,49 @@ export function GooglePlaceSearch({
               active={false}
               id={id + '-' + index}
               onActive={() => {}}
-              onCommit={() => controller?.complete(placeId)}
-              insert={(placement) => insert(placeId, placement)}
+              onCommit={() => reference(place)}
+              insert={(placement) => insert(place, placement)}
             >
               <CatalogPlaceCard
                 entry={entry}
-                placeId={placeId}
+                place={place}
                 onClick={() => {
-                  if (panel) session?.preview?.(placeId);
-                  else if (canAdd) {
-                    controller?.complete(placeId);
-                    void insert(placeId, {
+                  if (panel)
+                    void reference(place)
+                      .then(() => {
+                        const resolved = session?.get(place.id).place;
+                        if (resolved) session?.preview?.(resolved);
+                      })
+                      .catch(() => {});
+                  else if (canAdd)
+                    void insert(place, {
                       day,
                       parent,
                       time,
                       duration: time ? defaultDuration : null,
                     });
-                  }
                 }}
               />
             </CatalogResult>
           );
         })}
       </ul>
-      <p className="trip-google-legal">
+      {state.phase === 'ready' && query.trim().length >= minCharacters && (
+        <button
+          type="button"
+          className="trip-external-search-more"
+          onClick={() => controller?.search({ ...JSON.parse(criteria), kind: 'forward' })}
+        >
+          Rechercher « {query.trim()} »
+        </button>
+      )}
+      <p className="trip-external-credit">
+        <a href={mapboxAttributionUrl} target="_blank" rel="noreferrer">
+          {mapboxAttribution}
+        </a>{' '}
+        ·{' '}
         <a href="/terms" target="_blank" rel="noreferrer">
-          Conditions d’utilisation
+          Conditions
         </a>{' '}
         ·{' '}
         <a href="/privacy" target="_blank" rel="noreferrer">
@@ -231,7 +304,7 @@ export function CustomStepDialog({
           {initial ? 'Modifier l’étape personnalisée' : 'Créer une étape personnalisée'}
         </DialogTitle>
         <DialogDescription>
-          Une étape libre, indépendante du catalogue et de Google Maps.
+          Une étape libre, indépendante du catalogue et de Mapbox.
         </DialogDescription>
         <form
           className="grid gap-4 mt-5"

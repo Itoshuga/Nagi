@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  GooglePlaceView,
-  useExternalPlaces,
-} from '@/features/integrations/google-places/components';
+import { ExternalPlaceView, useExternalPlaces } from '@/features/integrations/mapbox/components';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
@@ -210,6 +207,7 @@ export function TripPlaceDetails({
   expandedStops,
   onToggleStops,
   externalPlaceId,
+  externalQuery,
   addSource,
 }: {
   guild: string;
@@ -228,9 +226,12 @@ export function TripPlaceDetails({
   expandedStops?: Readonly<Record<string, boolean>>;
   onToggleStops?: (parent: string) => void;
   externalPlaceId?: string;
+  externalQuery?: string;
   addSource?: import('./planner-model').SourcePlaceAdder;
 }) {
-  const googleId = externalPlaceId ?? (item?.source === 'google' ? item.google_place_id : null);
+  const mapboxId = externalPlaceId ?? (item?.source === 'mapbox' ? item.external_place_id : null);
+  const query = externalQuery ?? item?.external_query ?? '';
+  const external = useExternalPlaces();
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -318,8 +319,13 @@ export function TripPlaceDetails({
         <h2>Détails du lieu</h2>
       </div>
       <div className="trip-detail-content">
-        {googleId ? (
-          <GooglePlaceView occurrence={item?.id ?? `preview:${googleId}`} placeId={googleId} full />
+        {mapboxId ? (
+          <ExternalPlaceView
+            occurrence={item?.id ?? `preview:${mapboxId}`}
+            placeId={mapboxId}
+            query={query}
+            full
+          />
         ) : (
           <EntryImage
             src={entry.cover_image_url}
@@ -327,7 +333,7 @@ export function TripPlaceDetails({
             sizes="(max-width: 639px) 100vw, 380px"
           />
         )}
-        {!googleId && (
+        {!mapboxId && (
           <div>
             <p className="trip-detail-category">{entry.category?.name}</p>
             <h3>{entry.title}</h3>
@@ -359,6 +365,12 @@ export function TripPlaceDetails({
         {canEdit && item && <CalendarColorAction item={item} />}
         {item?.source === 'custom' && item.custom_location && (
           <p className="trip-detail-location">{item.custom_location}</p>
+        )}
+        {item?.needs_place_relink && (
+          <Alert>
+            Associez un nouveau lieu à cette étape. Vos horaires, notes, couleurs et arrêts ont été
+            conservés.
+          </Alert>
         )}
         {canEdit && item && item.source !== 'nagi' && <ReplaceExternalPlace id={item.id} />}
         {canEdit && item?.source === 'custom' && <CustomPlaceEditor place={item} mutate={mutate} />}
@@ -570,10 +582,10 @@ export function TripPlaceDetails({
         {!item && canEdit && externalPlaceId && addSource && (
           <Button
             onClick={async () => {
-              const result = await addSource(
-                { source: 'google', placeId: externalPlaceId },
-                { day: targetDay, parent: parentId },
-              );
+              const result = await addSource(await external!.reference(externalPlaceId, query), {
+                day: targetDay,
+                parent: parentId,
+              });
               if (result.ok) {
                 setAdded(true);
                 setError('');

@@ -1,11 +1,19 @@
 'use client';
 import 'leaflet/dist/leaflet.css';
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LayerGroup, Map as LeafletMap } from 'leaflet';
+import type { LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
 import { Compass, List, LoaderCircle, Plus, X } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
-import { tripMapLongitudes, tripPoints, tripStepCount, tripStopCount } from '@nagi/shared';
+import {
+  calendarEventColor,
+  calendarSwatchInk,
+  tripMapLongitudes,
+  tripPoints,
+  tripStepCount,
+  tripStopCount,
+} from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import {
   type PlaceAdder,
@@ -17,24 +25,77 @@ import {
 } from './planner-model';
 import { tripTileProvider } from './map-config';
 import {
-  GooglePlaceView,
   useExternalPlaces,
-} from '@/features/integrations/google-places/components';
-import {
-  googleClientRequest,
-  watchGoogleCoordinateExpiry,
-} from '@/features/integrations/google-places/client';
+  useExternalPlaceVersion,
+  externalStatus,
+} from '@/features/integrations/mapbox/components';
+import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
+
+function mapPin(label: string, color: string, grouped = false, stop = false) {
+  const pin = document.createElement('span');
+  pin.className = 'trip-map-pin';
+  pin.setAttribute('aria-hidden', 'true');
+  pin.style.setProperty('--trip-pin-color', color);
+  pin.style.setProperty('--trip-pin-ink', calendarSwatchInk(color));
+  if (grouped) {
+    const stack = document.createElement('span');
+    stack.className = 'trip-map-pin-stack';
+    pin.append(stack);
+  }
+  // One continuous outline keeps the body and its tip centred on the same
+  // coordinate, including when the pin is scaled on hover or selection.
+  const shape = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  shape.classList.add('trip-map-pin-shape');
+  shape.setAttribute('viewBox', '0 0 44 44');
+  shape.setAttribute('focusable', 'false');
+  const outline = stop
+    ? 'M18 5H26C32.075 5 37 9.925 37 16V24C37 30.075 32.075 35 27 35L22 43L17 35C11.925 35 7 30.075 7 24V16C7 9.925 11.925 5 18 5Z'
+    : 'M18 1H26C33.18 1 39 6.82 39 14V22C39 29.18 34.5 35 27 35L22 43L17 35C9.5 35 5 29.18 5 22V14C5 6.82 10.82 1 18 1Z';
+  for (const className of ['trip-map-pin-halo', 'trip-map-pin-body']) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add(className);
+    path.setAttribute('d', outline);
+    shape.append(path);
+  }
+  pin.append(shape);
+  const face = document.createElement('span');
+  face.className = 'trip-map-pin-label';
+  face.textContent = label;
+  pin.append(face);
+  return pin;
+}
+
+function markerTooltip(title: string, subtitle?: string) {
+  const content = document.createElement('span');
+  content.className = 'trip-map-pin-caption';
+  const name = document.createElement('strong');
+  name.textContent = title;
+  content.append(name);
+  if (subtitle) {
+    const detail = document.createElement('small');
+    detail.textContent = subtitle;
+    content.append(detail);
+  }
+  return content;
+}
+
+function enableMarkerKeyboard(marker: Marker) {
+  marker.on('keydown', ({ originalEvent }) => {
+    if (originalEvent.key !== 'Enter' && originalEvent.key !== ' ') return;
+    originalEvent.preventDefault();
+    originalEvent.stopPropagation();
+    if (!originalEvent.repeat) marker.fire('click');
+  });
+}
 
 export default function TripMap(
   props: WorkspaceViewProps & { onPreview: (entry: EntryCardRow) => void; add: PlaceAdder },
 ) {
   const { plan, selectedDay, selectedItem, onDetails, canEdit, add } = props;
   const external = useExternalPlaces();
-  const [googlePoints, setGooglePoints] = useState<
-    Record<string, { latitude: number; longitude: number; expiresAt: number }>
-  >({});
-  const [googleError, setGoogleError] = useState(''),
-    [googleRetry, setGoogleRetry] = useState(0);
+  useExternalPlaceVersion();
+  const [mapboxError, setMapboxError] = useState(''),
+    [mapboxRetry, setMapboxRetry] = useState(0);
   const node = useRef<HTMLDivElement>(null),
     map = useRef<LeafletMap>(null),
     markers = useRef<LayerGroup>(null),
@@ -64,71 +125,57 @@ export default function TripMap(
     [plan.items, plan.days, selectedDay],
   );
   const visits = useMemo(() => tripMapVisits(visible), [visible]);
-  const googleIds = JSON.stringify(
-    [
-      ...new Set(
-        visits.map((v) => (v.stop ?? v.parent).google_place_id).filter((id): id is string => !!id),
-      ),
-    ].sort(),
-  );
+  const references = JSON.stringify([
+    ...new Map(
+      visits
+        .filter((v) => (v.stop ?? v.parent).source === 'mapbox')
+        .map((v) => {
+          const row = v.stop ?? v.parent;
+          return [row.external_place_id, { id: row.external_place_id, query: row.external_query }];
+        }),
+    ).values(),
+  ]);
   useEffect(() => {
     if (!external) return;
-    const ids = JSON.parse(googleIds) as string[];
-    if (!ids.length) return;
-    let cancelled = false;
-    let stopExpiry: (() => void) | undefined;
-    const resolve = async () => {
-      try {
-        for (const [id, point] of external.coordinates)
-          if (point.expiresAt <= Date.now()) external.coordinates.delete(id);
-        const missing = ids.filter((id) => !external.coordinates.has(id));
-        for (let index = 0; index < missing.length; index += 30) {
-          const data = (await googleClientRequest(external.url, {
-            operation: 'coordinates',
-            ids: missing.slice(index, index + 30),
-          })) as {
-            points: Record<
-              string,
-              { latitude: number; longitude: number; expiresAt: number } | null
-            >;
-          };
-          for (const [id, point] of Object.entries(data.points))
-            if (point) external.coordinates.set(id, point);
-        }
-        if (cancelled) return;
-        setGooglePoints(Object.fromEntries(external.coordinates));
-        setGoogleError('');
-        stopExpiry = watchGoogleCoordinateExpiry(external.coordinates, () => {
-          setGooglePoints(Object.fromEntries(external.coordinates));
-          setGoogleError('Actualisez les lieux Google Maps pour les localiser à nouveau.');
-        });
-      } catch (error) {
-        if (!cancelled)
-          setGoogleError(
-            error instanceof Error ? error.message : 'Les lieux Google Maps sont indisponibles.',
-          );
-      }
-    };
-    void resolve();
+    let active = true;
+    const refs = JSON.parse(references) as { id: string; query: string }[];
+    void Promise.allSettled(
+      refs
+        .filter((r) => r.id && r.query)
+        .map((r) => external.ensure(r.id, r.query, mapboxRetry > 0)),
+    ).then((results) => {
+      if (active)
+        setMapboxError(
+          results.some((r) => r.status === 'rejected')
+            ? 'Certains lieux Mapbox sont indisponibles. Les étapes restent modifiables.'
+            : '',
+        );
+    });
     return () => {
-      cancelled = true;
-      stopExpiry?.();
+      active = false;
     };
-  }, [external, googleIds, googleRetry]);
-  const locatedVisits = useMemo(
-    () =>
-      visits.map((visit) => {
-        const id = (visit.stop ?? visit.parent).google_place_id,
-          point = id ? googlePoints[id] : undefined;
-        return point && visit.entry
-          ? {
-              ...visit,
-              entry: { ...visit.entry, latitude: point.latitude, longitude: point.longitude },
-            }
-          : visit;
-      }),
-    [visits, googlePoints],
+  }, [external, references, mapboxRetry]);
+  const coordinateKey = JSON.stringify(
+    JSON.parse(references).map((r: { id: string }) => {
+      const p = external?.get(r.id).place;
+      return p ? { source: p.source, id: p.id, title: p.title, coordinates: p.coordinates } : null;
+    }),
   );
+  const locatedVisits = useMemo(() => {
+    const places = new Map(
+      (JSON.parse(coordinateKey) as (import('@nagi/shared').CatalogPlace | null)[])
+        .filter((p): p is import('@nagi/shared').CatalogPlace => p !== null)
+        .map((p) => [p.id, p]),
+    );
+    return visits.map((visit) => {
+      const row = visit.stop ?? visit.parent;
+      const place =
+        row.source === 'mapbox' && row.external_place_id
+          ? places.get(row.external_place_id)
+          : undefined;
+      return place?.coordinates ? { ...visit, entry: catalogPlaceEntry(place) } : visit;
+    });
+  }, [visits, coordinateKey]);
   const { located, missing } = useMemo(() => tripPoints(locatedVisits, 'all'), [locatedVisits]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
@@ -141,7 +188,13 @@ export default function TripMap(
   useEffect(() => {
     let mounted = true;
     let observer: ResizeObserver | undefined;
-    import('leaflet')
+    (async () => {
+      if (external) {
+        const status = await externalStatus(external);
+        if (!status.mapAvailable) throw new Error('Mapbox map disabled');
+      }
+      return import('leaflet');
+    })()
       .then((leaflet) => {
         if (!mounted || !node.current) return;
         const instance = leaflet.map(node.current, {
@@ -153,6 +206,8 @@ export default function TripMap(
         instance.attributionControl.setPrefix(false);
         const tiles = leaflet.tileLayer(tripTileProvider.url, {
           maxZoom: tripTileProvider.maxZoom,
+          tileSize: 512,
+          zoomOffset: -1,
           attribution: tripTileProvider.attribution,
         });
         tiles.on('tileerror', () => {
@@ -192,38 +247,63 @@ export default function TripMap(
       markers.current = null;
       catalogue.current = null;
     };
-  }, []);
+  }, [external]);
   useEffect(() => {
     const instance = map.current,
       layer = markers.current,
       leaflet = library.current;
     if (phase !== 'ready' || !instance || !layer || !leaflet) return;
+    // Opening the details panel changes the canvas width before ResizeObserver
+    // runs. Centre the selected pin using the current viewport dimensions.
+    instance.invalidateSize({ pan: false });
     layer.clearLayers();
     const b = leaflet.latLngBounds([]);
     for (const group of groupTripMapPoints(points)) {
-      const { item, latitude, longitude, number } = group[0]!;
+      const representative = group.find((p) => p.item.parent.id === selectedItem) ?? group[0]!;
+      const { item, latitude, longitude, number } = representative;
       const grouped = group.length > 1;
-      const label = document.createElement('span');
-      label.textContent = grouped ? String(group.length) : number;
+      const active = group.some((p) => p.item.parent.id === selectedItem);
+      const color = calendarEventColor(
+        item.stop?.calendar_color ?? item.parent.calendar_color,
+        item.entry?.category?.color,
+      );
+      const title = grouped
+        ? `${group.length} lieux au même emplacement`
+        : (item.entry?.title ?? 'Étape');
       const point: [number, number] = [latitude, longitude];
       b.extend(point);
       const marker = leaflet
         .marker(point, {
-          title: grouped
-            ? `${group.length} lieux au même emplacement`
-            : (item.entry?.title ?? 'Étape'),
-          alt: grouped
-            ? `${group.length} lieux au même emplacement`
-            : (item.entry?.title ?? 'Étape'),
+          alt: title,
+          riseOnHover: true,
+          zIndexOffset: active ? 1000 : 0,
           icon: leaflet.divIcon({
-            className: `nagi-trip-marker${group.some((p) => p.item.parent.id === selectedItem) ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop ? ' is-stop' : ''}`,
-            html: label,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
+            className: `nagi-trip-marker${active ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop && !grouped ? ' is-stop' : ''}`,
+            html: mapPin(
+              grouped ? String(group.length) : number,
+              color,
+              grouped,
+              !!item.stop && !grouped,
+            ),
+            iconSize: [44, 48],
+            iconAnchor: [22, 44],
+            tooltipAnchor: [0, -42],
+            popupAnchor: [0, -38],
           }),
         })
+        .bindTooltip(
+          markerTooltip(
+            title,
+            grouped ? 'Choisir une étape' : item.stop ? `Arrêt ${number}` : `Étape ${number}`,
+          ),
+          { direction: 'top', offset: [0, -6], className: 'trip-map-pin-tooltip', opacity: 1 },
+        )
         .addTo(layer);
       if (grouped) {
+        marker.on('popupopen', () => marker.closeTooltip());
+        marker.on('mouseover', () => {
+          if (marker.isPopupOpen()) marker.closeTooltip();
+        });
         const choices = document.createElement('div');
         choices.className = 'trip-map-shared-location';
         for (const point of group) {
@@ -246,6 +326,8 @@ export default function TripMap(
             ? `${group.length} lieux au même emplacement`
             : `${number}. ${item.entry?.title ?? 'Étape'}`,
         );
+      marker.getElement()?.setAttribute('aria-pressed', String(active));
+      enableMarkerKeyboard(marker);
     }
     if (!b.isValid() && fitted.current === null) {
       const fallback = tripPoints(tripMapVisits(plan.items), 'all').located;
@@ -254,13 +336,13 @@ export default function TripMap(
     }
     const fitKey = `${selectedDay}:${points.map((p) => `${p.item.parent.id}:${p.latitude}:${p.longitude}`).join('|')}`;
     if (b.isValid() && fitted.current !== fitKey) {
-      instance.fitBounds(b, { padding: [50, 50], maxZoom: 15, animate: false });
+      instance.fitBounds(b, { padding: [64, 64], maxZoom: 15, animate: false });
       fitted.current = fitKey;
     }
     const chosen = points.find((p) => p.item.parent.id === selectedItem);
     if (chosen)
       instance.panInside([chosen.latitude, chosen.longitude], {
-        padding: [45, 45],
+        padding: [64, 64],
         animate: false,
       });
   }, [phase, points, selectedDay, selectedItem, onDetails, plan.items]);
@@ -320,18 +402,24 @@ export default function TripMap(
         Math.abs(entry.longitude) > 180
       )
         continue;
-      const label = document.createElement('span');
-      label.textContent = '+';
       const marker = leaflet
         .marker([entry.latitude, entry.longitude], {
-          title: entry.title,
           alt: entry.title,
+          riseOnHover: true,
+          zIndexOffset: selected?.id === entry.id ? 500 : -100,
           icon: leaflet.divIcon({
             className: `nagi-catalog-marker${selected?.id === entry.id ? ' is-selected' : ''}${otherDays.has(entry.id) ? ' is-in-trip' : ''}`,
-            html: label,
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
+            html: mapPin('+', calendarEventColor(null, entry.category?.color)),
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+            tooltipAnchor: [0, -16],
           }),
+        })
+        .bindTooltip(markerTooltip(entry.title, 'Catalogue Nagi'), {
+          direction: 'top',
+          offset: [0, -6],
+          className: 'trip-map-pin-tooltip',
+          opacity: 1,
         })
         .on('click', () => {
           setSelected(entry);
@@ -339,19 +427,21 @@ export default function TripMap(
         })
         .addTo(layer);
       marker.getElement()?.setAttribute('aria-label', `Découvrir ${entry.title}`);
+      marker.getElement()?.setAttribute('aria-pressed', String(selected?.id === entry.id));
+      enableMarkerKeyboard(marker);
     }
   }, [nearby, explore, plan.items, selectedDay, selected?.id, phase]);
   return (
     <div className="trip-map-workspace">
       <div className="trip-map-toolbar">
-        {googleError && (
+        {mapboxError && (
           <button
             type="button"
             className="trip-explore-button"
-            onClick={() => setGoogleRetry((v) => v + 1)}
-            title={googleError}
+            onClick={() => setMapboxRetry((v) => v + 1)}
+            title={mapboxError}
           >
-            Actualiser les lieux Google Maps
+            Actualiser les lieux Mapbox
           </button>
         )}
         <button
@@ -402,16 +492,7 @@ export default function TripMap(
                   >
                     <span>{number}</span>
                     <div>
-                      {(item.stop ?? item.parent).source === 'google' &&
-                      (item.stop ?? item.parent).google_place_id ? (
-                        <GooglePlaceView
-                          occurrence={item.id}
-                          placeId={(item.stop ?? item.parent).google_place_id!}
-                          appearance="thumbnail"
-                        />
-                      ) : (
-                        <strong>{item.entry?.title}</strong>
-                      )}
+                      <strong>{item.entry?.title}</strong>
                       <small>
                         {[
                           item.stop
@@ -456,6 +537,14 @@ export default function TripMap(
           </div>
         )}
         <div className="trip-map-frame">
+          <a
+            className="trip-mapbox-logo"
+            href="https://www.mapbox.com/about/maps/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Image src="/mapbox-logo.svg" alt="Mapbox" width="88" height="23" />
+          </a>
           <div
             ref={node}
             role="region"
