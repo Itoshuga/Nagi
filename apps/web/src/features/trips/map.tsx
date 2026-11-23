@@ -2,11 +2,18 @@
 import 'leaflet/dist/leaflet.css';
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LayerGroup, Map as LeafletMap } from 'leaflet';
+import type { LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
 import { Compass, List, LoaderCircle, Plus, X } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
-import { tripMapLongitudes, tripPoints, tripStepCount, tripStopCount } from '@nagi/shared';
+import {
+  calendarEventColor,
+  calendarSwatchInk,
+  tripMapLongitudes,
+  tripPoints,
+  tripStepCount,
+  tripStopCount,
+} from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import {
   type PlaceAdder,
@@ -23,6 +30,47 @@ import {
   externalStatus,
 } from '@/features/integrations/mapbox/components';
 import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
+
+function mapPin(label: string, color: string, grouped = false) {
+  const pin = document.createElement('span');
+  pin.className = 'trip-map-pin';
+  pin.setAttribute('aria-hidden', 'true');
+  pin.style.setProperty('--trip-pin-color', color);
+  pin.style.setProperty('--trip-pin-ink', calendarSwatchInk(color));
+  if (grouped) {
+    const stack = document.createElement('span');
+    stack.className = 'trip-map-pin-stack';
+    pin.append(stack);
+  }
+  const face = document.createElement('span');
+  face.className = 'trip-map-pin-label';
+  face.textContent = label;
+  pin.append(face);
+  return pin;
+}
+
+function markerTooltip(title: string, subtitle?: string) {
+  const content = document.createElement('span');
+  content.className = 'trip-map-pin-caption';
+  const name = document.createElement('strong');
+  name.textContent = title;
+  content.append(name);
+  if (subtitle) {
+    const detail = document.createElement('small');
+    detail.textContent = subtitle;
+    content.append(detail);
+  }
+  return content;
+}
+
+function enableMarkerKeyboard(marker: Marker) {
+  marker.on('keydown', ({ originalEvent }) => {
+    if (originalEvent.key !== 'Enter' && originalEvent.key !== ' ') return;
+    originalEvent.preventDefault();
+    originalEvent.stopPropagation();
+    if (!originalEvent.repeat) marker.fire('click');
+  });
+}
 
 export default function TripMap(
   props: WorkspaceViewProps & { onPreview: (entry: EntryCardRow) => void; add: PlaceAdder },
@@ -189,32 +237,52 @@ export default function TripMap(
       layer = markers.current,
       leaflet = library.current;
     if (phase !== 'ready' || !instance || !layer || !leaflet) return;
+    // Opening the details panel changes the canvas width before ResizeObserver
+    // runs. Centre the selected pin using the current viewport dimensions.
+    instance.invalidateSize({ pan: false });
     layer.clearLayers();
     const b = leaflet.latLngBounds([]);
     for (const group of groupTripMapPoints(points)) {
-      const { item, latitude, longitude, number } = group[0]!;
+      const representative = group.find((p) => p.item.parent.id === selectedItem) ?? group[0]!;
+      const { item, latitude, longitude, number } = representative;
       const grouped = group.length > 1;
-      const label = document.createElement('span');
-      label.textContent = grouped ? String(group.length) : number;
+      const active = group.some((p) => p.item.parent.id === selectedItem);
+      const color = calendarEventColor(
+        item.stop?.calendar_color ?? item.parent.calendar_color,
+        item.entry?.category?.color,
+      );
+      const title = grouped
+        ? `${group.length} lieux au même emplacement`
+        : (item.entry?.title ?? 'Étape');
       const point: [number, number] = [latitude, longitude];
       b.extend(point);
       const marker = leaflet
         .marker(point, {
-          title: grouped
-            ? `${group.length} lieux au même emplacement`
-            : (item.entry?.title ?? 'Étape'),
-          alt: grouped
-            ? `${group.length} lieux au même emplacement`
-            : (item.entry?.title ?? 'Étape'),
+          alt: title,
+          riseOnHover: true,
+          zIndexOffset: active ? 1000 : 0,
           icon: leaflet.divIcon({
-            className: `nagi-trip-marker${group.some((p) => p.item.parent.id === selectedItem) ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop ? ' is-stop' : ''}`,
-            html: label,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
+            className: `nagi-trip-marker${active ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop && !grouped ? ' is-stop' : ''}`,
+            html: mapPin(grouped ? String(group.length) : number, color, grouped),
+            iconSize: [44, 48],
+            iconAnchor: [22, 44],
+            tooltipAnchor: [0, -42],
+            popupAnchor: [0, -38],
           }),
         })
+        .bindTooltip(
+          markerTooltip(
+            title,
+            grouped ? 'Choisir une étape' : item.stop ? `Arrêt ${number}` : `Étape ${number}`,
+          ),
+          { direction: 'top', offset: [0, -6], className: 'trip-map-pin-tooltip', opacity: 1 },
+        )
         .addTo(layer);
       if (grouped) {
+        marker.on('popupopen', () => marker.closeTooltip());
+        marker.on('mouseover', () => {
+          if (marker.isPopupOpen()) marker.closeTooltip();
+        });
         const choices = document.createElement('div');
         choices.className = 'trip-map-shared-location';
         for (const point of group) {
@@ -237,6 +305,8 @@ export default function TripMap(
             ? `${group.length} lieux au même emplacement`
             : `${number}. ${item.entry?.title ?? 'Étape'}`,
         );
+      marker.getElement()?.setAttribute('aria-pressed', String(active));
+      enableMarkerKeyboard(marker);
     }
     if (!b.isValid() && fitted.current === null) {
       const fallback = tripPoints(tripMapVisits(plan.items), 'all').located;
@@ -245,13 +315,13 @@ export default function TripMap(
     }
     const fitKey = `${selectedDay}:${points.map((p) => `${p.item.parent.id}:${p.latitude}:${p.longitude}`).join('|')}`;
     if (b.isValid() && fitted.current !== fitKey) {
-      instance.fitBounds(b, { padding: [50, 50], maxZoom: 15, animate: false });
+      instance.fitBounds(b, { padding: [64, 64], maxZoom: 15, animate: false });
       fitted.current = fitKey;
     }
     const chosen = points.find((p) => p.item.parent.id === selectedItem);
     if (chosen)
       instance.panInside([chosen.latitude, chosen.longitude], {
-        padding: [45, 45],
+        padding: [64, 64],
         animate: false,
       });
   }, [phase, points, selectedDay, selectedItem, onDetails, plan.items]);
@@ -311,18 +381,24 @@ export default function TripMap(
         Math.abs(entry.longitude) > 180
       )
         continue;
-      const label = document.createElement('span');
-      label.textContent = '+';
       const marker = leaflet
         .marker([entry.latitude, entry.longitude], {
-          title: entry.title,
           alt: entry.title,
+          riseOnHover: true,
+          zIndexOffset: selected?.id === entry.id ? 500 : -100,
           icon: leaflet.divIcon({
             className: `nagi-catalog-marker${selected?.id === entry.id ? ' is-selected' : ''}${otherDays.has(entry.id) ? ' is-in-trip' : ''}`,
-            html: label,
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
+            html: mapPin('+', calendarEventColor(null, entry.category?.color)),
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+            tooltipAnchor: [0, -16],
           }),
+        })
+        .bindTooltip(markerTooltip(entry.title, 'Catalogue Nagi'), {
+          direction: 'top',
+          offset: [0, -6],
+          className: 'trip-map-pin-tooltip',
+          opacity: 1,
         })
         .on('click', () => {
           setSelected(entry);
@@ -330,6 +406,8 @@ export default function TripMap(
         })
         .addTo(layer);
       marker.getElement()?.setAttribute('aria-label', `Découvrir ${entry.title}`);
+      marker.getElement()?.setAttribute('aria-pressed', String(selected?.id === entry.id));
+      enableMarkerKeyboard(marker);
     }
   }, [nearby, explore, plan.items, selectedDay, selected?.id, phase]);
   return (
