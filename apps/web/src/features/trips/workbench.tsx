@@ -433,6 +433,7 @@ export function TripWorkbench({
     mutate,
     selectedDay: activeDay,
     selectedItem: selectedId,
+    mutationStates: sync.entityStates,
     onDay: chooseDay,
     onItinerary: () => setView('itinerary'),
     onDetails: details,
@@ -563,6 +564,7 @@ export function TripWorkbench({
           canEdit={editing}
           busy={busy}
           mutate={mutate}
+          onEdit={view === 'calendar' ? details : undefined}
         >
           <div
             className={cn(

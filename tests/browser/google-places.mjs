@@ -619,6 +619,13 @@ try {
     await wait('window.__plan.items.length===3');
     assert(await ev('window.__changes.at(-1).data.start_time==="14:45"'), 'Google calendar clock');
     await wait('!!document.querySelector(".trip-google-calendar-anchor")');
+    assert(
+      await ev(`(()=>{
+        const label=document.querySelector('.trip-google-calendar-anchor');
+        return label.textContent.includes('Voir le lieu') && label.getBoundingClientRect().height<=20;
+      })()`),
+      'short Google visits have a compact text label instead of a lone pin',
+    );
     const countBefore = await ev(
       'window.__externalRequests.filter(r=>r.operation==="search").length',
     );
@@ -627,6 +634,21 @@ try {
     const googleCalendar = await ev('window.__plan.items.at(-1).id');
     const calendarCopy =
       '[data-calendar-item-id="' + googleCalendar + '"] .trip-calendar-event-copy';
+    const beforeCancel = await ev('window.__changes.length');
+    const cancelPosition = await drag(calendarCopy, '[data-slot-minute="930"]', 'centre', false);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      ...cancelPosition,
+      button: 'left',
+      clickCount: 1,
+    });
+    await wait('!document.querySelector(".trip-calendar-drag-preview")');
+    assert(
+      (await ev('window.__changes.length')) === beforeCancel,
+      'Escape cancels a short Google event drag without saving',
+    );
     // A short event starts with a floating title. Making it tall and wide used
     // to detach the observed anchor; the following resize then crashed.
     await ev(
@@ -637,12 +659,59 @@ try {
       await ev('window.__calendarTitleAnchor.isConnected'),
       'calendar anchor stays mounted when the title becomes inline',
     );
-    for (const width of [120, 260, 120, 260]) {
+    for (const width of [120, 176, 260, 120, 176, 260]) {
       await ev(`window.__calendarTitleParent.style.width='${width}px'`);
       await wait(
-        `!!window.__calendarTitleParent.querySelector('${width < 180 ? '.trip-google-calendar-anchor' : '.trip-google-calendar-inline'}')`,
+        `!!window.__calendarTitleParent.querySelector('${width < 172 ? '.trip-google-calendar-anchor' : '.trip-google-calendar-inline'}')`,
       );
     }
+    // A real seven-day week must show Google's name without requiring a hover.
+    // Previously the narrow-column fallback left only a pin, even for long visits.
+    await ev(`
+      window.__calendarTitleParent.style.width='';
+      window.__plan={...window.__plan,
+        items:window.__plan.items.map(i=>i.id===${JSON.stringify(googleCalendar)}?{...i,start_time:'09:00',estimated_duration_minutes:120}:i),
+        days:[...window.__plan.days,
+        ...Array.from({length:5},(_,i)=>({...window.__plan.days[1],
+          id:'cccccccc-cccc-4ccc-8ccc-'+String(i+1).padStart(12,'0'),
+          day_number:i+3,date:'2027-07-'+(14+i),sort_order:i+2}))]};
+      window.__updatePlan(window.__plan);
+    `);
+    await wait('document.querySelectorAll(".trip-calendar-column").length===7');
+    await wait(
+      '!!window.__calendarTitleParent.querySelector(".trip-google-calendar-inline .is-label.is-ready")',
+    );
+    assert(
+      await ev(`(()=>{
+        const title=window.__calendarTitleParent.querySelector('.trip-google-calendar-inline');
+        const widget=title.querySelector('gmp-place-details-compact');
+        return title.getBoundingClientRect().width>=160 &&
+          !!widget.querySelector('gmp-place-name') && !!widget.querySelector('gmp-place-attribution') &&
+          !title.querySelector('gmp-place-media') && getComputedStyle(title).visibility==='visible';
+      })()`),
+      'week shows the official name and attribution inline at a readable width',
+    );
+    assert(
+      await ev('document.documentElement.scrollWidth<=innerWidth'),
+      'wide week stays inside the workspace',
+    );
+    assert(
+      await ev(`(()=>{
+        const container=document.querySelector('.trip-calendar-scroll');
+        container.scrollLeft=120;
+        const header=document.querySelector('.trip-calendar-grid-header').getBoundingClientRect();
+        const body=document.querySelector('.trip-calendar-hours').getBoundingClientRect();
+        return container.scrollLeft>0 && Math.abs(header.left-body.left)<1;
+      })()`),
+      'week headers and events scroll together',
+    );
+    await ev(
+      "document.querySelector('.trip-calendar-scroll').scrollLeft=0;document.querySelector('.trip-calendar-scroll').scrollTop=8*56",
+    );
+    fs.writeFileSync(
+      path.join(temp, 'calendar-week-google-names.png'),
+      Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).data, 'base64'),
+    );
     // Resize and immediately leave the calendar to exercise pending observer work.
     await ev("window.__calendarTitleParent.style.width='120px'");
     await textClick('Itinéraire');

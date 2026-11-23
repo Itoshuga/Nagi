@@ -14,9 +14,11 @@ import {
   ChevronRight,
   LoaderCircle,
   Palette,
+  Pencil,
   Plus,
   RotateCcw,
   Settings2,
+  Trash2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -46,6 +48,7 @@ import {
   removeCalendarColor,
 } from './calendar-color-actions';
 import './calendar-colors.css';
+import { RemoveTripStepDialog } from './remove-step-dialog';
 
 const CustomColorDialog = dynamic(
   () => import('./calendar-color-dialog').then((module) => module.CustomColorDialog),
@@ -78,6 +81,7 @@ export function CalendarColorsProvider({
   canEdit,
   busy,
   mutate,
+  onEdit,
   children,
 }: {
   guild: string;
@@ -85,10 +89,12 @@ export function CalendarColorsProvider({
   canEdit: boolean;
   busy: boolean;
   mutate: PlanMutation;
+  onEdit?: (item: TripPlanItem) => void;
   children: ReactNode;
 }) {
   const [target, setTarget] = useState<ColorTarget>();
   const [menu, setMenu] = useState(false);
+  const [removing, setRemoving] = useState<ColorTarget>();
   const [dialog, setDialog] = useState<'create' | 'manage'>();
   const [colors, setColors] = useState<SavedCalendarColor[]>([]);
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
@@ -96,6 +102,7 @@ export function CalendarColorsProvider({
   const loading = useRef(false),
     loaded = useRef(false),
     openingDialog = useRef(false);
+  const pendingEdit = useRef<TripPlanItem | undefined>(undefined);
   const item = plan.items.find((entry) => entry.id === target?.id);
   const enabled = canEdit && !busy;
   async function load() {
@@ -123,12 +130,13 @@ export function CalendarColorsProvider({
   function focusBack() {
     requestAnimationFrame(() => {
       if (target?.focus?.isConnected) target.focus.focus();
-      else
-        document
-          .querySelector<HTMLElement>(
+      else {
+        const fallback =
+          document.querySelector<HTMLElement>(
             `.trip-context-panel, [data-calendar-item-id="${target?.id}"] .trip-calendar-event-copy`,
-          )
-          ?.focus();
+          ) ?? document.querySelector<HTMLElement>('.trip-calendar-scroll');
+        fallback?.focus();
+      }
     });
   }
   function open(item: TripPlanItem, point?: { x: number; y: number }, focus?: HTMLElement | null) {
@@ -146,6 +154,7 @@ export function CalendarColorsProvider({
       snapshot: item,
     });
     openingDialog.current = false;
+    pendingEdit.current = undefined;
     setMenu(true);
     void load();
   }
@@ -209,7 +218,11 @@ export function CalendarColorsProvider({
             onContextMenu={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              if (!openingDialog.current) focusBack();
+              const edit = pendingEdit.current;
+              pendingEdit.current = undefined;
+              // Release the menu's focus trap before opening the details panel.
+              if (edit) requestAnimationFrame(() => onEdit?.(edit));
+              else if (!openingDialog.current) focusBack();
             }}
           >
             <DropdownMenuLabel className="calendar-color-menu-label">
@@ -267,8 +280,43 @@ export function CalendarColorsProvider({
               Couleur par défaut
               {item?.calendar_color == null && <Check className="ml-auto size-3.5" />}
             </DropdownMenuItem>
+            {onEdit && (
+              <>
+                <DropdownMenuSeparator className="calendar-color-menu-divider" />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    if (item) pendingEdit.current = item;
+                  }}
+                >
+                  <Pencil className="size-3.5" /> Modifier l’étape
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onSelect={() => {
+                    openingDialog.current = true;
+                    setMenu(false);
+                    setRemoving(target);
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Supprimer l’étape
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
+      )}
+      {removing && canEdit && (
+        <RemoveTripStepDialog
+          item={removing.snapshot}
+          version={removing.trip}
+          busy={busy}
+          mutate={mutate}
+          onClose={() => {
+            setRemoving(undefined);
+            openingDialog.current = false;
+          }}
+          returnFocus={focusBack}
+        />
       )}
       {dialog === 'create' && item && target && (
         <CustomColorDialog

@@ -16,6 +16,7 @@ export type PlanMutation = (
 ) => Promise<TripResult>;
 export type LanePosition = { day: string | null; before: string | null };
 export type DaySelection = 'all' | 'pending' | string;
+export type TripEntitySaveState = 'saving' | 'error';
 export type WorkspaceViewProps = {
   guild: string;
   plan: TripPlan;
@@ -24,6 +25,7 @@ export type WorkspaceViewProps = {
   mutate: PlanMutation;
   selectedDay: DaySelection;
   selectedItem?: string;
+  mutationStates?: Readonly<Record<string, TripEntitySaveState>>;
   onDay: (day: DaySelection) => void;
   onItinerary: () => void;
   onDetails: (item: TripPlanItem) => void;

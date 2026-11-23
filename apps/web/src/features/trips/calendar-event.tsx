@@ -30,48 +30,65 @@ import {
 } from './calendar-model';
 import { useCalendarColors } from './calendar-colors';
 import { CalendarPlaceTitle } from './calendar-place-title';
+import { calendarEventPresentation } from './calendar-presentation';
 export { CalendarPlaceTitle } from './calendar-place-title';
 
 export const CalendarEventCopy = memo(
   function CalendarEventCopy({
     item,
     schedule,
-    unconstrained,
   }: {
     item: TripPlanItem;
     schedule: CalendarSchedule;
-    unconstrained?: boolean;
   }) {
+    const host = useRef<HTMLSpanElement>(null);
+    const [size, setSize] = useState<{ height: number; width: number }>();
+    useEffect(() => {
+      const parent = host.current?.parentElement;
+      if (!parent) return;
+      const observer = new ResizeObserver(([entry]) => {
+        if (!entry) return;
+        const { height, width } = entry.contentRect;
+        setSize((old) => (old?.height === height && old.width === width ? old : { height, width }));
+      });
+      observer.observe(parent);
+      return () => observer.disconnect();
+    }, []);
+    const height = Math.min(
+      size?.height ?? Infinity,
+      (schedule.duration ?? 30) * calendarMinuteHeight - ((schedule.duration ?? 30) <= 30 ? 0 : 12),
+    );
+    const width = size?.width ?? Infinity;
+    const presentation = calendarEventPresentation(height, width, item.source === 'google');
+    const information = [
+      item.entry?.category?.name,
+      item.stops?.length ? tripStopCount(item.stops.length) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const details = presentation.details && !!information;
     return (
-      <>
+      <span ref={host} className="trip-calendar-event-content">
         <CalendarPlaceTitle
           item={item}
-          availableHeight={
-            unconstrained ? undefined : (schedule.duration ?? 30) * calendarMinuteHeight - 12
-          }
+          availableHeight={height - (presentation.time ? 18 : 0) - (details ? 18 : 0)}
+          availableWidth={width}
         />
-        {(schedule.duration == null || schedule.duration > 30) && (
-          <span>
+        {presentation.time && (
+          <span className="trip-calendar-event-time">
             {calendarScheduleLabel(schedule)}
-            {schedule.duration ? ` · ${formatTripDuration(schedule.duration)}` : ' · Durée libre'}
+            {presentation.details &&
+              (schedule.duration
+                ? ` · ${formatTripDuration(schedule.duration)}`
+                : ' · Durée libre')}
           </span>
         )}
-        {schedule.duration != null && schedule.duration >= 60 && (
-          <small>
-            {[
-              item.entry?.category?.name,
-              item.stops?.length ? tripStopCount(item.stops.length) : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </small>
-        )}
-      </>
+        {details && <small className="trip-calendar-event-meta">{information}</small>}
+      </span>
     );
   },
   (before, after) =>
     before.item === after.item &&
-    before.unconstrained === after.unconstrained &&
     before.schedule.day === after.schedule.day &&
     before.schedule.start === after.schedule.start &&
     before.schedule.end === after.schedule.end &&
@@ -86,7 +103,7 @@ type ResizeBase = {
   edge: 'start' | 'end';
   moved: boolean;
 };
-export function CalendarEvent({
+export const CalendarEvent = memo(function CalendarEvent({
   item,
   props,
   lane,
@@ -120,7 +137,7 @@ export function CalendarEvent({
   const visualDuration = Math.min(1440 - schedule.start, schedule.duration ?? 30);
   const compact = schedule.duration != null && schedule.duration <= 30;
   const overflow = Math.max(0, activityBudget(item).used - (schedule.duration ?? Infinity));
-  const description = `${item.entry?.title ?? 'Fiche indisponible'} · ${calendarScheduleLabel(schedule)} · ${formatTripDuration(schedule.duration) ?? 'Durée libre'}${overflow ? ` · Les arrêts dépassent la durée prévue de ${formatTripDuration(overflow)}` : ''}`;
+  const description = `${item.source === 'google' ? 'Détails du lieu' : (item.entry?.title ?? 'Fiche indisponible')} · ${calendarScheduleLabel(schedule)} · ${formatTripDuration(schedule.duration) ?? 'Durée libre'}${overflow ? ` · Les arrêts dépassent la durée prévue de ${formatTripDuration(overflow)}` : ''}`;
   const resizingActive = resize !== undefined;
   useEffect(() => {
     if (!resizingActive) return;
@@ -207,6 +224,7 @@ export function CalendarEvent({
         lanes > 1 && 'has-conflict',
         compact && 'is-compact',
         resizingActive && 'is-resizing',
+        props.selectedItem === item.id && 'is-selected',
       )}
       style={
         {
@@ -219,6 +237,7 @@ export function CalendarEvent({
           width: `calc(${100 / lanes}% - 6px)`,
         } as CSSProperties
       }
+      data-save-state={props.mutationStates?.[item.id]}
       onPointerDown={(event) => {
         if (event.button === 0 && !resizing.current) listeners?.onPointerDown?.(event);
       }}
@@ -241,7 +260,8 @@ export function CalendarEvent({
         type="button"
         className="trip-calendar-event-copy"
         title={description}
-        aria-label={description}
+        aria-label={item.source === 'google' ? undefined : description}
+        aria-pressed={props.selectedItem === item.id}
         onClick={() => {
           if (!isDragging && !resizing.current) props.onDetails(item);
         }}
@@ -263,6 +283,15 @@ export function CalendarEvent({
       >
         <CalendarEventCopy item={item} schedule={schedule} />
       </button>
+      {props.mutationStates?.[item.id] && (
+        <span className="trip-calendar-event-state" role="status">
+          <span className="sr-only">
+            {props.mutationStates[item.id] === 'saving'
+              ? 'Enregistrement de cette étape…'
+              : 'Cette étape n’a pas pu être enregistrée.'}
+          </span>
+        </span>
+      )}
       {props.canEdit &&
         (['start', 'end'] as const).map((edge) => (
           <button
@@ -312,4 +341,4 @@ export function CalendarEvent({
       )}
     </div>
   );
-}
+});

@@ -7,7 +7,7 @@ import {
   tripMutationGuards,
   tripMutationKeys,
 } from './mutation-model';
-import type { TripMutationContext } from './planner-model';
+import type { TripMutationContext, TripEntitySaveState } from './planner-model';
 
 export class TripMutationError extends Error {
   constructor(
@@ -32,6 +32,7 @@ export type TripQueueState = {
   plan: TripPlan;
   pending: number;
   failed: boolean;
+  entityStates: Readonly<Record<string, TripEntitySaveState>>;
   error: string;
   online: boolean;
   connected: boolean;
@@ -60,6 +61,7 @@ export class TripMutationQueue {
   private disposed = false;
   private recovering: Promise<void> | undefined;
   private permanentError = '';
+  private failedEntities = new Set<string>();
   private suspendedKeys = new Set<string>();
   private recoveryAgain = false;
   private snapshot: TripQueueState;
@@ -79,6 +81,7 @@ export class TripMutationQueue {
       plan,
       pending: 0,
       failed: false,
+      entityStates: {},
       error: '',
       online: true,
       connected: false,
@@ -98,12 +101,22 @@ export class TripMutationQueue {
     let plan = this.confirmed;
     for (const task of this.tasks)
       plan = optimisticTripChange(plan, task.change, this.options.viewer, task.entry);
+    const entityStates: Record<string, TripEntitySaveState> = {};
+    for (const id of this.failedEntities) entityStates[id] = 'error';
+    for (const task of this.tasks)
+      for (const key of task.keys)
+        if (key.startsWith('entity:')) {
+          const id = key.slice(7);
+          if (task.state === 'retry' || task.state === 'paused') entityStates[id] = 'error';
+          else entityStates[id] ??= 'saving';
+        }
     this.snapshot = {
       ...this.snapshot,
       ...patch,
       plan,
       pending: this.tasks.length,
       failed: this.tasks.some((t) => t.state === 'paused'),
+      entityStates,
     };
     for (const listener of this.listeners) listener();
   }
@@ -139,6 +152,8 @@ export class TripMutationQueue {
       if (!normalized) return Promise.resolve({ ok: true, version: plan.version });
       const expected = tripMutationGuards(intent, normalized),
         keys = tripMutationKeys(plan, normalized);
+      for (const key of keys)
+        if (key.startsWith('entity:')) this.failedEntities.delete(key.slice(7));
       // Only adjacent, unsent property patches coalesce; structural operations
       // and requests with an ambiguous network outcome retain their identity.
       const last = this.tasks.at(-1);
@@ -215,6 +230,8 @@ export class TripMutationQueue {
         return;
       }
       this.tasks = this.tasks.filter((t) => t.id !== task.id);
+      for (const key of task.keys)
+        if (key.startsWith('entity:')) this.failedEntities.delete(key.slice(7));
       this.publish({
         error:
           this.permanentError ||
@@ -247,6 +264,8 @@ export class TripMutationQueue {
         this.publish({ error: problem.message });
       } else {
         this.permanentError = problem.message;
+        for (const key of task.keys)
+          if (key.startsWith('entity:')) this.failedEntities.add(key.slice(7));
         for (const key of task.keys) this.suspendedKeys.add(key);
         this.tasks = this.tasks.filter((t) => t !== task);
         await this.recover();
@@ -408,6 +427,7 @@ export class TripMutationQueue {
   };
   clearError = () => {
     this.permanentError = '';
+    this.failedEntities.clear();
     this.publish({ error: '' });
   };
   start = () => {
@@ -430,6 +450,7 @@ export class TripMutationQueue {
   revoke = (error: string) => {
     for (const task of this.tasks) clearTimeout(task.timer);
     this.tasks = [];
+    this.failedEntities.clear();
     this.active.clear();
     this.buffer.clear();
     this.abort.abort();
@@ -463,7 +484,8 @@ export class TripMutationQueue {
     this.active.clear();
     this.buffer.clear();
     this.forgetPlan();
-    this.snapshot = { ...this.snapshot, plan: this.confirmed, pending: 0 };
+    this.failedEntities.clear();
+    this.snapshot = { ...this.snapshot, plan: this.confirmed, pending: 0, entityStates: {} };
     this.listeners.clear();
   };
 }

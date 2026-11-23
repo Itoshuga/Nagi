@@ -1,6 +1,6 @@
 'use client';
 import { calendarColorStyle } from './calendar-color-style';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { DragOverlay, type DragMoveEvent, useDroppable, useDndMonitor } from '@dnd-kit/core';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button, cn } from '@nagi/ui';
@@ -23,6 +23,7 @@ import { TripItinerary } from './itinerary';
 import { CalendarEvent, CalendarEventCopy, CalendarPlaceTitle } from './calendar-event';
 import { useCalendarColors } from './calendar-colors';
 import { useDragPointer } from './drag-pointer';
+import { useCalendarClock } from './use-calendar-clock';
 import {
   calendarHourHeight,
   calendarMinuteHeight,
@@ -42,6 +43,7 @@ import {
 
 const hourHeight = calendarHourHeight,
   minuteHeight = calendarMinuteHeight;
+const emptyCalendarItems: TripPlanItem[] = [];
 function Slot({
   day,
   minute,
@@ -86,7 +88,7 @@ function Slot({
 }
 export function TripCalendar(props: WorkspaceViewProps) {
   const { plan, selectedDay, onDay, canEdit, busy } = props;
-  const dated = plan.days.filter((d) => d.date),
+  const dated = useMemo(() => plan.days.filter((d) => d.date), [plan.days]),
     chosen = dated.find((d) => d.id === selectedDay) ?? dated[0];
   const [mode, setMode] = useState<'day' | 'week' | 'overview'>(
     dated.length > 10 ? 'overview' : dated.length === 1 ? 'day' : 'week',
@@ -105,7 +107,31 @@ export function TripCalendar(props: WorkspaceViewProps) {
   const colors = useCalendarColors();
   const index = dated.findIndex((d) => d.id === chosen?.id),
     start = Math.floor(Math.max(0, index) / 7) * 7;
-  const days = mode === 'day' ? (chosen ? [chosen] : []) : dated.slice(start, start + 7);
+  const days = useMemo(
+    () => (mode === 'day' ? (chosen ? [chosen] : []) : dated.slice(start, start + 7)),
+    [mode, chosen, dated, start],
+  );
+  const hasGooglePlaces = useMemo(
+    () =>
+      plan.items.some(
+        (item) => item.source === 'google' && days.some((day) => day.id === item.trip_day_id),
+      ),
+    [plan.items, days],
+  );
+  const clock = useCalendarClock(plan.timezone);
+  const itemsByDay = useMemo(() => {
+    const grouped = new Map<string | null, TripPlanItem[]>();
+    for (const item of plan.items) {
+      const list = grouped.get(item.trip_day_id);
+      if (list) list.push(item);
+      else grouped.set(item.trip_day_id, [item]);
+    }
+    return grouped;
+  }, [plan.items]);
+  const hasUnscheduled = useMemo(
+    () => days.some((day) => itemsByDay.get(day.id)?.some((item) => !item.start_time)),
+    [days, itemsByDay],
+  );
   const keyboardDay = days.some((d) => d.id === activeSlot.day) ? activeSlot.day : chosen?.id;
   useEffect(() => {
     if (scroll.current) scroll.current.scrollTop = 7 * hourHeight;
@@ -204,7 +230,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
       </div>
     );
   function dayItems(day: TripPlannerDay) {
-    return plan.items.filter((i) => i.trip_day_id === day.id);
+    return itemsByDay.get(day.id) ?? emptyCalendarItems;
   }
   return (
     <div className={cn('trip-calendar', (dragged || catalog) && 'is-dragging')}>
@@ -215,22 +241,29 @@ export function TripCalendar(props: WorkspaceViewProps) {
               ? tripDateLabel(chosen.date, { month: 'long', year: 'numeric' })
               : 'Calendrier'}
           </h2>
-          <small>Horaires locaux · {plan.timezone}</small>
+          <small>
+            <span className="trip-calendar-local-label">Horaires locaux · </span>
+            {plan.timezone}
+          </small>
         </div>
-        <div className="trip-calendar-modes" aria-label="Période du calendrier">
+        <div className="trip-calendar-modes" role="group" aria-label="Période du calendrier">
           {(['day', 'week', 'overview'] as const).map((m) => (
             <button type="button" key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>
               {m === 'day' ? 'Jour' : m === 'week' ? 'Semaine' : 'Séjour'}
             </button>
           ))}
         </div>
-        <div className="flex">
+        <div
+          className="trip-calendar-period-navigation"
+          role="group"
+          aria-label="Navigation du calendrier"
+        >
           <button
             type="button"
             className="trip-icon-button"
             aria-label="Période précédente"
-            disabled={index <= 0}
-            onClick={() => onDay(dated[Math.max(0, index - (mode === 'day' ? 1 : 7))]!.id)}
+            disabled={mode === 'overview' || (mode === 'week' ? start <= 0 : index <= 0)}
+            onClick={() => onDay(dated[Math.max(0, mode === 'day' ? index - 1 : start - 7)]!.id)}
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -238,9 +271,12 @@ export function TripCalendar(props: WorkspaceViewProps) {
             type="button"
             className="trip-icon-button"
             aria-label="Période suivante"
-            disabled={index >= dated.length - 1}
+            disabled={
+              mode === 'overview' ||
+              (mode === 'week' ? start + 7 >= dated.length : index >= dated.length - 1)
+            }
             onClick={() =>
-              onDay(dated[Math.min(dated.length - 1, index + (mode === 'day' ? 1 : 7))]!.id)
+              onDay(dated[Math.min(dated.length - 1, mode === 'day' ? index + 1 : start + 7)]!.id)
             }
           >
             <ChevronRight className="size-4" />
@@ -262,7 +298,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
               }}
             >
               <small>Jour {i + 1}</small>
-              <strong>
+              <strong className={cn(d.date === clock?.date && 'is-today')}>
                 {tripDateLabel(d.date!, { weekday: 'short', day: 'numeric', month: 'short' })}
               </strong>
               <span>{dayItems(d).length} étapes</span>
@@ -284,91 +320,130 @@ export function TripCalendar(props: WorkspaceViewProps) {
         </div>
       ) : (
         <>
-          <div className="trip-calendar-desktop">
-            <>
-              <div
-                className="trip-calendar-grid-header"
-                style={{ gridTemplateColumns: `46px repeat(${days.length},minmax(0,1fr))` }}
-              >
-                <span />
-                {days.map((d) => (
-                  <button
-                    type="button"
-                    key={d.id}
-                    id={`calendar-day-${d.id}`}
-                    aria-pressed={selectedDay === d.id}
-                    onClick={() => onDay(d.id)}
-                  >
-                    {tripDateLabel(d.date!, { weekday: 'short', day: 'numeric' })}
-                    <small>{d.title}</small>
-                  </button>
-                ))}
-              </div>
-              <div
-                className="trip-calendar-unscheduled"
-                style={{ gridTemplateColumns: `46px repeat(${days.length},minmax(0,1fr))` }}
-              >
-                <span>
-                  Sans
-                  <br />
-                  horaire
-                </span>
-                {days.map((d) => (
-                  <CalendarDayTarget key={d.id} day={d.id} editable={canEdit}>
-                    {dayItems(d)
-                      .filter((i) => !i.start_time)
-                      .map((item) => (
-                        <button
-                          type="button"
-                          key={item.id}
-                          onClick={() => props.onDetails(item)}
-                          style={calendarColorStyle(
-                            calendarEventColor(item.calendar_color, item.entry?.category?.color),
-                          )}
-                          onContextMenu={(event) => {
-                            if (canEdit) {
-                              event.preventDefault();
-                              colors?.open(
-                                item,
-                                { x: event.clientX, y: event.clientY },
-                                event.currentTarget,
-                              );
-                            }
-                          }}
-                          onKeyDown={(event) => {
-                            if (
-                              canEdit &&
-                              (event.key === 'ContextMenu' ||
-                                (event.shiftKey && event.key === 'F10'))
-                            ) {
-                              event.preventDefault();
-                              colors?.open(item, undefined, event.currentTarget);
-                            }
-                          }}
-                        >
-                          <CalendarPlaceTitle item={item} />
-                        </button>
-                      ))}
-                  </CalendarDayTarget>
-                ))}
-              </div>
-              <div ref={scroll} className="trip-calendar-scroll">
+          <div
+            className="trip-calendar-desktop"
+            style={
+              {
+                // Leave at least 160px for the official label after event insets.
+                '--trip-calendar-min-width': `${52 + days.length * (hasGooglePlaces ? 188 : 112)}px`,
+                '--trip-calendar-columns': `52px repeat(${days.length},minmax(0,1fr))`,
+              } as CSSProperties
+            }
+          >
+            <div
+              ref={scroll}
+              className="trip-calendar-scroll"
+              tabIndex={0}
+              aria-label="Grille horaire du voyage"
+            >
+              <div className="trip-calendar-grid">
+                <div className="trip-calendar-head">
+                  <div className="trip-calendar-grid-header">
+                    <span className="trip-calendar-corner" aria-hidden="true" />
+                    {days.map((d) => (
+                      <button
+                        type="button"
+                        key={d.id}
+                        id={`calendar-day-${d.id}`}
+                        aria-pressed={selectedDay === d.id}
+                        aria-current={d.date === clock?.date ? 'date' : undefined}
+                        aria-label={tripDateLabel(d.date!, {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                        })}
+                        className={cn(d.date === clock?.date && 'is-today')}
+                        onClick={() => onDay(d.id)}
+                      >
+                        <span className="trip-calendar-weekday">
+                          {tripDateLabel(d.date!, { weekday: 'short' })}
+                        </span>
+                        <span className="trip-calendar-date-number">
+                          {tripDateLabel(d.date!, { day: 'numeric' })}
+                        </span>
+                        {d.title && <small>{d.title}</small>}
+                      </button>
+                    ))}
+                  </div>
+                  <div className={cn('trip-calendar-unscheduled', !hasUnscheduled && 'is-empty')}>
+                    <span className="trip-calendar-corner">
+                      <span className={cn(!hasUnscheduled && 'sr-only')}>Sans horaire</span>
+                    </span>
+                    {days.map((d) => (
+                      <CalendarDayTarget key={d.id} day={d.id} editable={canEdit}>
+                        {dayItems(d)
+                          .filter((i) => !i.start_time)
+                          .map((item) => (
+                            <button
+                              type="button"
+                              key={item.id}
+                              className={cn(props.selectedItem === item.id && 'is-selected')}
+                              data-save-state={props.mutationStates?.[item.id]}
+                              aria-pressed={props.selectedItem === item.id}
+                              onClick={() => props.onDetails(item)}
+                              style={calendarColorStyle(
+                                calendarEventColor(
+                                  item.calendar_color,
+                                  item.entry?.category?.color,
+                                ),
+                              )}
+                              onContextMenu={(event) => {
+                                if (canEdit) {
+                                  event.preventDefault();
+                                  colors?.open(
+                                    item,
+                                    { x: event.clientX, y: event.clientY },
+                                    event.currentTarget,
+                                  );
+                                }
+                              }}
+                              onKeyDown={(event) => {
+                                if (
+                                  canEdit &&
+                                  (event.key === 'ContextMenu' ||
+                                    (event.shiftKey && event.key === 'F10'))
+                                ) {
+                                  event.preventDefault();
+                                  colors?.open(item, undefined, event.currentTarget);
+                                }
+                              }}
+                            >
+                              <CalendarPlaceTitle item={item} />
+                            </button>
+                          ))}
+                      </CalendarDayTarget>
+                    ))}
+                  </div>
+                </div>
                 <div
                   className="trip-calendar-hours"
                   style={{
-                    gridTemplateColumns: `46px repeat(${days.length},minmax(0,1fr))`,
                     height: 24 * hourHeight,
                   }}
                 >
                   <div className="trip-calendar-axis">
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <span key={h} style={{ top: h * hourHeight }}>
-                        {String(h).padStart(2, '0')}:00
-                      </span>
-                    ))}
+                    {Array.from(
+                      { length: 24 },
+                      (_, h) =>
+                        h > 0 && (
+                          <span key={h} style={{ top: h * hourHeight }}>
+                            {String(h).padStart(2, '0')}:00
+                          </span>
+                        ),
+                    )}
                   </div>
                   {days.map((d) => (
                     <CalendarColumn key={d.id} day={d.id} editable={canEdit}>
+                      {clock && d.date === clock.date && (
+                        <div
+                          className="trip-calendar-now"
+                          style={{ top: clock.minutes * minuteHeight }}
+                          role="img"
+                          aria-label={`Heure actuelle : ${clock.label} · ${plan.timezone}`}
+                        >
+                          <span />
+                        </div>
+                      )}
                       {canEdit &&
                         Array.from({ length: 48 }, (_, i) => (
                           <Slot
@@ -488,7 +563,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
                         }}
                       >
                         <div className="trip-calendar-event-copy">
-                          <CalendarEventCopy item={dragged} schedule={current} unconstrained />
+                          <CalendarEventCopy item={dragged} schedule={current} />
                         </div>
                         <span className="trip-calendar-drag-time" role="status">
                           {calendarScheduleLabel(current)}
@@ -497,11 +572,11 @@ export function TripCalendar(props: WorkspaceViewProps) {
                     );
                   })()}
               </DragOverlay>
-            </>
+            </div>
           </div>
           <CalendarDayTarget day={chosen.id} editable={canEdit} className="trip-calendar-mobile">
             <h3>{tripDayLabel(chosen.date!)}</h3>
-            {dayItems(chosen)
+            {[...dayItems(chosen)]
               .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'))
               .map((item) => (
                 <div
@@ -520,8 +595,15 @@ export function TripCalendar(props: WorkspaceViewProps) {
                   <button type="button" onClick={() => props.onDetails(item)}>
                     <CalendarPlaceTitle item={item} />
                     <small>
-                      {item.entry?.category?.name}
-                      {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
+                      {[
+                        item.entry?.category?.name,
+                        itemDuration(item) ? formatTripDuration(itemDuration(item)) : null,
+                        item.stops?.length
+                          ? `${item.stops.length} ${item.stops.length > 1 ? 'arrêts' : 'arrêt'}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </small>
                   </button>
                 </div>

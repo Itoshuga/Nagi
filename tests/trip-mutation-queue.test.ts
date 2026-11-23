@@ -275,6 +275,28 @@ function setup(count = 3) {
 }
 
 describe('Trip mutation journal and non-blocking queue', () => {
+  it('exposes saving and rejected states for the affected entities without marking unrelated visits', async () => {
+    const s = setup();
+    const [first, second, untouched] = s.server.items;
+    await s.queue.enqueue(color(first!.id, '#73A6DF'));
+    await s.queue.enqueue(color(second!.id, '#69AA91'));
+    await flush();
+    expect(s.queue.getSnapshot().entityStates[first!.id]).toBe('saving');
+    expect(s.queue.getSnapshot().entityStates[second!.id]).toBe('saving');
+    expect(s.queue.getSnapshot().entityStates[untouched!.id]).toBeUndefined();
+    s.requests[0]!.reject(new TripMutationError('invalid', 'Échec de validation'));
+    await flush();
+    expect(s.queue.getSnapshot().entityStates[first!.id]).toBe('error');
+    expect(s.queue.getSnapshot().entityStates[second!.id]).toBe('saving');
+    s.commit(1);
+    await flush();
+    expect(s.queue.getSnapshot().entityStates[second!.id]).toBeUndefined();
+    expect(s.queue.getSnapshot().entityStates[first!.id]).toBe('error');
+    expect(s.queue.getSnapshot().plan.items[0]!.calendar_color).toBeNull();
+    expect(s.queue.getSnapshot().plan.items[1]!.calendar_color).toBe('#69AA91');
+    s.queue.clearError();
+    expect(s.queue.getSnapshot().entityStates).toEqual({});
+  });
   it('adds an authorized contributor card only when a creation introduces a new author', () => {
     const s = setup();
     const event: TripRealtimeEvent = {

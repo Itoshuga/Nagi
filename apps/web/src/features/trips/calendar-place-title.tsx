@@ -4,40 +4,41 @@ import { createPortal } from 'react-dom';
 import { MapPin } from 'lucide-react';
 import type { TripPlanItem } from '@nagi/database';
 import { GooglePlaceView } from '@/features/integrations/google-places/components';
+import { calendarGoogleTitleHeight, calendarGoogleTitleWidth } from './calendar-presentation';
 
-/** Keep real event geometry. The complete official label stays outside a short
- * block, rather than clipping Google's attribution to a fourteen-pixel row. */
+/** Keep real event geometry. Only genuinely small blocks use a floating card;
+ * ordinary week columns show the official name and attribution inline. */
 export function CalendarPlaceTitle({
   item,
   availableHeight,
+  availableWidth,
 }: {
   item: TripPlanItem;
   availableHeight?: number;
+  availableWidth?: number;
 }) {
-  const anchor = useRef<HTMLSpanElement>(null),
-    [floating, setFloating] = useState(availableHeight !== undefined && availableHeight < 68);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [minimumHeight, setMinimumHeight] = useState(calendarGoogleTitleHeight);
+  const constrained = availableHeight !== undefined;
+  const floating =
+    constrained &&
+    (availableHeight < minimumHeight || (availableWidth ?? Infinity) < calendarGoogleTitleWidth);
   const [visible, setVisible] = useState(false),
     [position, setPosition] = useState<{ left: number; top: number; below: boolean } | null>(null);
   const popup = useRef<HTMLDivElement>(null),
     closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const google = item.source === 'google' && item.google_place_id;
   useEffect(() => {
-    const node = anchor.current,
-      parent = node?.parentElement;
-    if (!google || !node || !parent || availableHeight === undefined) return;
-    let active = true;
-    const resize = () => {
-      if (!active || node.parentElement !== parent || !parent.isConnected) return;
-      setFloating(availableHeight < 68 || parent.getBoundingClientRect().width < 180);
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(parent);
-    resize();
-    return () => {
-      active = false;
-      observer.disconnect();
-    };
-  }, [google, availableHeight]);
+    const node = anchor.current?.querySelector('.trip-google-place');
+    if (!google || !node || floating || !constrained) return;
+    // Official layouts can vary with fonts or provider content. Move a card
+    // that cannot fit into the popover instead of clipping its attribution.
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setMinimumHeight(Math.max(calendarGoogleTitleHeight, entry.contentRect.height));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [google, floating, constrained]);
   useEffect(() => {
     const node = anchor.current;
     if (!floating || !node || !google) return;
@@ -68,7 +69,6 @@ export function CalendarPlaceTitle({
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setPosition(null);
-        e.stopPropagation();
       }
     };
     parent.addEventListener('pointerenter', show);
@@ -88,6 +88,17 @@ export function CalendarPlaceTitle({
       parent.removeEventListener('keydown', key);
     };
   }, [floating, google]);
+  const popupOpen = position !== null;
+  useEffect(() => {
+    if (!popupOpen) return;
+    const close = () => setPosition(null);
+    document.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [popupOpen]);
   if (!google) return <strong>{item.entry?.title ?? 'Fiche indisponible'}</strong>;
   return (
     <span
@@ -97,10 +108,10 @@ export function CalendarPlaceTitle({
       {floating ? (
         <>
           <MapPin className="size-3" aria-hidden="true" />
-          {item.notes && <span>{item.notes.split('\n')[0]}</span>}
+          <span>{item.notes?.split('\n')[0] || 'Voir le lieu'}</span>
         </>
       ) : (
-        <GooglePlaceView placeId={google} occurrence={item.id} appearance="thumbnail" />
+        <GooglePlaceView placeId={google} occurrence={item.id} appearance="label" />
       )}
       {floating &&
         visible &&
@@ -122,7 +133,7 @@ export function CalendarPlaceTitle({
             onTouchStart={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            <GooglePlaceView placeId={google} occurrence={item.id} appearance="thumbnail" eager />
+            <GooglePlaceView placeId={google} occurrence={item.id} appearance="label" eager />
           </div>,
           document.body,
         )}
