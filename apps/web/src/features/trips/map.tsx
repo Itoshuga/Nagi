@@ -31,7 +31,7 @@ import {
 } from '@/features/integrations/mapbox/components';
 import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
 
-function mapPin(label: string, color: string, grouped = false) {
+function mapPin(label: string, color: string, grouped = false, stop = false) {
   const pin = document.createElement('span');
   pin.className = 'trip-map-pin';
   pin.setAttribute('aria-hidden', 'true');
@@ -42,6 +42,22 @@ function mapPin(label: string, color: string, grouped = false) {
     stack.className = 'trip-map-pin-stack';
     pin.append(stack);
   }
+  // One continuous outline keeps the body and its tip centred on the same
+  // coordinate, including when the pin is scaled on hover or selection.
+  const shape = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  shape.classList.add('trip-map-pin-shape');
+  shape.setAttribute('viewBox', '0 0 44 44');
+  shape.setAttribute('focusable', 'false');
+  const outline = stop
+    ? 'M18 5H26C32.075 5 37 9.925 37 16V24C37 30.075 32.075 35 27 35L22 43L17 35C11.925 35 7 30.075 7 24V16C7 9.925 11.925 5 18 5Z'
+    : 'M18 1H26C33.18 1 39 6.82 39 14V22C39 29.18 34.5 35 27 35L22 43L17 35C9.5 35 5 29.18 5 22V14C5 6.82 10.82 1 18 1Z';
+  for (const className of ['trip-map-pin-halo', 'trip-map-pin-body']) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add(className);
+    path.setAttribute('d', outline);
+    shape.append(path);
+  }
+  pin.append(shape);
   const face = document.createElement('span');
   face.className = 'trip-map-pin-label';
   face.textContent = label;
@@ -263,7 +279,12 @@ export default function TripMap(
           zIndexOffset: active ? 1000 : 0,
           icon: leaflet.divIcon({
             className: `nagi-trip-marker${active ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop && !grouped ? ' is-stop' : ''}`,
-            html: mapPin(grouped ? String(group.length) : number, color, grouped),
+            html: mapPin(
+              grouped ? String(group.length) : number,
+              color,
+              grouped,
+              !!item.stop && !grouped,
+            ),
             iconSize: [44, 48],
             iconAnchor: [22, 44],
             tooltipAnchor: [0, -42],
