@@ -45,6 +45,16 @@ export function CatalogPlaceCard({
       }}
     >
       <PlaceImage
+        photoReference={
+          display.source !== 'custom'
+            ? {
+                source: display.source,
+                id: display.id,
+                proof: display.imageProof,
+                located: !!display.coordinates,
+              }
+            : undefined
+        }
         src={display.imageUrl}
         source={display.source}
         category={display.categoryId ?? display.category}

@@ -475,6 +475,78 @@ export type Database = {
           { foreignKeyName: 'entry_relations_target_id_fkey'; columns: ["target_id"]; isOneToOne: false; referencedRelation: 'entries'; referencedColumns: ["id"]; },
         ];
       };
+      external_images: {
+        Row: {
+          id: string;
+          provider: string;
+          source_id: string;
+          metadata: Json;
+          available: boolean;
+          verified_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          provider: string;
+          source_id: string;
+          metadata: Json;
+          available?: boolean;
+          verified_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          source_id?: string;
+          metadata?: Json;
+          available?: boolean;
+          verified_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+        ];
+      };
+      image_resolution_cache: {
+        Row: {
+          cache_key: string;
+          selected: string | null;
+          candidates: (string)[];
+          confidence: string;
+          coordinate_evidence: boolean;
+          reasons: (string)[];
+          entity: string | null;
+          expires_at: string;
+          lease_id: string | null;
+          lease_until: string | null;
+        };
+        Insert: {
+          cache_key: string;
+          selected?: string | null;
+          candidates?: (string)[];
+          confidence?: string;
+          coordinate_evidence?: boolean;
+          reasons?: (string)[];
+          entity?: string | null;
+          expires_at?: string;
+          lease_id?: string | null;
+          lease_until?: string | null;
+        };
+        Update: {
+          cache_key?: string;
+          selected?: string | null;
+          candidates?: (string)[];
+          confidence?: string;
+          coordinate_evidence?: boolean;
+          reasons?: (string)[];
+          entity?: string | null;
+          expires_at?: string;
+          lease_id?: string | null;
+          lease_until?: string | null;
+        };
+        Relationships: [
+          { foreignKeyName: 'image_resolution_cache_selected_fkey'; columns: ["selected"]; isOneToOne: false; referencedRelation: 'external_images'; referencedColumns: ["id"]; },
+        ];
+      };
       neighborhoods: {
         Row: {
           id: string;
@@ -520,6 +592,47 @@ export type Database = {
         };
         Relationships: [
           { foreignKeyName: 'neighborhoods_city_id_fkey'; columns: ["city_id"]; isOneToOne: false; referencedRelation: 'cities'; referencedColumns: ["id"]; },
+        ];
+      };
+      place_image_assignments: {
+        Row: {
+          id: string;
+          entry_id: string | null;
+          trip_id: string | null;
+          visit_id: string | null;
+          mode: string;
+          image_id: string | null;
+          assigned_by: string | null;
+          revision: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          entry_id?: string | null;
+          trip_id?: string | null;
+          visit_id?: string | null;
+          mode: string;
+          image_id?: string | null;
+          assigned_by?: string | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          entry_id?: string | null;
+          trip_id?: string | null;
+          visit_id?: string | null;
+          mode?: string;
+          image_id?: string | null;
+          assigned_by?: string | null;
+          revision?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'place_image_assignments_assigned_by_fkey'; columns: ["assigned_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_entry_id_fkey'; columns: ["entry_id"]; isOneToOne: true; referencedRelation: 'entries'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_image_id_fkey'; columns: ["image_id"]; isOneToOne: false; referencedRelation: 'external_images'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_trip_id_fkey'; columns: ["trip_id"]; isOneToOne: false; referencedRelation: 'trips'; referencedColumns: ["id"]; },
         ];
       };
       profile_banner_garbage: {
@@ -1013,6 +1126,7 @@ export type Database = {
       acquire_bot_lease: { Args: { p_application_id: string; p_scope: string; p_instance: string }; Returns: string; };
       can_create_guild_trip: { Args: { p_guild_id: string }; Returns: boolean; };
       can_edit_guild_trip: { Args: { p_trip_id: string }; Returns: boolean; };
+      can_read_image_visit: { Args: { p_trip: string; p_visit: string }; Returns: boolean; };
       can_read_profile_banner: { Args: { p_viewer: string; p_target: string; p_app: string; p_path: string }; Returns: boolean; };
       catalog_categories_at: { Args: { p_city: string; p_neighborhood: string }; Returns: Database['public']['Tables']['categories']['Row'][]; };
       catalog_edit_media: { Args: { p_entry: string; p_operation: string; p_data: Json }; Returns: undefined; };
@@ -1050,6 +1164,7 @@ export type Database = {
       release_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: undefined; };
       release_discord_refresh: { Args: { p_user_id: string; p_lease: string }; Returns: undefined; };
       renew_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string; p_connected: boolean }; Returns: boolean; };
+      reserve_image_resolution: { Args: { p_actor: string; p_key: string; p_openverse?: boolean | null; p_coordinates?: boolean | null }; Returns: string; };
       reserve_mapbox_places: { Args: { p_actor: string; p_kind: string; p_user_daily: number; p_global_daily: number; p_user_minute: number; p_details_monthly: number }; Returns: undefined; };
       resolve_social_profile: { Args: { p_handle: string }; Returns: Json; };
       revoke_discord_credentials: { Args: { p_user_id: string; p_version: number }; Returns: undefined; };
@@ -1057,6 +1172,7 @@ export type Database = {
       save_social_customization: { Args: { p_user: string; p_revision: number; p_data: Json }; Returns: number; };
       save_user_calendar_color: { Args: { p_hex: string }; Returns: Json; };
       set_discord_guild_presence: { Args: { p_application_id: string; p_guild: Json; p_present: boolean }; Returns: undefined; };
+      set_place_image: { Args: { p_entry?: string | null; p_trip?: string | null; p_visit?: string | null; p_mode?: string | null; p_image?: string | null; p_revision?: number | null }; Returns: number; };
       social_profile_trips: { Args: { p_viewer: string; p_target: string; p_app: string; p_offset: number }; Returns: Json; };
       sync_discord_profile: { Args: Record<PropertyKey, never>; Returns: Database['public']['Tables']['profiles']['Row']; };
       trip_author_card: { Args: { p_trip_id: string }; Returns: Json; };

@@ -4,7 +4,7 @@ import { Button, EmptyState, Input, cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
 import { publishedCatalog } from '@/features/catalog/queries';
 import { CategoryIcon } from '@/features/categories/icon';
-import { EntryImage } from '@/features/media/image';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 import { CatalogPagination } from '@/features/geography/navigation';
 import { firstParam, pageParam, withQuery, type SearchParams } from '@/features/geography/model';
 
@@ -20,7 +20,9 @@ export function EntryCard({ entry, href }: { entry: EntryCardRow; href: string }
       href={href}
       className="group block h-full overflow-hidden rounded-3xl border border-border bg-card shadow-card transition-shadow hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
     >
-      <EntryImage
+      <PlaceImage
+        category={entry.category?.name}
+        photoReference={{ source: 'nagi', id: entry.id }}
         src={entry.cover_image_url}
         className="aspect-[16/10] [&>img]:transition-transform [&>img]:duration-500 group-hover:[&>img]:scale-105 motion-reduce:[&>img]:transform-none motion-reduce:[&>img]:transition-none"
       />

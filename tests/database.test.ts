@@ -1159,6 +1159,187 @@ describe('Collaborative planner transactions', () => {
     color: '#739FD0',
     ...extra,
   });
+  describe('Open photography permissions and independent visit overrides', () => {
+    const image = 'abc00000-0000-4000-8000-000000000001';
+    beforeEach(async () => {
+      await asService();
+      await catalogAndDays();
+      await db.exec(
+        `insert into public.external_images(id,provider,source_id,metadata) values('${image}','wikimedia','Tokyo Tower.jpg','{"license":"CC BY-SA","licenseUrl":"https://creativecommons.org/licenses/by-sa/4.0/","imageUrl":"https://upload.wikimedia.org/wikipedia/commons/a/a1/Tower.jpg","thumbnailUrl":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Tower.jpg/320px-Tower.jpg","sourceUrl":"https://commons.wikimedia.org/wiki/File:Tower.jpg"}');`,
+      );
+      await asUser();
+    });
+    const choose = (
+      visit = firstItem,
+      rev = 0,
+      mode = 'manual',
+      photo: string | null = image,
+      trip = tripA,
+    ) =>
+      `select public.set_place_image(null,'${trip}','${visit}','${mode}',${photo ? `'${photo}'` : 'null'},${rev}) as value`;
+    it('only allows administrators to select catalogue photos, and keeps the tables server-written', async () => {
+      await fails(
+        `select public.set_place_image('${catalogEntry}',null,null,'manual','${image}',0)`,
+        /image_forbidden/,
+      );
+      await fails(`update public.external_images set available=false`, /permission denied/);
+      await fails('select * from public.image_resolution_cache', /permission denied/);
+      await fails(
+        `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}')`,
+        /permission denied/,
+      );
+      await asUser(adminId);
+      expect(
+        await scalar<number>(
+          `select public.set_place_image('${catalogEntry}',null,null,'manual','${image}',0) as value`,
+        ),
+      ).toBe(1);
+      await db.exec(
+        "reset role; set local role anon; set local request.jwt.claim.sub=''; set local request.jwt.claim.role='anon'",
+      );
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(1);
+      await db.exec(
+        `reset role; update public.entries set published=false where id='${catalogEntry}'; set local role anon`,
+      );
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+    });
+    it('preserves the selected image through nest and detach without updating planner versions on photo selection', async () => {
+      await scalar(operation(0, 'add_place', externalAdd(firstItem)));
+      await scalar(
+        operation(
+          1,
+          'add_place',
+          externalAdd(secondItem, { ...freePlace, title: 'Parent' }, { duration: 120 }),
+        ),
+      );
+      const before = await scalar(
+        `select jsonb_build_object('trip',version,'timestamp',updated_at) as value from public.trips where id='${tripA}'`,
+      );
+      expect(await scalar<number>(choose())).toBe(1);
+      expect(
+        await scalar(
+          `select jsonb_build_object('trip',version,'timestamp',updated_at) as value from public.trips where id='${tripA}'`,
+        ),
+      ).toEqual(before);
+      await scalar(operation(2, 'nest_item', { id: firstItem, parent: secondItem }));
+      expect(
+        await scalar<string>(
+          `select image_id::text as value from public.place_image_assignments where visit_id='${firstItem}'`,
+        ),
+      ).toBe(image);
+      await scalar(
+        operation(3, 'relocate_stop', { kind: 'activity', id: firstItem, day: null, before: null }),
+      );
+      expect(
+        await scalar<boolean>(
+          `select public.can_read_image_visit('${tripA}','${firstItem}') as value`,
+        ),
+      ).toBe(true);
+      expect(
+        await scalar<string>(
+          `select image_id::text as value from public.place_image_assignments where visit_id='${firstItem}'`,
+        ),
+      ).toBe(image);
+      expect(
+        await scalar<number>(
+          'select count(*)::int as value from public.place_image_assignments where entry_id is not null',
+        ),
+      ).toBe(0);
+    });
+    it('isolates trips, rejects missing visits, expired membership and editors without collaboration rights', async () => {
+      await scalar(operation(0, 'add_place', externalAdd(firstItem)));
+      await fails(choose(stopOne), /image_forbidden/);
+      await asUser(adminId);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+      await fails(choose(), /image_forbidden/);
+      await db.exec(
+        `reset role; update public.trips set collaboration_mode='organizers_only' where id='${tripA}'`,
+      );
+      await asUser(otherId);
+      await fails(choose(), /image_forbidden/);
+      await db.exec(
+        `reset role; update private.guild_memberships set expires_at=now()-interval '1 second' where user_id='${userId}'`,
+      );
+      await asUser();
+      await fails(choose(), /image_forbidden/);
+    });
+    it('uses separate photo revisions for concurrent edits, and supports automatic and icon modes', async () => {
+      await scalar(operation(0, 'add_place', externalAdd(firstItem)));
+      await scalar<number>(choose());
+      await fails(choose(), /image_conflict/);
+      expect(await scalar<number>(choose(firstItem, 1, 'fallback', null))).toBe(2);
+      expect(await scalar<number>(choose(firstItem, 2, 'automatic', null))).toBe(3);
+      await fails(choose(firstItem, 3, 'manual', null), /image_mode_invalid/);
+      await db.exec(
+        `reset role; update public.external_images set available=false where id='${image}'`,
+      );
+      await asUser();
+      await fails(choose(firstItem, 3), /image_unavailable/);
+    });
+    it('returns priority to a newly uploaded cover without deleting open photo metadata', async () => {
+      await asUser(adminId);
+      await scalar(
+        `select public.set_place_image('${catalogEntry}',null,null,'manual','${image}',0) as value`,
+      );
+      await asService();
+      await db.exec(
+        `update public.entries set cover_image_url='/app/entry-media/${catalogEntry}/abc00000-0000-4000-8000-000000000002/abc00000-0000-4000-8000-000000000003' where id='${catalogEntry}'`,
+      );
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.external_images'),
+      ).toBe(1);
+    });
+    it('leases cache misses once, caps global concurrency and reuses positive/negative cache entries', async () => {
+      await asService();
+      expect(
+        await scalar<string>(
+          `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}') as value`,
+        ),
+      ).toMatch(/[a-f0-9-]{36}/);
+      expect(
+        await scalar(
+          `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}') as value`,
+        ),
+      ).toBeNull();
+      // Coordinates from a newly signed retrieve may improve a suggestion's
+      // ambiguous result, while an existing lease still deduplicates the job.
+      expect(
+        await scalar(
+          `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}',false,true) as value`,
+        ),
+      ).toBeNull();
+      await scalar(
+        `select public.reserve_image_resolution('${otherId}','${'b'.repeat(64)}') as value`,
+      );
+      expect(
+        await scalar(
+          `select public.reserve_image_resolution('${userId}','${'c'.repeat(64)}') as value`,
+        ),
+      ).toBeNull();
+      await db.exec(
+        `update public.image_resolution_cache set expires_at=now()+interval '1 day',lease_until=null,lease_id=null where cache_key='${'a'.repeat(64)}'`,
+      );
+      expect(
+        await scalar(
+          `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}') as value`,
+        ),
+      ).toBeNull();
+      expect(
+        await scalar<string>(
+          `select public.reserve_image_resolution('${userId}','${'a'.repeat(64)}',false,true) as value`,
+        ),
+      ).toMatch(/[a-f0-9-]{36}/);
+    });
+  });
   it('creates custom visits without any catalog destination and retains idempotency after deletion', async () => {
     await asUser();
     const add = externalAdd();

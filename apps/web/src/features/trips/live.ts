@@ -40,6 +40,9 @@ export function useTripLive(guild: string, trip: string, queue: TripMutationQueu
         close();
         queue.revoke('Votre accès à ce voyage a été révoqué.');
       });
+      events.addEventListener('images', () => {
+        window.dispatchEvent(new CustomEvent('nagi:images-updated', { detail: { trip } }));
+      });
       events.onerror = () => {
         close();
         queue.setConnected(false);

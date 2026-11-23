@@ -27,7 +27,9 @@ await db.exec(readFileSync(new URL('./auth.sql', import.meta.url), 'utf8'));
 for (const f of readdirSync(root + '/supabase/migrations')
   .filter((f) => f.endsWith('.sql'))
   .sort())
-  await db.exec(readFileSync(root + '/supabase/migrations/' + f, 'utf8'));
+  await db.exec(readFileSync(root + '/supabase/migrations/' + f, 'utf8').replace(/\r\n/g, '\n'));
+if (process.env.NAGI_QA_IMAGES === '1')
+  await db.exec('update private.mapbox_settings set enabled=true where singleton');
 const uid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   guild = '444444444444444444',
@@ -165,6 +167,9 @@ async function sync() {
       'trip_organizers',
       'trip_item_stops',
       'user_calendar_colors',
+      'external_images',
+      'image_resolution_cache',
+      'place_image_assignments',
     ].map((t) => db.query(`select * from public.${t} order by 1`)),
   );
   writeAtomic(
@@ -327,7 +332,9 @@ async function rows(table, params, isPublic = false) {
     }
     if (list.length) conditions.push('(' + list.join(' or ') + ')');
   }
-  const order = (params.get('order') ?? 'id.asc')
+  const order = (
+    params.get('order') ?? (table === 'image_resolution_cache' ? 'cache_key.asc' : 'id.asc')
+  )
     .split(',')
     .map((s) => {
       const [k, d] = s.split('.');
@@ -399,6 +406,69 @@ globalThis.fetch = async (input, init = {}) => {
         : [{ id: guild, name: 'Équipe Nagi', icon: null, owner: true, permissions: '8' }],
     );
   if (url.hostname === 'localhost' && url.port === port) return original(input, init);
+  if (process.env.NAGI_QA_IMAGES === '1') {
+    const name = 'Shibuya PARCO';
+    if (url.hostname === 'api.mapbox.com') {
+      const place = {
+        mapbox_id: 'qa-mapbox-parco',
+        name,
+        feature_type: 'poi',
+        poi_category_ids: ['shopping_mall'],
+        context: { place: { name: 'Tokyo' }, country: { name: 'Japan' } },
+        coordinates: { latitude: 35.661, longitude: 139.698 },
+      };
+      return json(
+        url.pathname.endsWith('/suggest')
+          ? { suggestions: [place] }
+          : { features: [{ properties: place }] },
+      );
+    }
+    if (url.hostname === 'www.wikidata.org') {
+      if (url.searchParams.get('action') === 'wbsearchentities')
+        return json({ search: [{ id: 'Q123456789' }] });
+      return json({
+        entities: {
+          Q123456789: {
+            id: 'Q123456789',
+            labels: { en: { value: url.searchParams.get('ids') === 'Q123456789' ? name : name } },
+            claims: {
+              P18: [{ mainsnak: { datavalue: { value: 'Shibuya Parco QA.jpg' } } }],
+              P625: [
+                { mainsnak: { datavalue: { value: { latitude: 35.661, longitude: 139.698 } } } },
+              ],
+            },
+          },
+        },
+      });
+    }
+    if (url.hostname === 'commons.wikimedia.org')
+      return json({
+        query: {
+          pages: [
+            {
+              title: 'File:Shibuya Parco QA.jpg',
+              imageinfo: [
+                {
+                  url: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/ParcoQA.jpg',
+                  thumburl:
+                    'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/ParcoQA.jpg/330px-ParcoQA.jpg',
+                  descriptionurl: 'https://commons.wikimedia.org/wiki/File:ParcoQA.jpg',
+                  width: 2400,
+                  height: 1600,
+                  mime: 'image/jpeg',
+                  extmetadata: {
+                    Artist: { value: 'QA Photographer' },
+                    ObjectName: { value: 'Shibuya PARCO' },
+                    LicenseShortName: { value: 'CC BY-SA 4.0' },
+                    LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      });
+  }
   if (
     process.env.NAGI_QA_MAPBOX_LIVE === '1' &&
     url.hostname === 'api.mapbox.com' &&
@@ -514,6 +584,7 @@ globalThis.fetch = async (input, init = {}) => {
           'mapbox_place_reference',
           'mapbox_error',
           'mapbox_available',
+          'reserve_image_resolution',
         ].includes(table) && h.get('apikey') === process.env.SUPABASE_SERVICE_ROLE_KEY,
       );
       if (
@@ -554,8 +625,66 @@ globalThis.fetch = async (input, init = {}) => {
     'trip_organizers',
     'trip_item_stops',
     'user_calendar_colors',
+    'external_images',
+    'image_resolution_cache',
+    'place_image_assignments',
   ];
   if (!allowed.includes(table)) throw new Error('Unhandled fixture table ' + table);
+  if (
+    ['external_images', 'image_resolution_cache', 'place_image_assignments'].includes(table) &&
+    ['POST', 'PATCH'].includes(method)
+  ) {
+    if (h.get('apikey') !== process.env.SUPABASE_SERVICE_ROLE_KEY)
+      return json({ code: '42501', message: 'server-only' }, 403);
+    try {
+      const data = Array.isArray(body) ? body : [body];
+      for (const value of data) {
+        const keys = Object.keys(value);
+        if (!keys.every((key) => /^[a-z_]+$/.test(key))) throw new Error('Invalid column');
+        const parameters = keys.map((key) =>
+          key === 'metadata' ? JSON.stringify(value[key]) : value[key],
+        );
+        if (method === 'POST') {
+          const conflict =
+            table === 'external_images'
+              ? 'id'
+              : table === 'image_resolution_cache'
+                ? 'cache_key'
+                : 'id';
+          await authQuery(
+            (tx) =>
+              tx.query(
+                `insert into public.${table}(${keys.join(',')}) values(${keys.map((_, i) => '$' + (i + 1)).join(',')}) on conflict(${conflict}) do update set ${keys
+                  .filter((key) => key !== conflict)
+                  .map((key) => `${key}=excluded.${key}`)
+                  .join(',')}`,
+                parameters,
+              ),
+            actor,
+            true,
+          );
+        } else {
+          const filters = [...url.searchParams].filter(
+            ([key, value]) => /^[a-z_]+$/.test(key) && value.startsWith('eq.'),
+          );
+          if (!filters.length) throw new Error('Missing photo update target');
+          await authQuery(
+            (tx) =>
+              tx.query(
+                `update public.${table} set ${keys.map((key, i) => `${key}=$${i + 1}`).join(',')} where ${filters.map(([key], i) => `${key}=$${keys.length + i + 1}`).join(' and ')}`,
+                [...parameters, ...filters.map(([, value]) => value.slice(3))],
+              ),
+            actor,
+            true,
+          );
+        }
+      }
+      await sync();
+      return json(null);
+    } catch (error) {
+      return json({ code: error.code, message: error.message }, 400);
+    }
+  }
   if (method === 'DELETE' && table === 'user_calendar_colors') {
     const target = url.searchParams.get('id')?.slice(3);
     await authQuery((tx) =>
@@ -665,9 +794,12 @@ globalThis.fetch = async (...args) => {
   const start = performance.now();
   try {
     const r = await implementation(...args);
+    const failure = r.ok ? undefined : await r.clone().json().catch(() => ({}));
     calls.push({
       endpoint: u.pathname,
       method: args[1]?.method ?? 'GET',
+      status: r.status,
+      ...(failure ? { code: failure.code, message: failure.message } : {}),
       ms: performance.now() - start,
       bytes: (await r.clone().arrayBuffer()).byteLength,
     });

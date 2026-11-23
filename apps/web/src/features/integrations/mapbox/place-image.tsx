@@ -1,49 +1,54 @@
 'use client';
 import type { ComponentProps } from 'react';
-import {
-  Coffee,
-  Hotel,
-  Landmark,
-  MapPin,
-  Plane,
-  ShoppingBag,
-  TrainFront,
-  Trees,
-  Utensils,
-} from 'lucide-react';
 import { EntryImage } from '@/features/media/image';
-/** Native category placeholder; no extra request or invented provider photograph. */
+import { ImageCredits, useResolvedImage } from '@/features/images/components';
+import type { ImageReference } from '@/features/images/model';
+import { PlaceIllustration } from '@/features/images/place-illustration';
+/** A licensed venue photo or an original category illustration, always visible. */
 export function PlaceImage({
   source,
   category,
+  photoReference,
+  credits = 'summary',
   ...props
-}: ComponentProps<typeof EntryImage> & { source?: string; category?: string }) {
-  const value = category?.toLowerCase() ?? '';
-  const Icon = /restaurant|food|dining/.test(value)
-    ? Utensils
-    : /cafe|café|coffee/.test(value)
-      ? Coffee
-      : /hotel|hôtel|lodging/.test(value)
-        ? Hotel
-        : /museum|musée|temple|monument/.test(value)
-          ? Landmark
-          : /park|parc|garden/.test(value)
-            ? Trees
-            : /shop|mall|shopping|magasin/.test(value)
-              ? ShoppingBag
-              : /station|rail|gare/.test(value)
-                ? TrainFront
-                : /airport|aéroport/.test(value)
-                  ? Plane
-                  : MapPin;
+}: ComponentProps<typeof EntryImage> & {
+  source?: string;
+  category?: string;
+  photoReference?: ImageReference;
+  credits?: 'summary' | 'dialog';
+}) {
+  const photo = useResolvedImage(photoReference, credits === 'dialog');
+  const image = photo.result?.selected;
   return (
     <EntryImage
       {...props}
-      fallback={
-        source === 'mapbox' ? (
-          <Icon aria-hidden="true" className="size-1/3 max-w-14 text-primary-ink opacity-45" />
-        ) : undefined
+      containerRef={photo.observe}
+      src={
+        photo.result?.coverHidden ||
+        photo.result?.mode === 'fallback' ||
+        (photo.result?.mode === 'manual' && !image)
+          ? undefined
+          : image
+            ? credits === 'dialog'
+              ? image.previewUrl
+              : props.sizes && /^\d+px$/.test(props.sizes) && parseInt(props.sizes) <= 80
+                ? (image.smallThumbnailUrl ?? image.thumbnailUrl)
+                : image.thumbnailUrl
+            : props.src
       }
-    />
+      onError={() => {
+        if (photoReference && image) photo.session.broken(photoReference, image.id);
+        props.onError?.();
+      }}
+      fallback={
+        props.fallback ?? (
+          <PlaceIllustration
+            category={category ?? (source === 'custom' ? 'lieu personnalisé' : undefined)}
+          />
+        )
+      }
+    >
+      {image && <ImageCredits image={image} interactive={credits === 'dialog'} />}
+    </EntryImage>
   );
 }

@@ -97,6 +97,8 @@ export const externalPlacesRequestSchema = z.discriminatedUnion('operation', [
     .strict(),
 ]);
 export type CatalogPlace = {
+  /** Signed, temporary image search context. Never persist with a trip reference. */
+  imageProof?: string;
   source: TripItemSource;
   id: string;
   title: string;

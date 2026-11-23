@@ -1,4 +1,5 @@
 import 'server-only';
+import { issueImageProof } from '@/features/images/proof';
 import { randomUUID } from 'node:crypto';
 import {
   mapboxSearchResultLimit,
@@ -123,6 +124,7 @@ export async function searchMapbox(
     .slice(0, mapboxSearchResultLimit)
     .map((place) => ({
       ...place,
+      imageProof: issueImageProof(actor, trip, place),
       proof: issueMapboxProof({
         actor,
         trip,
@@ -198,6 +200,7 @@ async function resolve(
     if (known?.coordinates)
       return {
         ...known,
+        imageProof: issueImageProof(actor, trip, known),
         proof: issueMapboxProof({
           actor,
           trip,
@@ -250,6 +253,7 @@ async function resolve(
     );
   return {
     ...place,
+    imageProof: issueImageProof(actor, trip, place),
     proof: issueMapboxProof({
       actor,
       trip,

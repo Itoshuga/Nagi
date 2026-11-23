@@ -1,6 +1,10 @@
 'use client';
 
-import { ExternalPlaceView, useExternalPlaces } from '@/features/integrations/mapbox/components';
+import {
+  ExternalPlaceView,
+  useExternalPlaces,
+  usePlacePresentation,
+} from '@/features/integrations/mapbox/components';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
@@ -21,6 +25,8 @@ import {
 } from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { EntryImage } from '@/features/media/image';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { ImagePicker } from '@/features/images/components';
 import { EntryRichText } from '@/features/entries/rich-text';
 import { entryHref } from '@/features/entries/links';
 import { UserIdentity } from '@/features/profiles/identity';
@@ -232,6 +238,7 @@ export function TripPlaceDetails({
   const mapboxId = externalPlaceId ?? (item?.source === 'mapbox' ? item.external_place_id : null);
   const query = externalQuery ?? item?.external_query ?? '';
   const external = useExternalPlaces();
+  const imagePresentation = usePlacePresentation(item, item?.entry, true);
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -305,6 +312,20 @@ export function TripPlaceDetails({
   }, [guild, plan.id, entry.id, retry, item?.source, externalPlaceId]);
   const person = plan.people.find((p) => p.id === item?.added_by);
   const custom = detail?.entry.custom_values;
+  const photoReference = item
+    ? {
+        source: item.source ?? ('nagi' as const),
+        id:
+          item.source === 'mapbox'
+            ? item.external_place_id!
+            : item.source === 'custom'
+              ? item.id
+              : item.entry_id!,
+        visit: item.id,
+        proof: imagePresentation.place?.imageProof,
+        located: !!imagePresentation.place?.coordinates,
+      }
+    : undefined;
   return (
     <>
       <div className="trip-panel-heading">
@@ -327,12 +348,16 @@ export function TripPlaceDetails({
             full
           />
         ) : (
-          <EntryImage
+          <PlaceImage
+            category={entry.category?.name}
+            photoReference={photoReference ?? { source: 'nagi', id: entry.id }}
+            credits="dialog"
             src={entry.cover_image_url}
             className="trip-detail-photo"
             sizes="(max-width: 639px) 100vw, 380px"
           />
         )}
+        {canEdit && photoReference && <ImagePicker reference={photoReference} />}
         {!mapboxId && (
           <div>
             <p className="trip-detail-category">{entry.category?.name}</p>

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import { isPrivateImage, privateImageLoader } from './private-loader';
@@ -15,6 +15,9 @@ export function EntryImage({
   eager = false,
   fit = 'cover',
   fallback,
+  children,
+  containerRef,
+  onError,
 }: {
   src?: string | null;
   alt?: string;
@@ -23,32 +26,43 @@ export function EntryImage({
   eager?: boolean;
   fit?: 'cover' | 'contain';
   fallback?: ReactNode;
+  children?: ReactNode;
+  containerRef?: Ref<HTMLDivElement>;
+  onError?: () => void;
 }) {
-  src = imageSourceUrl(src);
+  const safeSource = imageSourceUrl(src);
+  const [failed, setFailed] = useState<string>();
+  const visible = safeSource && failed !== safeSource ? safeSource : undefined;
   return (
     <div
+      ref={containerRef}
       className={cn(
         'relative isolate grid place-items-center overflow-hidden bg-gradient-to-br from-accent to-muted',
         className,
       )}
     >
-      {src ? (
+      {visible ? (
         <Image
           draggable={false}
-          src={src}
+          src={visible}
           alt={alt}
           fill
           sizes={sizes}
-          loader={isPrivateImage(src) ? privateImageLoader : undefined}
-          unoptimized={!isPrivateImage(src)}
+          loader={isPrivateImage(visible) ? privateImageLoader : undefined}
+          unoptimized={!isPrivateImage(visible)}
           loading={eager ? 'eager' : 'lazy'}
           className={fit === 'contain' ? 'object-contain' : 'object-cover'}
+          onError={() => {
+            setFailed(visible);
+            onError?.();
+          }}
         />
       ) : (
         (fallback ?? (
           <ImageIcon aria-hidden="true" className="size-1/4 max-w-14 text-primary-ink opacity-45" />
         ))
       )}
+      {children}
     </div>
   );
 }

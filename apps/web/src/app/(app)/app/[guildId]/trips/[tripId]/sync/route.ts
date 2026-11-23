@@ -104,6 +104,7 @@ export async function GET(
         if (closed) return;
         channel
           .on('broadcast', { event: 'refresh' }, () => void flush())
+          .on('broadcast', { event: 'image_changed' }, () => send('images', {}))
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') void flush();
             else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) close();

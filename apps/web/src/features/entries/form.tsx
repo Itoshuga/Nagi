@@ -11,6 +11,8 @@ import { DeleteEntryButton } from './delete-button';
 import { EntryWorkspace } from './workspace';
 import { EntryButtonLinks } from './button-links';
 import { FieldIcon } from '@/features/icons/field-icon';
+import { ImagePicker } from '@/features/images/components';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 
 function EntryPublication({
   formId,
@@ -216,7 +218,28 @@ export function EntryForm({
               {entry && <DeleteEntryButton id={entry.id} title={entry.title} />}
             </div>
           }
-          media={media}
+          media={
+            <div className="space-y-5">
+              {entry && (
+                <Card className="space-y-4">
+                  <h2 className="text-lg font-bold">Photographie libre</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Une sélection explicite peut illustrer cette fiche. Vos images importées sont
+                    conservées dans la galerie.
+                  </p>
+                  <PlaceImage
+                    category={entry.category?.name}
+                    src={entry.cover_image_url}
+                    photoReference={{ source: 'nagi', id: entry.id }}
+                    credits="dialog"
+                    className="aspect-[16/9] rounded-2xl"
+                  />
+                  <ImagePicker reference={{ source: 'nagi', id: entry.id }} />
+                </Card>
+              )}
+              {media}
+            </div>
+          }
           relations={relations}
           publication={
             <EntryPublication

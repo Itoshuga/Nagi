@@ -17,13 +17,21 @@ const env = {
   NAGI_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
   NAGI_OWNER_DISCORD_IDS: '',
   NAGI_COVER_MAX_MIB: '8',
+  NAGI_IMAGE_USER_AGENT: 'NagiImageResolverQA/1.0 (https://example.org/contact)',
+  ...(process.env.NAGI_QA_IMAGES === '1'
+    ? {
+        MAPBOX_ENABLED: 'true',
+        MAPBOX_ACCESS_TOKEN: 'fixture-server-token',
+        NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: 'pk.fixture-browser-token',
+      }
+    : {}),
 };
 const child = spawn(
   process.execPath,
   [
     '--max-http-header-size=32768',
     '--import',
-    fileURLToPath(new URL('./fixture.mjs', import.meta.url)),
+    new URL('./fixture.mjs', import.meta.url).href,
     'node_modules/next/dist/bin/next',
     'start',
     '--port',

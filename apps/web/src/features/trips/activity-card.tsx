@@ -11,13 +11,36 @@ export function ActivityCardCopy({
   children?: React.ReactNode;
   place?: PlaceSourceFields & { id: string };
 }) {
-  const { observe, title, imageUrl, record, category, location } = usePlacePresentation(
-    place,
-    entry,
-  );
+  const {
+    observe,
+    title,
+    imageUrl,
+    record,
+    category,
+    location,
+    place: display,
+  } = usePlacePresentation(place, entry);
   return (
     <>
       <PlaceImage
+        photoReference={
+          place
+            ? {
+                source: place.source ?? 'nagi',
+                id:
+                  place.source === 'mapbox'
+                    ? place.external_place_id!
+                    : place.source === 'custom'
+                      ? place.id
+                      : place.entry_id!,
+                visit: place.id,
+                proof: display?.imageProof,
+                located: !!display?.coordinates,
+              }
+            : entry
+              ? { source: 'nagi', id: entry.id }
+              : undefined
+        }
         src={imageUrl}
         source={place?.source}
         category={category}

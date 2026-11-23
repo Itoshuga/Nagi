@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  distDir: process.env.NAGI_QA_DIST_DIR ?? '.next',
   transpilePackages: [
     '@nagi/ui',
     '@nagi/shared',

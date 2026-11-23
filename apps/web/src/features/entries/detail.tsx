@@ -13,6 +13,7 @@ import { CategoryIcon } from '@/features/categories/icon';
 import { Breadcrumbs } from '@/features/geography/navigation';
 import { withQuery } from '@/features/geography/model';
 import { EntryImage } from '@/features/media/image';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 import { entryMediaUrl } from '@/features/media/model';
 import { EntryCard, entryHref } from './discovery';
 import { EntryRichText } from './rich-text';
@@ -102,15 +103,18 @@ export async function CatalogEntryPage({
         </div>
       )}
       <header className="overflow-hidden rounded-[2rem] border border-border bg-card shadow-card">
-        {cover && (
-          <EntryImage
-            src={entryMediaUrl(cover)}
-            alt={cover.alt_text}
+        {
+          <PlaceImage
+            category={entry.category?.name}
+            photoReference={{ source: 'nagi', id: entry.id }}
+            credits="dialog"
+            src={cover ? entryMediaUrl(cover) : entry.cover_image_url}
+            alt={cover?.alt_text ?? ''}
             eager
             className="aspect-[16/9] w-full max-h-[32rem] sm:aspect-[2/1]"
             sizes="(max-width: 768px) 100vw, 1152px"
           />
-        )}
+        }
         <div className="space-y-4 px-6 py-7 sm:px-10 sm:py-9">
           {entry.category && (
             <div className="flex items-center gap-2 text-sm font-semibold text-primary-ink">

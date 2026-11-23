@@ -12,6 +12,7 @@ import {
 import type { CatalogPlace } from '@nagi/shared';
 import type { EntryCardRow, PlaceSourceFields, TripPlan } from '@nagi/database';
 import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { ImageResolverProvider } from '@/features/images/components';
 import { mapboxClientRequest } from './client';
 import { mapboxAttribution, mapboxAttributionUrl, nagiCatalogPlace } from './model';
 import { mapboxSearchContext } from './search-model';
@@ -46,7 +47,13 @@ export function ExternalPlacesProvider({
     session.start();
     return () => session.dispose();
   }, [session]);
-  return <Context.Provider value={session}>{children}</Context.Provider>;
+  return (
+    <Context.Provider value={session}>
+      <ImageResolverProvider url={`/app/${guild}/trips/${trip}/images`} trip={trip}>
+        {children}
+      </ImageResolverProvider>
+    </Context.Provider>
+  );
 }
 export function externalStatus(session: ExternalPlaceSession) {
   session.status ??= mapboxClientRequest(session.url).catch((error) => {
@@ -130,6 +137,7 @@ export function usePlacePresentation(
 export function ExternalPlaceView({
   placeId,
   query,
+  occurrence,
   full = false,
   appearance = 'label',
   eager = false,
@@ -161,6 +169,14 @@ export function ExternalPlaceView({
     return (
       <div ref={observe} className="trip-external-details">
         <PlaceImage
+          photoReference={{
+            source: 'mapbox',
+            id: placeId,
+            ...(occurrence && !occurrence.startsWith('preview:') ? { visit: occurrence } : {}),
+            proof: place?.imageProof,
+            located: !!place?.coordinates,
+          }}
+          credits="dialog"
           src={place?.imageUrl}
           source="mapbox"
           category={place?.categoryId ?? place?.category}
@@ -259,6 +275,13 @@ export function ExternalPlaceView({
     >
       {appearance !== 'label' && (
         <PlaceImage
+          photoReference={{
+            source: 'mapbox',
+            id: placeId,
+            ...(occurrence && !occurrence.startsWith('preview:') ? { visit: occurrence } : {}),
+            proof: place?.imageProof,
+            located: !!place?.coordinates,
+          }}
           src={place?.imageUrl}
           source="mapbox"
           category={place?.categoryId ?? place?.category}

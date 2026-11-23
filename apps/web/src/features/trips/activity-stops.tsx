@@ -37,7 +37,13 @@ import { formatTripDuration, tripStopsSummary } from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { ActivityCardCopy } from './activity-card';
 import { CustomPlaceEditor } from './source-places';
-import { ExternalPlaceView, useExternalPlaces } from '@/features/integrations/mapbox/components';
+import {
+  ExternalPlaceView,
+  useExternalPlaces,
+  usePlacePresentation,
+} from '@/features/integrations/mapbox/components';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { ImagePicker } from '@/features/images/components';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
 import { isCatalogDrag } from './catalog-drag';
@@ -267,6 +273,19 @@ function StopEditor({
   const id = useId();
   const cancel = useRef<HTMLButtonElement>(null);
   const external = useExternalPlaces();
+  const presentation = usePlacePresentation(stop, stop.entry, true);
+  const photoReference = {
+    source: stop.source ?? ('nagi' as const),
+    id:
+      stop.source === 'mapbox'
+        ? stop.external_place_id!
+        : stop.source === 'custom'
+          ? stop.id
+          : stop.entry_id!,
+    visit: stop.id,
+    proof: presentation.place?.imageProof,
+    located: !!presentation.place?.coordinates,
+  };
   const [duration, setDuration] = useState(String(stop.duration_minutes ?? ''));
   const [notes, setNotes] = useState(stop.notes);
   const [version, setVersion] = useState(stop.version);
@@ -345,6 +364,16 @@ function StopEditor({
             full
           />
         )}
+        {!removing && stop.source !== 'mapbox' && (
+          <PlaceImage
+            category={stop.entry?.category?.name}
+            photoReference={photoReference}
+            credits="dialog"
+            src={stop.entry?.cover_image_url}
+            className="trip-detail-photo"
+          />
+        )}
+        {!removing && canEdit && <ImagePicker reference={photoReference} />}
         {!removing && canEdit && stop.source === 'custom' && (
           <CustomPlaceEditor place={stop} mutate={mutate} />
         )}
