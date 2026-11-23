@@ -1956,10 +1956,11 @@ html:has(.trip-workspace.is-sorting) * {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 .leaflet-tooltip.trip-map-pin-tooltip {
-  max-width: 230px;
-  padding: 9px 12px;
+  min-width: 160px;
+  max-width: min(300px, calc(100vw - 32px));
+  padding: 14px 18px;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: 14px;
   background: var(--card);
   color: var(--foreground);
   box-shadow: 0 4px 18px #142b481c;
@@ -1971,17 +1972,18 @@ html:has(.trip-workspace.is-sorting) * {
 }
 .trip-map-pin-caption {
   display: grid;
-  gap: 3px;
+  gap: 6px;
+  overflow-wrap: anywhere;
 }
 .trip-map-pin-caption strong {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
   line-height: 1.5;
 }
 .trip-map-pin-caption small {
   color: var(--muted-foreground);
-  font-size: 10px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .trip-map-legend {
   display: flex;
