@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
   read: vi.fn(),
-  reserve: vi.fn(),
-  verify: vi.fn(),
-  coordinates: vi.fn(),
   search: vi.fn(),
+  resolve: vi.fn(),
+  details: vi.fn(),
+  proof: vi.fn(),
   rpc: vi.fn(),
   from: vi.fn(),
   eq: vi.fn(),
@@ -20,20 +20,22 @@ vi.mock('../packages/database/src/index', () => ({
   },
 }));
 vi.mock('@/lib/supabase/server', () => ({ serviceDatabase: () => ({ rpc: mocks.rpc }) }));
-vi.mock('@/features/integrations/google-places/config', () => ({
-  googlePlacesConfig: () => ({
+vi.mock('@/features/integrations/mapbox/config', () => ({
+  mapboxConfig: () => ({
     enabled: true,
     configured: true,
-    key: 'NEVER_EXPOSE_THIS',
+    mapConfigured: true,
+    token: 'NEVER_EXPOSE_THIS',
     minCharacters: 3,
+    photos: false,
   }),
 }));
-vi.mock('@/features/integrations/google-places/server', () => ({
-  reserveGooglePlaces: mocks.reserve,
-  verifyGooglePlace: mocks.verify,
-  googlePlaceCoordinates: mocks.coordinates,
-  searchGooglePlaces: mocks.search,
-  GooglePlacesError: class extends Error {
+vi.mock('@/features/integrations/mapbox/proof', () => ({ readMapboxProof: mocks.proof }));
+vi.mock('@/features/integrations/mapbox/server', () => ({
+  searchMapbox: mocks.search,
+  resolveMapbox: mocks.resolve,
+  retrieveMapboxDetails: mocks.details,
+  MapboxError: class extends Error {
     constructor(
       public status: number,
       public code: string,
@@ -46,7 +48,8 @@ const { GET, POST } =
   await import('../apps/web/src/app/(app)/app/[guildId]/trips/[tripId]/external/route');
 const trip = '11111111-1111-4111-8111-111111111111',
   guild = '123456789012345678',
-  id = 'google-place-example';
+  id = 'mapbox-example',
+  query = 'My search';
 const params = { params: Promise.resolve({ tripId: trip, guildId: guild }) },
   url = `https://nagi.test/app/${guild}/trips/${trip}/external`;
 const request = (data: unknown, origin = 'https://nagi.test') =>
@@ -61,87 +64,90 @@ beforeEach(() => {
   mocks.read.mockResolvedValue({ can_edit: true });
   mocks.rpc.mockResolvedValue({ data: true, error: null });
   mocks.from.mockReturnValue({ select: () => ({ eq: mocks.eq }) });
-  mocks.eq.mockResolvedValue({ data: [{ google_place_id: id, stops: [] }], error: null });
-  mocks.coordinates.mockResolvedValue({
-    latitude: 35,
-    longitude: 139,
-    expiresAt: Date.now() + 600000,
+  mocks.eq.mockResolvedValue({
+    data: [{ external_place_id: id, external_query: query, stops: [] }],
+    error: null,
   });
+  mocks.resolve.mockResolvedValue({ id, title: 'Resolved' });
+  mocks.details.mockResolvedValue({ id, title: 'Details' });
 });
-describe('Trip-scoped external places endpoint', () => {
-  it('authorizes a bounded search before provider access and returns no-store IDs', async () => {
-    mocks.search.mockResolvedValue({ ids: [id], timing: { providerMs: 10, serverMs: 20 } });
+describe('Trip-scoped Mapbox endpoint', () => {
+  it('checks trip access before bounded search, returning no-store native presentation', async () => {
     const body = {
       operation: 'search',
-      kind: 'autocomplete',
-      query: '浅草寺',
+      kind: 'suggest',
+      query,
       session: trip,
-      type: '',
-      context: { region: 'jp' },
+      category: '',
+      context: { proximity: [139, 35] },
     };
-    const response = await POST(request(body), params);
-    expect(response.status).toBe(200);
-    expect(mocks.read).toHaveBeenCalled();
-    expect(mocks.search).toHaveBeenCalledWith('actor', body, expect.any(AbortSignal));
-    expect(await response.json()).toMatchObject({ ids: [id] });
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    mocks.search.mockResolvedValue({
+      places: [{ id, title: 'A place' }],
+      timing: { providerMs: 10 },
+    });
+    const res = await POST(request(body), params);
+    expect(res.status).toBe(200);
+    expect(mocks.search).toHaveBeenCalledWith('actor', trip, body, expect.any(AbortSignal));
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await res.json()).toMatchObject({ places: [{ id }] });
   });
-  it('does not complete a Google search session for a read-only member', async () => {
-    mocks.read.mockResolvedValue({ can_edit: false });
-    expect(
-      (await POST(request({ operation: 'selection', placeId: id, session: trip }), params)).status,
-    ).toBe(403);
-    expect(mocks.verify).not.toHaveBeenCalled();
-  });
-  it('checks session, Discord and trip before reporting availability, without exposing secrets', async () => {
-    const response = await GET(new Request(url), params);
+  it('authorizes availability without exposing credentials', async () => {
+    const res = await GET(new Request(url), params);
     expect(mocks.session).toHaveBeenCalledWith(guild);
     expect(mocks.read).toHaveBeenCalledWith(guild, trip, 2147483647);
-    expect(await response.json()).toMatchObject({ available: true, billingRegion: 'EEA' });
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    const body = await res.text();
+    expect(body).toContain('"available":true');
+    expect(body).not.toContain('NEVER_EXPOSE_THIS');
   });
-  it('refuses cross-origin requests before touching authorization or Google', async () => {
+  it('resolves saved references only within the authorized trip, including read-only members', async () => {
+    mocks.read.mockResolvedValue({ can_edit: false });
+    const res = await POST(request({ operation: 'resolve', placeId: id, query }), params);
+    expect(res.status).toBe(200);
+    expect(mocks.eq).toHaveBeenCalledWith('trip_id', trip);
+  });
+  it('allows a signed search result bound to the member and trip without DB probing', async () => {
+    mocks.proof.mockReturnValue({ kind: 'suggestion' });
     expect(
-      (await POST(request({ operation: 'ui', kind: 'ui_search' }, 'https://evil.test'), params))
+      (await POST(request({ operation: 'resolve', placeId: id, query, proof: 'signed' }), params))
         .status,
+    ).toBe(200);
+    expect(mocks.proof).toHaveBeenCalledWith('signed', 'actor', trip, id, query);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+  it('rejects a foreign reference or changed query before provider access', async () => {
+    expect(
+      (await POST(request({ operation: 'details', placeId: 'foreign', query }), params)).status,
+    ).toBe(403);
+    expect(
+      (await POST(request({ operation: 'resolve', placeId: id, query: 'Changed' }), params)).status,
+    ).toBe(403);
+    expect(mocks.resolve).not.toHaveBeenCalled();
+    expect(mocks.details).not.toHaveBeenCalled();
+  });
+  it('rejects cross-origin requests and revoked memberships before accessing Mapbox', async () => {
+    expect(
+      (
+        await POST(
+          request({ operation: 'resolve', placeId: id, query }, 'https://evil.test'),
+          params,
+        )
+      ).status,
     ).toBe(403);
     expect(mocks.session).not.toHaveBeenCalled();
-    expect(mocks.reserve).not.toHaveBeenCalled();
-  });
-  it('never calls the provider after a revoked session', async () => {
     mocks.session.mockRejectedValue(new Error('revoked'));
-    expect((await POST(request({ operation: 'ui', kind: 'ui_search' }), params)).status).toBe(403);
-    expect(mocks.reserve).not.toHaveBeenCalled();
+    expect((await POST(request({ operation: 'resolve', placeId: id, query }), params)).status).toBe(
+      403,
+    );
+    expect(mocks.resolve).not.toHaveBeenCalled();
   });
-  it('does not offer a generic proxy or allow arbitrary names or coordinates payloads', async () => {
+  it('does not expose a generic proxy or accept unbounded/provider-authored payloads', async () => {
     for (const body of [
       { operation: 'proxy', url: 'https://evil.test' },
-      { operation: 'ui', kind: 'ui_search', query: 'DO_NOT_PERSIST' },
-      { operation: 'coordinates', ids: Array(31).fill(id) },
+      { operation: 'resolve', placeId: id, query, coordinates: [1, 2] },
+      { operation: 'search', kind: 'suggest', query: 'x'.repeat(257), session: trip },
+      { operation: 'search', kind: 'suggest', query, session: trip, context: { country: 'jp' } },
     ])
       expect((await POST(request(body), params)).status).toBe(400);
-    expect(mocks.reserve).not.toHaveBeenCalled();
-    expect(mocks.coordinates).not.toHaveBeenCalled();
-  });
-  it('refuses IDs outside the authorized trip before any Google request', async () => {
-    expect(
-      (await POST(request({ operation: 'coordinates', ids: ['foreign-google-place'] }), params))
-        .status,
-    ).toBe(403);
-    expect(mocks.eq).toHaveBeenCalledWith('trip_id', trip);
-    expect(mocks.coordinates).not.toHaveBeenCalled();
-  });
-  it('deduplicates known occurrence references and returns private live coordinates', async () => {
-    const response = await POST(request({ operation: 'coordinates', ids: [id, id] }), params);
-    expect(response.status).toBe(200);
-    expect(mocks.coordinates).toHaveBeenCalledExactlyOnceWith('actor', id);
-    expect(await response.json()).toMatchObject({
-      points: { [id]: { latitude: 35, longitude: 139 } },
-    });
-  });
-  it('does not allow viewers to verify insertion references', async () => {
-    mocks.read.mockResolvedValue({ can_edit: false });
-    expect((await POST(request({ operation: 'verify', placeId: id }), params)).status).toBe(403);
-    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.search).not.toHaveBeenCalled();
   });
 });

@@ -1,16 +1,30 @@
 import { z } from 'zod';
 import { uuidSchema } from './collaboration';
 
-export const googlePlaceIdSchema = z
+// Provider identifiers are opaque; encode them as one URL path segment at the adapter boundary.
+export const externalPlaceIdSchema = z
   .string()
   .trim()
   .min(1)
-  // Application request-size bound, not an assumed Google ID format limit.
   .max(8192)
-  .regex(/^[A-Za-z0-9_-]+$/);
+  .refine(
+    (value) =>
+      Array.from(value).every((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127),
+    'Identifiant de lieu invalide.',
+  );
+export const mapboxQuerySchema = z.string().trim().min(1).max(256);
 export const tripPlaceReferenceSchema = z.discriminatedUnion('source', [
   z.object({ source: z.literal('nagi'), entry: uuidSchema }).strict(),
-  z.object({ source: z.literal('google'), placeId: googlePlaceIdSchema }).strict(),
+  z
+    .object({
+      source: z.literal('mapbox'),
+      placeId: externalPlaceIdSchema,
+      // Original user input, never a copied provider label. It permits a coherent
+      // new suggest/retrieve session when a saved reference is opened again.
+      query: mapboxQuerySchema,
+      proof: z.string().max(24576).optional(),
+    })
+    .strict(),
   z
     .object({
       source: z.literal('custom'),
@@ -27,73 +41,87 @@ export const tripPlaceReferenceSchema = z.discriminatedUnion('source', [
 ]);
 export type TripPlaceReference = z.output<typeof tripPlaceReferenceSchema>;
 export type TripItemSource = TripPlaceReference['source'];
-const coordinate = z
-  .object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) })
-  .strict();
-export const googleSearchRequestSchema = z
+export const mapboxSearchResultLimit = 6;
+export const mapboxCategoryIds = [
+  'restaurant',
+  'cafe',
+  'hotel',
+  'museum',
+  'park',
+  'tourist_attraction',
+  'shopping_mall',
+  'railway_station',
+  'airport',
+] as const;
+export const mapboxSearchRequestSchema = z
   .object({
     operation: z.literal('search'),
-    kind: z.enum(['autocomplete', 'text_search']),
-    query: z.string().trim().min(1).max(200),
+    kind: z.enum(['suggest', 'forward']),
+    query: mapboxQuerySchema,
     session: z.uuid(),
-    type: z
-      .enum([
-        '',
-        'restaurant',
-        'cafe',
-        'lodging',
-        'museum',
-        'park',
-        'tourist_attraction',
-        'shopping_mall',
-        'train_station',
-        'airport',
-      ])
-      .default(''),
+    category: z.enum(['', ...mapboxCategoryIds]).default(''),
     context: z
       .object({
-        region: z
-          .string()
-          .regex(/^[a-z]{2}$/)
-          .optional(),
-        bias: z
-          .union([
-            z
-              .object({
-                circle: z
-                  .object({ center: coordinate, radius: z.number().min(100).max(50000) })
-                  .strict(),
-              })
-              .strict(),
-            z
-              .object({ rectangle: z.object({ low: coordinate, high: coordinate }).strict() })
-              .strict(),
-          ])
-          .optional(),
+        proximity: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]).optional(),
       })
       .strict()
       .default({}),
   })
   .strict();
-export type GoogleSearchRequest = z.output<typeof googleSearchRequestSchema>;
+export type MapboxSearchRequest = z.output<typeof mapboxSearchRequestSchema>;
 export const externalPlacesRequestSchema = z.discriminatedUnion('operation', [
-  googleSearchRequestSchema,
-  z
-    .object({ operation: z.literal('selection'), placeId: googlePlaceIdSchema, session: z.uuid() })
-    .strict(),
-  z.object({ operation: z.literal('ui'), kind: z.enum(['ui_search', 'ui_details']) }).strict(),
-  z.object({ operation: z.literal('verify'), placeId: googlePlaceIdSchema }).strict(),
+  mapboxSearchRequestSchema,
   z
     .object({
-      operation: z.literal('coordinates'),
-      ids: z.array(googlePlaceIdSchema).min(1).max(30),
+      operation: z.literal('resolve'),
+      placeId: externalPlaceIdSchema,
+      query: mapboxQuerySchema,
+      proof: z.string().max(24576).optional(),
+      context: z
+        .object({
+          proximity: z
+            .tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])
+            .optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('details'),
+      placeId: externalPlaceIdSchema,
+      query: mapboxQuerySchema,
+      proof: z.string().max(24576).optional(),
     })
     .strict(),
 ]);
-
+export type CatalogPlace = {
+  source: TripItemSource;
+  id: string;
+  title: string;
+  category?: string;
+  categoryId?: string;
+  subtitle?: string;
+  locationLabel?: string;
+  featureType?: string;
+  coordinates?: { longitude: number; latitude: number };
+  imageUrl?: string;
+  imageSource?: string;
+  address?: string;
+  website?: string;
+  phone?: string;
+  openingHours?: string;
+  permanentlyClosed?: boolean;
+  status?: string;
+  query?: string;
+  proof?: string;
+};
 export const placeSourceDefaults = {
   source: 'nagi' as const,
-  google_place_id: null,
+  external_place_id: null,
+  external_query: null,
+  needs_place_relink: false,
   custom_title: null,
   custom_location: null,
   custom_latitude: null,

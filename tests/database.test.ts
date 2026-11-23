@@ -10,10 +10,24 @@ const otherId = '33333333-3333-4333-8333-333333333333';
 const applicationId = '123456789012345678';
 const scope = 'guild:987654321098765432';
 let legacyRelationsBefore: unknown, legacyRelationsAfter: unknown;
+let providerMigrationBefore: unknown,
+  providerMigrationAfter: unknown,
+  migratedJournal: unknown,
+  providerArchive: unknown;
 let legacyTypeBefore: unknown, legacyTypeAfter: unknown;
 async function scalar<T>(sql: string): Promise<T> {
   const result = await db.query<{ value: T }>(sql);
   return result.rows[0]!.value;
+}
+async function migrationPlanningSnapshot() {
+  return scalar(`select jsonb_build_object(
+    'trip',(select to_jsonb(t) from public.trips t where id='eeeeeeee-eeee-4eee-8eee-000000000001'),
+    'days',(select jsonb_agg(to_jsonb(d) order by id) from public.trip_days d where trip_id='eeeeeeee-eeee-4eee-8eee-000000000001'),
+    'items',(select jsonb_agg(to_jsonb(i)-'source'-'google_place_id'-'external_place_id'-'external_query'-'needs_place_relink'-'custom_title' order by id) from public.trip_items i where trip_id='eeeeeeee-eeee-4eee-8eee-000000000001'),
+    'stops',(select jsonb_agg(to_jsonb(s)-'source'-'google_place_id'-'external_place_id'-'external_query'-'needs_place_relink'-'custom_title' order by id) from public.trip_item_stops s where trip_item_id='eeeeeeee-eeee-4eee-8eee-000000000003'),
+    'receipts',(select jsonb_agg(to_jsonb(r)) from private.trip_mutation_receipts r where trip_id='eeeeeeee-eeee-4eee-8eee-000000000001'),
+    'palette',(select jsonb_agg(to_jsonb(c)) from public.user_calendar_colors c where user_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee')
+  ) as value`);
 }
 async function fails(sql: string, pattern?: RegExp) {
   await db.exec('savepoint expected_failure');
@@ -68,6 +82,20 @@ beforeAll(async () => {
   const directory = new URL('../supabase/migrations/', import.meta.url);
   for (const file of (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort()) {
     const graphMigration = file.endsWith('_semantic_relations.sql');
+    const providerMigration = file.endsWith('_mapbox_provider.sql');
+    if (providerMigration) {
+      await db.exec(`insert into auth.users(id,last_sign_in_at) values('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',now());
+        insert into public.profiles(id,discord_id,username,display_name) values('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','999999999999999990','Legacy','Legacy');
+        insert into public.discord_guilds(id,name,application_id) values('999999999999999990','Legacy migration','123456789012345678');
+        insert into public.trips(id,guild_id,title,created_by,timezone) values('eeeeeeee-eeee-4eee-8eee-000000000001','999999999999999990','Legacy test','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','Asia/Tokyo');
+        insert into public.trip_days(id,trip_id,day_number,date,title) values('eeeeeeee-eeee-4eee-8eee-000000000002','eeeeeeee-eeee-4eee-8eee-000000000001',1,'2027-07-12','Day preserved');
+        insert into public.trip_items(id,trip_id,trip_day_id,source,google_place_id,notes,start_time,estimated_duration_minutes,calendar_color,sort_order,added_by) values('eeeeeeee-eeee-4eee-8eee-000000000003','eeeeeeee-eeee-4eee-8eee-000000000001','eeeeeeee-eeee-4eee-8eee-000000000002','google','legacy-google-reference','User notes preserved','10:30',90,'#739FD0',1024,'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+        insert into public.trip_item_stops(id,trip_item_id,source,google_place_id,notes,duration_minutes,calendar_color,sort_order,added_by) values('eeeeeeee-eeee-4eee-8eee-000000000004','eeeeeeee-eeee-4eee-8eee-000000000003','google','legacy-google-stop','Stop notes preserved',30,'#AABBCC',1024,'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+        update public.trips set description='Planning preserved' where id='eeeeeeee-eeee-4eee-8eee-000000000001';
+        insert into private.trip_mutation_receipts(trip_id,mutation_id,user_id,request_hash,version) values('eeeeeeee-eeee-4eee-8eee-000000000001','eeeeeeee-eeee-4eee-8eee-000000000005','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','fingerprint',1);
+        insert into public.user_calendar_colors(user_id,hex_color) values('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','#739FD0');`);
+      providerMigrationBefore = await migrationPlanningSnapshot();
+    }
     if (graphMigration) {
       await db.exec(`insert into public.countries(name,slug,iso_code,is_published) values('Archive','archive','ZZ',true);
         insert into public.cities(country_id,name,slug,is_published) select id,'Archive','archive',true from public.countries where slug='archive';
@@ -86,6 +114,18 @@ beforeAll(async () => {
       );
     }
     await db.exec((await readFile(new URL(file, directory), 'utf8')).replaceAll('\r\n', '\n'));
+    if (providerMigration) {
+      providerMigrationAfter = await migrationPlanningSnapshot();
+      migratedJournal = await scalar(
+        "select jsonb_agg(payload order by version) as value from private.trip_plan_events where trip_id='eeeeeeee-eeee-4eee-8eee-000000000001'",
+      );
+      providerArchive = await scalar(
+        "select payload as value from private.mapbox_migration_archive where key='previous_provider'",
+      );
+      await db.exec(
+        "delete from public.trips where id='eeeeeeee-eeee-4eee-8eee-000000000001'; delete from public.discord_guilds where id='999999999999999990'; delete from auth.users where id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'",
+      );
+    }
     if (graphMigration) {
       legacyRelationsAfter = await scalar(
         "select jsonb_agg(to_jsonb(r)-'created_by' order by id) as value from public.entry_relations r",
@@ -113,6 +153,27 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await db.close();
+});
+
+describe('Mapbox migration preservation', () => {
+  it('preserves every planning field, occurrence ID, version, timestamp, parent, note, color and receipt', () => {
+    expect(providerMigrationAfter).toEqual(providerMigrationBefore);
+    expect(providerArchive).toMatchObject({
+      items: [{ source: 'google', google_place_id: 'legacy-google-reference' }],
+      stops: [{ source: 'google', google_place_id: 'legacy-google-stop' }],
+    });
+    expect(JSON.stringify(migratedJournal)).not.toMatch(
+      /google_place_id|legacy-google|"source":"google"/,
+    );
+    expect(JSON.stringify(migratedJournal)).toContain('needs_place_relink');
+    expect(JSON.stringify(migratedJournal)).toContain('User notes preserved');
+  });
+  it('keeps the technical archive inaccessible to ordinary members and service API access', async () => {
+    await asUser();
+    await fails('select * from private.mapbox_migration_archive', /permission denied/);
+    await asService();
+    await fails('select * from private.mapbox_migration_archive', /permission denied/);
+  });
 });
 
 describe('Global catalog phase 3', () => {
@@ -1123,31 +1184,130 @@ describe('Collaborative planner transactions', () => {
       ),
     ).toBe(0);
   });
-  it('accepts only recently verified Google IDs, never imports catalog data and allows independent repeated visits', async () => {
+  it('accepts only recently verified Mapbox IDs, never imports catalog data and allows independent repeated visits', async () => {
     await asUser();
-    const place = { source: 'google', placeId: 'google-place-example' };
-    await fails(operation(0, 'add_place', externalAdd(firstItem, place)), /trip_google_unverified/);
+    const place = { source: 'mapbox', placeId: 'mapbox-place-example', query: 'My search' };
+    await fails(operation(0, 'add_place', externalAdd(firstItem, place)), /trip_mapbox_unverified/);
     await fails(
-      `select public.google_place_reference('google-place-example',true,null)`,
+      `select public.mapbox_place_reference('${userId}','mapbox-place-example','My search')`,
       /permission denied/,
     );
     await asService();
-    await db.exec(`select public.google_place_reference('google-place-example',true,null)`);
+    await db.exec(
+      `select public.mapbox_place_reference('${userId}','mapbox-place-example','My search')`,
+    );
     await asUser();
     await scalar(operation(0, 'add_place', externalAdd(firstItem, place)));
     await scalar(operation(1, 'add_place', externalAdd(secondItem, place)));
     expect(
       await scalar<number>(
-        `select count(*)::integer as value from public.trip_items where google_place_id='google-place-example'`,
+        `select count(*)::integer as value from public.trip_items where external_place_id='mapbox-place-example'`,
       ),
     ).toBe(2);
     expect(await scalar<number>(`select count(*)::integer as value from public.entries`)).toBe(0);
     expect(await scalar<number>(`select count(*)::integer as value from public.countries`)).toBe(0);
     await db.exec(
-      `reset role; update private.google_place_references set verified_at=now()-interval '2 days'`,
+      `reset role; update private.mapbox_place_references set verified_at=now()-interval '2 days'`,
     );
     await asUser();
-    await fails(operation(2, 'add_place', externalAdd(stopThree, place)), /trip_google_unverified/);
+    await fails(operation(2, 'add_place', externalAdd(stopThree, place)), /trip_mapbox_unverified/);
+  });
+  it('binds verified Mapbox IDs to the actor and original query, retaining references through nesting and detachment', async () => {
+    const place = {
+      source: 'mapbox',
+      placeId: 'shared-mapbox-reference',
+      query: 'My original search',
+    };
+    await asService();
+    await db.exec(
+      `select public.mapbox_place_reference('${userId}','shared-mapbox-reference','My original search')`,
+    );
+    await asUser(otherId);
+    await fails(operation(0, 'add_place', externalAdd(firstItem, place)), /trip_mapbox_unverified/);
+    await asUser();
+    await fails(
+      operation(0, 'add_place', externalAdd(firstItem, { ...place, query: 'Different search' })),
+      /trip_mapbox_unverified/,
+    );
+    await scalar(operation(0, 'add_place', externalAdd(firstItem, place)));
+    await scalar(operation(1, 'add_place', externalAdd(secondItem, freePlace)));
+    await scalar(operation(2, 'nest_item', { id: firstItem, parent: secondItem }));
+    expect(
+      await scalar(
+        `select jsonb_build_object('id',id,'source',source,'reference',external_place_id,'query',external_query,'notes',notes,'color',calendar_color) as value from public.trip_item_stops where id='${firstItem}'`,
+      ),
+    ).toEqual({
+      id: firstItem,
+      source: 'mapbox',
+      reference: place.placeId,
+      query: place.query,
+      notes: 'Notes du groupe',
+      color: '#739FD0',
+    });
+    await scalar(
+      operation(3, 'relocate_stop', { kind: 'activity', id: firstItem, day: null, before: null }),
+    );
+    expect(
+      await scalar(`select external_query as value from public.trip_items where id='${firstItem}'`),
+    ).toBe(place.query);
+    await asUser(adminId);
+    expect(
+      await scalar(
+        `select count(*)::integer as value from public.trip_items where id='${firstItem}'`,
+      ),
+    ).toBe(0);
+    await fails(
+      operation(4, 'replace_place', { id: firstItem, place: freePlace }),
+      /trip_forbidden/,
+    );
+  });
+  it('keeps simultaneous query grants for the same member and place independent across tabs', async () => {
+    await asService();
+    await db.exec(
+      `select public.mapbox_place_reference('${userId}','same-place-reference','First search');select public.mapbox_place_reference('${userId}','same-place-reference','Second search')`,
+    );
+    await asUser();
+    await scalar(
+      operation(
+        0,
+        'add_place',
+        externalAdd(firstItem, {
+          source: 'mapbox',
+          placeId: 'same-place-reference',
+          query: 'First search',
+        }),
+      ),
+    );
+    await scalar(
+      operation(
+        1,
+        'add_place',
+        externalAdd(secondItem, {
+          source: 'mapbox',
+          placeId: 'same-place-reference',
+          query: 'Second search',
+        }),
+      ),
+    );
+    expect(await scalar('select count(*)::integer as value from public.trip_items')).toBe(2);
+  });
+  it('blocks proof-based grants when the administrator disables Mapbox', async () => {
+    await asUser(adminId);
+    await scalar('select public.mapbox_admin(false) as value');
+    await asService();
+    await fails(
+      `select public.mapbox_place_reference('${userId}','a-mapbox-reference','User search')`,
+      /mapbox_disabled/,
+    );
+  });
+  it('caps optional Details monthly without preventing basic search', async () => {
+    await asService();
+    await db.exec(`select public.reserve_mapbox_places('${userId}','details',100,100,100,1)`);
+    await fails(
+      `select public.reserve_mapbox_places('${userId}','details',100,100,100,1)`,
+      /mapbox_quota/,
+    );
+    await db.exec(`select public.reserve_mapbox_places('${userId}','forward',100,100,100,1)`);
   });
   it('preserves all custom source metadata through nesting, transfer and detachment', async () => {
     await asUser();
@@ -1187,7 +1347,7 @@ describe('Collaborative planner transactions', () => {
   it('enforces coherent source combinations even for privileged writes', async () => {
     await asService();
     await fails(
-      `insert into public.trip_items(trip_id,source) values('${tripA}','google')`,
+      `insert into public.trip_items(trip_id,source) values('${tripA}','mapbox')`,
       /trip_items_place_source/,
     );
     await fails(
@@ -1199,38 +1359,42 @@ describe('Collaborative planner transactions', () => {
       /trip_items_place_source/,
     );
     await fails(
-      `insert into public.trip_items(trip_id,source,custom_title,google_place_id) values('${tripA}','custom','Pause','google-place-example')`,
+      `insert into public.trip_items(trip_id,source,custom_title,external_place_id) values('${tripA}','custom','Pause','mapbox-place-example')`,
       /trip_items_place_source/,
     );
   });
-  it('stores full long Google IDs without btree-size failures or truncation', async () => {
+  it('stores full long Mapbox IDs without btree-size failures or truncation', async () => {
     const longId = Array.from({ length: 128 }, () => crypto.randomUUID().replaceAll('-', '')).join(
       '',
     );
     await asService();
-    await db.exec(`select public.google_place_reference('${longId}',true,null)`);
+    await db.exec(`select public.mapbox_place_reference('${userId}','${longId}','My search')`);
     await asUser();
     await scalar(
-      operation(0, 'add_place', externalAdd(firstItem, { source: 'google', placeId: longId })),
+      operation(
+        0,
+        'add_place',
+        externalAdd(firstItem, { source: 'mapbox', placeId: longId, query: 'My search' }),
+      ),
     );
     expect(
       await scalar(
-        `select google_place_id as value from public.trip_items where id='${firstItem}'`,
+        `select external_place_id as value from public.trip_items where id='${firstItem}'`,
       ),
     ).toBe(longId);
   });
   it('meters native autocomplete and thematic search separately without exposing private counters', async () => {
     await asService();
     await db.exec(
-      `select public.reserve_google_places('${userId}','autocomplete',150,2000,20);select public.reserve_google_places('${userId}','text_search',150,2000,20);`,
+      `select public.reserve_mapbox_places('${userId}','suggest',150,2000,20,900);select public.reserve_mapbox_places('${userId}','forward',150,2000,20,900);`,
     );
     await asUser(adminId);
     const state = await scalar<{ today: Record<string, number> }>(
-      `select public.google_places_admin(null) as value`,
+      `select public.mapbox_admin(null) as value`,
     );
-    expect(state.today.autocomplete).toBe(1);
-    expect(state.today.text_search).toBe(1);
-    expect(state.today.ui_search).toBeUndefined();
+    expect(state.today.suggest).toBe(1);
+    expect(state.today.forward).toBe(1);
+    expect(state.today.details).toBeUndefined();
   });
   it('keeps replacement separate from planning data and emits source-only journal changes without null catalog IDs', async () => {
     await asUser();
@@ -1261,30 +1425,30 @@ describe('Collaborative planner transactions', () => {
       /trip_forbidden/,
     );
   });
-  it('requires server privileges for Google budgets and records atomic rate limits and admin switches', async () => {
+  it('requires server privileges for Mapbox budgets and records atomic rate limits and admin switches', async () => {
     await asUser();
     await fails(
-      `select public.reserve_google_places('${userId}','verify',2,10,2)`,
+      `select public.reserve_mapbox_places('${userId}','suggest',2,10,2,900)`,
       /permission denied/,
     );
-    await fails(`select public.google_places_admin(false)`, /forbidden/);
+    await fails(`select public.mapbox_admin(false)`, /forbidden/);
     await asService();
-    await db.exec(`select public.reserve_google_places('${userId}','verify',2,10,2)`);
-    await db.exec(`select public.reserve_google_places('${userId}','ui_search',2,10,2)`);
+    await db.exec(`select public.reserve_mapbox_places('${userId}','suggest',2,10,2,900)`);
+    await db.exec(`select public.reserve_mapbox_places('${userId}','forward',2,10,2,900)`);
     await fails(
-      `select public.reserve_google_places('${userId}','coordinates',2,10,2)`,
-      /google_quota/,
+      `select public.reserve_mapbox_places('${userId}','retrieve',2,10,2,900)`,
+      /mapbox_quota/,
     );
     await asUser(adminId);
     const stats = await scalar<{ today: Record<string, number> }>(
-      `select public.google_places_admin(null) as value`,
+      `select public.mapbox_admin(null) as value`,
     );
-    expect(stats.today).toEqual({ verify: 1, ui_search: 1 });
-    await scalar(`select public.google_places_admin(false) as value`);
+    expect(stats.today).toEqual({ suggest: 1, forward: 1 });
+    await scalar(`select public.mapbox_admin(false) as value`);
     await asService();
     await fails(
-      `select public.reserve_google_places('${userId}','verify',20,100,20)`,
-      /google_disabled/,
+      `select public.reserve_mapbox_places('${userId}','suggest',20,100,20,900)`,
+      /mapbox_disabled/,
     );
   });
 

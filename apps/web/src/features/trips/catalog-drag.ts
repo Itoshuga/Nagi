@@ -10,9 +10,9 @@ export type CatalogEntry = EntryCardRow & { suggested_duration_minutes?: number 
 // Additional providers can resolve to this same placement contract later.
 export type CatalogDragData = {
   type: 'catalog-entry';
-  provider: 'nagi' | 'google' | 'custom';
+  provider: 'nagi' | 'mapbox' | 'custom';
   reference?: TripPlaceReference;
-  onCommit?: () => void;
+  onCommit?: () => void | TripPlaceReference | Promise<void | TripPlaceReference>;
   entry: CatalogEntry;
   defaultDuration: number;
 };

@@ -84,13 +84,13 @@ function fixture(count = 3): TripPlan {
 }
 const empty = () => ({ upsert: [], patch: [], remove: [] });
 describe('Universal source occurrences', () => {
-  it('creates independent Google visits with no copied provider names and preserves references through nesting', () => {
+  it('creates independent Mapbox visits with no copied provider names and preserves references through nesting', () => {
     let plan = fixture(1);
     const add = (id: string) => ({
       operation: 'add_place' as const,
       data: {
         id,
-        place: { source: 'google' as const, placeId: 'google-place-example' },
+        place: { source: 'mapbox' as const, placeId: 'mapbox-place-example', query: 'My search' },
         day,
         before: null,
         start_time: '12:00',
@@ -108,8 +108,8 @@ describe('Universal source occurrences', () => {
         .every(
           (i) =>
             i.entry_id === null &&
-            i.google_place_id === 'google-place-example' &&
-            i.entry?.title === 'Lieu Google Maps',
+            i.external_place_id === 'mapbox-place-example' &&
+            i.entry?.title === 'Chargement du lieu…',
         ),
     ).toBe(true);
     plan = optimisticTripChange(
@@ -119,8 +119,8 @@ describe('Universal source occurrences', () => {
     );
     expect(plan.items[0]!.stops[0]).toMatchObject({
       id: uuid(80),
-      source: 'google',
-      google_place_id: 'google-place-example',
+      source: 'mapbox',
+      external_place_id: 'mapbox-place-example',
       notes: 'Notre note',
       calendar_color: '#739FD0',
     });

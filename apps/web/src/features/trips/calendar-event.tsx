@@ -31,6 +31,7 @@ import {
 import { useCalendarColors } from './calendar-colors';
 import { CalendarPlaceTitle } from './calendar-place-title';
 import { calendarEventPresentation } from './calendar-presentation';
+import { usePlacePresentation } from '@/features/integrations/mapbox/components';
 export { CalendarPlaceTitle } from './calendar-place-title';
 
 export const CalendarEventCopy = memo(
@@ -58,10 +59,10 @@ export const CalendarEventCopy = memo(
       size?.height ?? Infinity,
       (schedule.duration ?? 30) * calendarMinuteHeight - ((schedule.duration ?? 30) <= 30 ? 0 : 12),
     );
-    const width = size?.width ?? Infinity;
-    const presentation = calendarEventPresentation(height, width, item.source === 'google');
+    const display = usePlacePresentation(item, item.entry);
+    const presentation = calendarEventPresentation(height);
     const information = [
-      item.entry?.category?.name,
+      display.category,
       item.stops?.length ? tripStopCount(item.stops.length) : null,
     ]
       .filter(Boolean)
@@ -69,11 +70,7 @@ export const CalendarEventCopy = memo(
     const details = presentation.details && !!information;
     return (
       <span ref={host} className="trip-calendar-event-content">
-        <CalendarPlaceTitle
-          item={item}
-          availableHeight={height - (presentation.time ? 18 : 0) - (details ? 18 : 0)}
-          availableWidth={width}
-        />
+        <CalendarPlaceTitle item={item} />
         {presentation.time && (
           <span className="trip-calendar-event-time">
             {calendarScheduleLabel(schedule)}
@@ -122,6 +119,7 @@ export const CalendarEvent = memo(function CalendarEvent({
     disabled: !props.canEdit || props.busy,
   });
   const colors = useCalendarColors();
+  const display = usePlacePresentation(item, item.entry);
   const copy = useRef<HTMLButtonElement>(null);
   const [resize, setResize] = useState<CalendarSchedule>();
   const resizing = useRef<ResizeBase | null>(null),
@@ -137,7 +135,7 @@ export const CalendarEvent = memo(function CalendarEvent({
   const visualDuration = Math.min(1440 - schedule.start, schedule.duration ?? 30);
   const compact = schedule.duration != null && schedule.duration <= 30;
   const overflow = Math.max(0, activityBudget(item).used - (schedule.duration ?? Infinity));
-  const description = `${item.source === 'google' ? 'Détails du lieu' : (item.entry?.title ?? 'Fiche indisponible')} · ${calendarScheduleLabel(schedule)} · ${formatTripDuration(schedule.duration) ?? 'Durée libre'}${overflow ? ` · Les arrêts dépassent la durée prévue de ${formatTripDuration(overflow)}` : ''}`;
+  const description = `${display.title} · ${calendarScheduleLabel(schedule)} · ${formatTripDuration(schedule.duration) ?? 'Durée libre'}${overflow ? ` · Les arrêts dépassent la durée prévue de ${formatTripDuration(overflow)}` : ''}`;
   const resizingActive = resize !== undefined;
   useEffect(() => {
     if (!resizingActive) return;
@@ -260,7 +258,7 @@ export const CalendarEvent = memo(function CalendarEvent({
         type="button"
         className="trip-calendar-event-copy"
         title={description}
-        aria-label={item.source === 'google' ? undefined : description}
+        aria-label={item.source === 'mapbox' ? undefined : description}
         aria-pressed={props.selectedItem === item.id}
         onClick={() => {
           if (!isDragging && !resizing.current) props.onDetails(item);

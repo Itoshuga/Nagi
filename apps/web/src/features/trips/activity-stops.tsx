@@ -37,10 +37,7 @@ import { formatTripDuration, tripStopsSummary } from '@nagi/shared';
 import { CatalogTextarea } from '@/features/catalog/admin-form';
 import { ActivityCardCopy } from './activity-card';
 import { CustomPlaceEditor } from './source-places';
-import {
-  GooglePlaceView,
-  useExternalPlaces,
-} from '@/features/integrations/google-places/components';
+import { ExternalPlaceView, useExternalPlaces } from '@/features/integrations/mapbox/components';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
 import { isCatalogDrag } from './catalog-drag';
@@ -331,7 +328,7 @@ function StopEditor({
         <DialogTitle>
           {removing
             ? 'Retirer cet arrêt ?'
-            : stop.source === 'google'
+            : stop.source === 'mapbox'
               ? 'Détails de l’arrêt'
               : (stop.entry?.title ?? 'Fiche indisponible')}
         </DialogTitle>
@@ -340,8 +337,13 @@ function StopEditor({
             ? 'Cet arrêt et ses notes seront retirés de l’activité. La fiche du catalogue est conservée.'
             : 'Sa durée est comprise dans le créneau de l’activité principale.'}
         </DialogDescription>
-        {!removing && stop.source === 'google' && stop.google_place_id && (
-          <GooglePlaceView occurrence={stop.id} placeId={stop.google_place_id} full />
+        {!removing && stop.source === 'mapbox' && stop.external_place_id && (
+          <ExternalPlaceView
+            occurrence={stop.id}
+            placeId={stop.external_place_id}
+            query={stop.external_query ?? ''}
+            full
+          />
         )}
         {!removing && canEdit && stop.source === 'custom' && (
           <CustomPlaceEditor place={stop} mutate={mutate} />

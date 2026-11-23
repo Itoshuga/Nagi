@@ -1,27 +1,26 @@
 import { TripSyncService } from '@nagi/database';
 import { externalPlacesRequestSchema as schema, uuidSchema } from '@nagi/shared';
-import { googlePlacesConfig } from '@/features/integrations/google-places/config';
+import { mapboxConfig } from '@/features/integrations/mapbox/config';
 import {
-  GooglePlacesError,
-  googlePlaceCoordinates,
-  reserveGooglePlaces,
-  verifyGooglePlace,
-  searchGooglePlaces,
-} from '@/features/integrations/google-places/server';
+  MapboxError,
+  searchMapbox,
+  resolveMapbox,
+  retrieveMapboxDetails,
+} from '@/features/integrations/mapbox/server';
+import { readMapboxProof } from '@/features/integrations/mapbox/proof';
 import { tripRequestFailure, tripRequestSession } from '@/features/trips/sync-server';
 import { serviceDatabase } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
 async function context(params: Promise<{ guildId: string; tripId: string }>) {
   const { guildId, tripId } = await params;
-  if (!uuidSchema.safeParse(tripId).success) throw new GooglePlacesError(404, 'trip');
+  if (!uuidSchema.safeParse(tripId).success) throw new MapboxError(404, 'trip');
   const session = await tripRequestSession(guildId);
   const access = await new TripSyncService(session.db).read(guildId, tripId, 2147483647);
   return { ...session, guildId, tripId, access };
 }
 function failure(error: unknown) {
-  if (error instanceof GooglePlacesError)
+  if (error instanceof MapboxError)
     return Response.json(
       { error: error.message, code: error.code },
       { status: error.status, headers },
@@ -35,17 +34,18 @@ export async function GET(
 ) {
   try {
     await context(params);
-    const config = googlePlacesConfig();
+    const config = mapboxConfig();
     const state =
       config.enabled && config.configured
-        ? await serviceDatabase().rpc('google_places_available', {})
+        ? await serviceDatabase().rpc('mapbox_available', {})
         : null;
     return Response.json(
       {
         available: config.enabled && config.configured && !!state?.data,
         minCharacters: config.minCharacters,
-        services: ['Places UI Kit', 'Places API (New)'],
-        billingRegion: 'EEA',
+        photos: config.photos,
+        provider: 'Mapbox',
+        mapAvailable: config.enabled && config.mapConfigured,
       },
       { headers },
     );
@@ -57,7 +57,6 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ guildId: string; tripId: string }> },
 ) {
-  const started = performance.now();
   if (
     request.headers.get('origin') !== new URL(request.url).origin ||
     !request.headers.get('content-type')?.startsWith('application/json')
@@ -73,50 +72,40 @@ export async function POST(
     const ctx = await context(params),
       data = parsed.data;
     if (data.operation === 'search') {
-      const result = await searchGooglePlaces(ctx.userId, data, request.signal);
+      const result = await searchMapbox(ctx.userId, ctx.tripId, data, request.signal);
       return Response.json(result, {
-        headers: {
-          ...headers,
-          'Server-Timing': `google;dur=${result.timing.providerMs}, adapter;dur=${result.timing.serverMs}, handler;dur=${Math.round(performance.now() - started)}`,
-        },
+        headers: { ...headers, 'Server-Timing': `mapbox;dur=${result.timing.providerMs}` },
       });
     }
-    if (data.operation === 'selection') {
-      if (!ctx.access.can_edit) return new Response(null, { status: 403, headers });
-      await verifyGooglePlace(ctx.userId, data.placeId, data.session);
-      return Response.json({ ok: true }, { headers });
+    // A signed search result belongs to this member and trip. Otherwise only
+    // references already present in this authorized trip can be resolved.
+    if (!readMapboxProof(data.proof, ctx.userId, ctx.tripId, data.placeId, data.query)) {
+      const roots = await ctx.db
+        .from('trip_items')
+        .select(
+          'external_place_id,external_query,stops:trip_item_stops(external_place_id,external_query)',
+        )
+        .eq('trip_id', ctx.tripId);
+      if (roots.error) throw roots.error;
+      const permitted = roots.data.some((i) =>
+        [i, ...i.stops].some(
+          (p) => p.external_place_id === data.placeId && p.external_query === data.query,
+        ),
+      );
+      if (!permitted) return new Response(null, { status: 403, headers });
     }
-    if (data.operation === 'ui') {
-      await reserveGooglePlaces(ctx.userId, data.kind);
-      return Response.json({ ok: true }, { headers });
-    }
-    if (data.operation === 'verify') {
-      if (!ctx.access.can_edit) return new Response(null, { status: 403, headers });
-      return Response.json(await verifyGooglePlace(ctx.userId, data.placeId), { headers });
-    }
-    // Only coordinates belonging to this authorized trip may be resolved.
-    const roots = await ctx.db
-      .from('trip_items')
-      .select('google_place_id,stops:trip_item_stops(google_place_id)')
-      .eq('trip_id', ctx.tripId);
-    if (roots.error) throw roots.error;
-    const permitted = new Set(
-      roots.data.flatMap((i) => [i.google_place_id, ...i.stops.map((s) => s.google_place_id)]),
+    if (data.operation === 'resolve')
+      return Response.json(
+        { place: await resolveMapbox(ctx.userId, ctx.tripId, data, request.signal) },
+        { headers },
+      );
+    return Response.json(
+      { place: await retrieveMapboxDetails(ctx.userId, data.placeId, request.signal) },
+      { headers },
     );
-    const ids = [...new Set(data.ids)];
-    if (ids.some((id) => !permitted.has(id))) return new Response(null, { status: 403, headers });
-    const points: Record<string, Awaited<ReturnType<typeof googlePlaceCoordinates>>> = {};
-    for (const id of ids) {
-      try {
-        points[id] = await googlePlaceCoordinates(ctx.userId, id);
-      } catch (error) {
-        if (error instanceof GooglePlacesError && error.status === 404) points[id] = null;
-        else throw error;
-      }
-    }
-    return Response.json({ points }, { headers });
   } catch (error) {
-    if (error instanceof SyntaxError) return new Response(null, { status: 400, headers });
-    return failure(error);
+    return error instanceof SyntaxError
+      ? new Response(null, { status: 400, headers })
+      : failure(error);
   }
 }

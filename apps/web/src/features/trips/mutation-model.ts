@@ -179,7 +179,9 @@ export function tripMutationGuards(plan: TripPlan, change: TripTransportChange):
       guards[item ? 'items' : 'stops'][row.id] = {
         source: row.source ?? 'nagi',
         entry_id: row.entry_id,
-        google_place_id: row.google_place_id ?? null,
+        external_place_id: row.external_place_id ?? null,
+        external_query: row.external_query ?? null,
+        needs_place_relink: row.needs_place_relink ?? false,
         custom_title: row.custom_title ?? null,
         custom_location: row.custom_location ?? null,
         custom_latitude: row.custom_latitude ?? null,
@@ -463,7 +465,9 @@ const changesPlace = (row: object | undefined) =>
   [
     'source',
     'entry_id',
-    'google_place_id',
+    'external_place_id',
+    'external_query',
+    'needs_place_relink',
     'custom_title',
     'custom_location',
     'custom_latitude',

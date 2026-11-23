@@ -1,80 +1,62 @@
 'use client';
 import type { EntryCardRow } from '@nagi/database';
+import type { CatalogPlace } from '@nagi/shared';
 import type { ReactNode } from 'react';
-import { EntryImage } from '@/features/media/image';
-import { GooglePlaceView } from '@/features/integrations/google-places/components';
-
-/** Shared card envelope; provider-owned content is rendered by its official adapter. */
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { nagiCatalogPlace } from '@/features/integrations/mapbox/model';
+/** One native card for editorial entries, external results and user-authored places. */
 export function CatalogPlaceCard({
   entry,
-  placeId,
+  place,
   onClick,
   label,
   children,
 }: {
   entry: EntryCardRow;
-  placeId?: string;
+  place?: CatalogPlace;
   onClick?: () => void;
   label?: string;
   children?: ReactNode;
 }) {
-  if (placeId)
-    return (
-      <div
-        className="trip-picker-preview trip-catalog-google-card"
-        data-native-google-card
-        tabIndex={0}
-        role="button"
-        aria-label={label ?? 'Lieu proposé par Google Maps'}
-        onClick={onClick}
-        onKeyDown={(e) => {
-          if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
-            e.preventDefault();
-            const cards = [
-                ...e.currentTarget
-                  .closest('ul')!
-                  .querySelectorAll<HTMLElement>('[data-native-google-card]'),
-              ],
-              index = cards.indexOf(e.currentTarget);
-            cards[
-              e.key === 'Home'
-                ? 0
-                : e.key === 'End'
-                  ? cards.length - 1
-                  : (index + (e.key === 'ArrowDown' ? 1 : -1) + cards.length) % cards.length
-            ]?.focus();
-            return;
-          }
-          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-            e.preventDefault();
-            onClick?.();
-          }
-        }}
-      >
-        <GooglePlaceView occurrence={`result:${placeId}`} placeId={placeId} appearance="card" />
-      </div>
-    );
+  const display = place ?? nagiCatalogPlace(entry);
   return (
     <button
       type="button"
       className="trip-picker-preview"
+      data-external-place-card={place?.source === 'mapbox' || undefined}
       onClick={onClick}
-      aria-label={label ?? `Aperçu de ${entry.title}`}
+      aria-label={label ?? `Aperçu de ${display.title}`}
+      onKeyDown={(event) => {
+        if (!place || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const cards = [
+            ...event.currentTarget
+              .closest('ul')!
+              .querySelectorAll<HTMLButtonElement>('[data-external-place-card]'),
+          ],
+          index = cards.indexOf(event.currentTarget);
+        cards[
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? cards.length - 1
+              : (index + (event.key === 'ArrowDown' ? 1 : -1) + cards.length) % cards.length
+        ]?.focus();
+      }}
     >
-      <EntryImage
-        src={entry.cover_image_url}
+      <PlaceImage
+        src={display.imageUrl}
+        source={display.source}
+        category={display.categoryId ?? display.category}
         className="size-11 shrink-0 rounded-xl"
         sizes="44px"
       />
       <span>
-        <strong>{entry.title}</strong>
-        <small>
-          {[entry.category?.name, entry.neighborhood?.name ?? entry.city?.name, entry.country?.name]
-            .filter(Boolean)
-            .join(' · ')}
-        </small>
+        <strong>{display.title}</strong>
+        <small>{[display.category, display.locationLabel].filter(Boolean).join(' · ')}</small>
         {children}
       </span>
+      {place?.source === 'mapbox' && <span className="trip-place-source">Mapbox</span>}
     </button>
   );
 }

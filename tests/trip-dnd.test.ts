@@ -48,8 +48,9 @@ describe('Itinerary drop intentions', () => {
   it('accepts an external creation reference at the activity centre while preserving catalogue drop zones', () => {
     expect(
       collisions(150, 'new', 'catalog-entry', {
-        source: 'google',
-        placeId: 'google-place-example',
+        source: 'mapbox',
+        placeId: 'mapbox-place-example',
+        query: 'My search',
       })[0],
     ).toBe('activity:parent');
     expect(collisions(150, 'new', 'catalog-entry')).not.toContain('activity:parent');

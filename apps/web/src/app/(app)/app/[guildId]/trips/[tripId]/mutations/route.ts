@@ -3,7 +3,7 @@ import { TripSyncService, enrichTripChanges } from '@nagi/database';
 import { tripMutationSchema, uuidSchema } from '@nagi/shared';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
 import { tripRequestFailure, tripRequestSession } from '@/features/trips/sync-server';
-import { GooglePlacesError, verifyGooglePlace } from '@/features/integrations/google-places/server';
+import { MapboxError, verifyMapboxReference } from '@/features/integrations/mapbox/server';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -41,7 +41,7 @@ export async function POST(
     const change = parsed.data.change;
     if (
       (change.operation === 'add_place' || change.operation === 'replace_place') &&
-      change.data.place.source === 'google'
+      change.data.place.source === 'mapbox'
     ) {
       const access = await new TripSyncService(session.db).read(guildId, tripId, 2147483647);
       if (!access.can_edit)
@@ -49,7 +49,7 @@ export async function POST(
           { ok: false, reason: 'forbidden', error: 'Ce voyage n’est pas modifiable.' },
           { status: 403, headers },
         );
-      await verifyGooglePlace(session.userId, change.data.place.placeId);
+      await verifyMapboxReference(session.userId, tripId, change.data.place);
     }
     const batch = await new TripSyncService(session.db).mutate(guildId, tripId, parsed.data),
       persisted = performance.now();
@@ -81,9 +81,13 @@ export async function POST(
       },
     );
   } catch (error) {
-    if (error instanceof GooglePlacesError)
+    if (error instanceof MapboxError)
       return Response.json(
-        { ok: false, reason: 'invalid', error: error.message },
+        {
+          ok: false,
+          reason: error.status === 404 || error.status === 422 ? 'invalid' : 'temporary',
+          error: error.message,
+        },
         { status: error.status === 404 ? 422 : error.status, headers },
       );
     const failure = tripRequestFailure(error);

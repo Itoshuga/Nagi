@@ -1,5 +1,6 @@
 'use client';
 import 'leaflet/dist/leaflet.css';
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LayerGroup, Map as LeafletMap } from 'leaflet';
 import { Compass, List, LoaderCircle, Plus, X } from 'lucide-react';
@@ -17,24 +18,20 @@ import {
 } from './planner-model';
 import { tripTileProvider } from './map-config';
 import {
-  GooglePlaceView,
   useExternalPlaces,
-} from '@/features/integrations/google-places/components';
-import {
-  googleClientRequest,
-  watchGoogleCoordinateExpiry,
-} from '@/features/integrations/google-places/client';
+  useExternalPlaceVersion,
+  externalStatus,
+} from '@/features/integrations/mapbox/components';
+import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
 
 export default function TripMap(
   props: WorkspaceViewProps & { onPreview: (entry: EntryCardRow) => void; add: PlaceAdder },
 ) {
   const { plan, selectedDay, selectedItem, onDetails, canEdit, add } = props;
   const external = useExternalPlaces();
-  const [googlePoints, setGooglePoints] = useState<
-    Record<string, { latitude: number; longitude: number; expiresAt: number }>
-  >({});
-  const [googleError, setGoogleError] = useState(''),
-    [googleRetry, setGoogleRetry] = useState(0);
+  useExternalPlaceVersion();
+  const [mapboxError, setMapboxError] = useState(''),
+    [mapboxRetry, setMapboxRetry] = useState(0);
   const node = useRef<HTMLDivElement>(null),
     map = useRef<LeafletMap>(null),
     markers = useRef<LayerGroup>(null),
@@ -64,71 +61,57 @@ export default function TripMap(
     [plan.items, plan.days, selectedDay],
   );
   const visits = useMemo(() => tripMapVisits(visible), [visible]);
-  const googleIds = JSON.stringify(
-    [
-      ...new Set(
-        visits.map((v) => (v.stop ?? v.parent).google_place_id).filter((id): id is string => !!id),
-      ),
-    ].sort(),
-  );
+  const references = JSON.stringify([
+    ...new Map(
+      visits
+        .filter((v) => (v.stop ?? v.parent).source === 'mapbox')
+        .map((v) => {
+          const row = v.stop ?? v.parent;
+          return [row.external_place_id, { id: row.external_place_id, query: row.external_query }];
+        }),
+    ).values(),
+  ]);
   useEffect(() => {
     if (!external) return;
-    const ids = JSON.parse(googleIds) as string[];
-    if (!ids.length) return;
-    let cancelled = false;
-    let stopExpiry: (() => void) | undefined;
-    const resolve = async () => {
-      try {
-        for (const [id, point] of external.coordinates)
-          if (point.expiresAt <= Date.now()) external.coordinates.delete(id);
-        const missing = ids.filter((id) => !external.coordinates.has(id));
-        for (let index = 0; index < missing.length; index += 30) {
-          const data = (await googleClientRequest(external.url, {
-            operation: 'coordinates',
-            ids: missing.slice(index, index + 30),
-          })) as {
-            points: Record<
-              string,
-              { latitude: number; longitude: number; expiresAt: number } | null
-            >;
-          };
-          for (const [id, point] of Object.entries(data.points))
-            if (point) external.coordinates.set(id, point);
-        }
-        if (cancelled) return;
-        setGooglePoints(Object.fromEntries(external.coordinates));
-        setGoogleError('');
-        stopExpiry = watchGoogleCoordinateExpiry(external.coordinates, () => {
-          setGooglePoints(Object.fromEntries(external.coordinates));
-          setGoogleError('Actualisez les lieux Google Maps pour les localiser à nouveau.');
-        });
-      } catch (error) {
-        if (!cancelled)
-          setGoogleError(
-            error instanceof Error ? error.message : 'Les lieux Google Maps sont indisponibles.',
-          );
-      }
-    };
-    void resolve();
+    let active = true;
+    const refs = JSON.parse(references) as { id: string; query: string }[];
+    void Promise.allSettled(
+      refs
+        .filter((r) => r.id && r.query)
+        .map((r) => external.ensure(r.id, r.query, mapboxRetry > 0)),
+    ).then((results) => {
+      if (active)
+        setMapboxError(
+          results.some((r) => r.status === 'rejected')
+            ? 'Certains lieux Mapbox sont indisponibles. Les étapes restent modifiables.'
+            : '',
+        );
+    });
     return () => {
-      cancelled = true;
-      stopExpiry?.();
+      active = false;
     };
-  }, [external, googleIds, googleRetry]);
-  const locatedVisits = useMemo(
-    () =>
-      visits.map((visit) => {
-        const id = (visit.stop ?? visit.parent).google_place_id,
-          point = id ? googlePoints[id] : undefined;
-        return point && visit.entry
-          ? {
-              ...visit,
-              entry: { ...visit.entry, latitude: point.latitude, longitude: point.longitude },
-            }
-          : visit;
-      }),
-    [visits, googlePoints],
+  }, [external, references, mapboxRetry]);
+  const coordinateKey = JSON.stringify(
+    JSON.parse(references).map((r: { id: string }) => {
+      const p = external?.get(r.id).place;
+      return p ? { source: p.source, id: p.id, title: p.title, coordinates: p.coordinates } : null;
+    }),
   );
+  const locatedVisits = useMemo(() => {
+    const places = new Map(
+      (JSON.parse(coordinateKey) as (import('@nagi/shared').CatalogPlace | null)[])
+        .filter((p): p is import('@nagi/shared').CatalogPlace => p !== null)
+        .map((p) => [p.id, p]),
+    );
+    return visits.map((visit) => {
+      const row = visit.stop ?? visit.parent;
+      const place =
+        row.source === 'mapbox' && row.external_place_id
+          ? places.get(row.external_place_id)
+          : undefined;
+      return place?.coordinates ? { ...visit, entry: catalogPlaceEntry(place) } : visit;
+    });
+  }, [visits, coordinateKey]);
   const { located, missing } = useMemo(() => tripPoints(locatedVisits, 'all'), [locatedVisits]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
@@ -141,7 +124,13 @@ export default function TripMap(
   useEffect(() => {
     let mounted = true;
     let observer: ResizeObserver | undefined;
-    import('leaflet')
+    (async () => {
+      if (external) {
+        const status = await externalStatus(external);
+        if (!status.mapAvailable) throw new Error('Mapbox map disabled');
+      }
+      return import('leaflet');
+    })()
       .then((leaflet) => {
         if (!mounted || !node.current) return;
         const instance = leaflet.map(node.current, {
@@ -153,6 +142,8 @@ export default function TripMap(
         instance.attributionControl.setPrefix(false);
         const tiles = leaflet.tileLayer(tripTileProvider.url, {
           maxZoom: tripTileProvider.maxZoom,
+          tileSize: 512,
+          zoomOffset: -1,
           attribution: tripTileProvider.attribution,
         });
         tiles.on('tileerror', () => {
@@ -192,7 +183,7 @@ export default function TripMap(
       markers.current = null;
       catalogue.current = null;
     };
-  }, []);
+  }, [external]);
   useEffect(() => {
     const instance = map.current,
       layer = markers.current,
@@ -344,14 +335,14 @@ export default function TripMap(
   return (
     <div className="trip-map-workspace">
       <div className="trip-map-toolbar">
-        {googleError && (
+        {mapboxError && (
           <button
             type="button"
             className="trip-explore-button"
-            onClick={() => setGoogleRetry((v) => v + 1)}
-            title={googleError}
+            onClick={() => setMapboxRetry((v) => v + 1)}
+            title={mapboxError}
           >
-            Actualiser les lieux Google Maps
+            Actualiser les lieux Mapbox
           </button>
         )}
         <button
@@ -402,16 +393,7 @@ export default function TripMap(
                   >
                     <span>{number}</span>
                     <div>
-                      {(item.stop ?? item.parent).source === 'google' &&
-                      (item.stop ?? item.parent).google_place_id ? (
-                        <GooglePlaceView
-                          occurrence={item.id}
-                          placeId={(item.stop ?? item.parent).google_place_id!}
-                          appearance="thumbnail"
-                        />
-                      ) : (
-                        <strong>{item.entry?.title}</strong>
-                      )}
+                      <strong>{item.entry?.title}</strong>
                       <small>
                         {[
                           item.stop
@@ -456,6 +438,14 @@ export default function TripMap(
           </div>
         )}
         <div className="trip-map-frame">
+          <a
+            className="trip-mapbox-logo"
+            href="https://www.mapbox.com/about/maps/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Image src="/mapbox-logo.svg" alt="Mapbox" width="88" height="23" />
+          </a>
           <div
             ref={node}
             role="region"

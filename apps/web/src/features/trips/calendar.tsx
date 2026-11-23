@@ -111,13 +111,6 @@ export function TripCalendar(props: WorkspaceViewProps) {
     () => (mode === 'day' ? (chosen ? [chosen] : []) : dated.slice(start, start + 7)),
     [mode, chosen, dated, start],
   );
-  const hasGooglePlaces = useMemo(
-    () =>
-      plan.items.some(
-        (item) => item.source === 'google' && days.some((day) => day.id === item.trip_day_id),
-      ),
-    [plan.items, days],
-  );
   const clock = useCalendarClock(plan.timezone);
   const itemsByDay = useMemo(() => {
     const grouped = new Map<string | null, TripPlanItem[]>();
@@ -325,7 +318,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
             style={
               {
                 // Leave at least 160px for the official label after event insets.
-                '--trip-calendar-min-width': `${52 + days.length * (hasGooglePlaces ? 188 : 112)}px`,
+                '--trip-calendar-min-width': `${52 + days.length * 112}px`,
                 '--trip-calendar-columns': `52px repeat(${days.length},minmax(0,1fr))`,
               } as CSSProperties
             }

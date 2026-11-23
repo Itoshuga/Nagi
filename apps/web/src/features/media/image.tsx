@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import type { ReactNode } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import { isPrivateImage, privateImageLoader } from './private-loader';
@@ -13,6 +14,7 @@ export function EntryImage({
   sizes = '(max-width: 640px) 100vw, 420px',
   eager = false,
   fit = 'cover',
+  fallback,
 }: {
   src?: string | null;
   alt?: string;
@@ -20,6 +22,7 @@ export function EntryImage({
   sizes?: string;
   eager?: boolean;
   fit?: 'cover' | 'contain';
+  fallback?: ReactNode;
 }) {
   src = imageSourceUrl(src);
   return (
@@ -42,7 +45,9 @@ export function EntryImage({
           className={fit === 'contain' ? 'object-contain' : 'object-cover'}
         />
       ) : (
-        <ImageIcon aria-hidden="true" className="size-1/4 max-w-14 text-primary-ink opacity-45" />
+        (fallback ?? (
+          <ImageIcon aria-hidden="true" className="size-1/4 max-w-14 text-primary-ink opacity-45" />
+        ))
       )}
     </div>
   );

@@ -1,19 +1,20 @@
 import { Badge, Button, Card } from '@nagi/ui';
 import { requireAdmin } from '@/features/auth/session';
 import { sessionDatabase } from '@/lib/supabase/server';
-import { googlePlacesConfig } from '@/features/integrations/google-places/config';
-import { toggleGooglePlaces } from './actions';
+import { mapboxConfig } from '@/features/integrations/mapbox/config';
+import { toggleMapbox } from './actions';
 
 export default async function IntegrationsPage() {
   await requireAdmin();
-  const config = googlePlacesConfig(),
+  const config = mapboxConfig(),
     db = await sessionDatabase();
-  const result = await db.rpc('google_places_admin', {});
+  const result = await db.rpc('mapbox_admin', {});
   const state = result.data as {
     enabled: boolean;
     last_error: string | null;
     last_error_at: string | null;
     today: Record<string, number>;
+    details_month: number;
   } | null;
   return (
     <div className="space-y-6">
@@ -23,21 +24,21 @@ export default async function IntegrationsPage() {
       </div>
       <Card className="space-y-5">
         <div className="flex justify-between gap-4">
-          <h2 className="text-lg font-semibold">Google Maps</h2>
+          <h2 className="text-lg font-semibold">Mapbox</h2>
           <Badge>
             {config.configured && config.enabled && state?.enabled ? 'Disponible' : 'Indisponible'}
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Places UI Kit pour l’affichage des lieux. Places API (New) pour vérifier les identifiants
-          et localiser les visites. Aucune donnée Google n’est importée dans le catalogue.
+          Search Box pour la recherche et la localisation. Places Details pour les informations
+          complémentaires disponibles. Aucune donnée Mapbox n’est importée dans le catalogue.
         </p>
         <dl className="grid gap-3 text-sm">
           <div>
             Configuration des clés :{' '}
             {config.configured
-              ? 'deux clés distinctes configurées'
-              : 'configuration incomplète ou clés identiques'}
+              ? 'tokens serveur et navigateur configurés'
+              : 'configuration incomplète'}
           </div>
           <div>Activation par l’environnement : {config.enabled ? 'oui' : 'non'}</div>
           <div>
@@ -51,30 +52,28 @@ export default async function IntegrationsPage() {
               config.globalDaily * 0.8 && (
               <p role="status" className="text-sm text-destructive">
                 La consommation enregistrée approche la limite quotidienne Nagi. Vérifiez aussi les
-                quotas et la facturation dans Google Cloud.
+                quotas et la facturation dans Mapbox.
               </p>
             )}
-            <form action={toggleGooglePlaces}>
+            <form action={toggleMapbox}>
               <input type="hidden" name="enabled" value={String(!state.enabled)} />
               <Button type="submit" variant="secondary">
-                {state.enabled ? 'Désactiver la recherche Google' : 'Activer la recherche Google'}
+                {state.enabled ? 'Désactiver la recherche Mapbox' : 'Activer la recherche Mapbox'}
               </Button>
             </form>
             <div>
               <h3 className="text-sm font-semibold">Activité enregistrée aujourd’hui · UTC</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Compteurs Nagi des autorisations de composants et des appels serveur. Ces chiffres
-                ne constituent pas la facture Google Cloud.
+                Compteurs Nagi des appels serveur. Ces chiffres ne constituent pas la facture
+                Mapbox.
               </p>
               <dl className="mt-3 grid gap-2 text-sm">
                 {(
                   [
-                    ['ui_search', 'Composants de recherche autorisés'],
-                    ['ui_details', 'Composants de détail autorisés'],
-                    ['verify', 'Vérifications serveur'],
-                    ['coordinates', 'Résolutions de coordonnées'],
-                    ['autocomplete', 'Requêtes Autocomplete (IDs uniquement)'],
-                    ['text_search', 'Recherches complètes (IDs uniquement)'],
+                    ['suggest', 'Suggestions'],
+                    ['forward', 'Recherches validées'],
+                    ['retrieve', 'Lieux résolus'],
+                    ['details', 'Informations complémentaires'],
                   ] as const
                 ).map(([key, label]) => (
                   <div key={key} className="flex justify-between gap-4">
@@ -84,6 +83,10 @@ export default async function IntegrationsPage() {
                 ))}
               </dl>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Places Details ce mois : {state.details_month} / {config.detailsMonthly}. Les
+              informations enrichies restent facultatives.
+            </p>
             {state.last_error && (
               <p className="text-xs text-muted-foreground">
                 Dernière erreur : {state.last_error}
