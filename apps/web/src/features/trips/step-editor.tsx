@@ -7,19 +7,7 @@ import {
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  Input,
-  Label,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@nagi/ui';
+import { Alert, Button, Input, Label, Popover, PopoverContent, PopoverTrigger } from '@nagi/ui';
 import type {
   CatalogEntryDetail,
   CatalogRelation,
@@ -41,6 +29,7 @@ import { entryHref } from '@/features/entries/links';
 import { UserIdentity } from '@/features/profiles/identity';
 import { TripDaySelect } from './add-place-dialog';
 import { ActivityStops } from './activity-stops';
+import { RemoveTripStepDialog } from './remove-step-dialog';
 import { CalendarColorAction } from './calendar-colors';
 import { CustomPlaceEditor } from './source-places';
 import {
@@ -624,40 +613,16 @@ export function TripPlaceDetails({
           </Alert>
         )}
       </div>
-      <Dialog
-        open={confirm}
-        onOpenChange={(v) => {
-          if (!busy) setConfirm(v);
-        }}
-      >
-        <DialogContent className="trip-compact-dialog" closeDisabled={busy}>
-          <DialogTitle>Retirer cette étape ?</DialogTitle>
-          <DialogDescription>
-            Les notes et horaires de cette visite seront retirés du voyage.
-            {!!item?.stops.length &&
-              (item.stops.length === 1
-                ? ' Son arrêt et ses notes seront également retirés.'
-                : ` Ses ${item.stops.length} arrêts et leurs notes seront également retirés.`)}
-          </DialogDescription>
-          <div className="trip-dialog-actions">
-            <Button variant="ghost" disabled={busy} onClick={() => setConfirm(false)}>
-              Annuler
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={busy}
-              onClick={async () => {
-                if (!item) return;
-                const r = await mutate({ operation: 'delete_item', data: { id: item.id } });
-                if (r.ok) onClose();
-                else setError(r.error);
-              }}
-            >
-              Retirer
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {confirm && item && canEdit && (
+        <RemoveTripStepDialog
+          item={item}
+          version={plan.version}
+          busy={busy}
+          mutate={mutate}
+          onClose={() => setConfirm(false)}
+          onRemoved={onClose}
+        />
+      )}
     </>
   );
 }

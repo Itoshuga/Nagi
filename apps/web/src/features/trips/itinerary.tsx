@@ -10,12 +10,14 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Input,
   cn,
@@ -33,6 +35,7 @@ import { ActivityCardCopy } from './activity-card';
 import { ActivityNestingDialog } from './activity-nesting';
 import { TripDayEditor } from './plan-dialogs';
 import { QuickStepEditor } from './step-editor';
+import { RemoveTripStepDialog } from './remove-step-dialog';
 import { ActivityStops } from './activity-stops';
 import { useTripCardDrag } from './card-drag';
 import { tripDragSource } from './planner-dnd';
@@ -84,6 +87,8 @@ export function TripStep({
   const { canEdit, busy, mutate, plan, onDetails, selectedItem } = props;
   const reducedMotion = useReducedMotion();
   const [nesting, setNesting] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const { active } = useDndContext();
   const source = tripDragSource(plan.items, active?.data.current, active?.id)?.card;
   const nestingIssue = source ? activityNestingIssue(source, item) : null;
@@ -196,6 +201,7 @@ export function TripStep({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              ref={menuTrigger}
               className="trip-step-menu trip-icon-button"
               aria-label={`Options de ${title}`}
             >
@@ -234,8 +240,26 @@ export function TripStep({
             <DropdownMenuItem onSelect={() => onDetails(item)}>
               Déplacer vers une journée…
             </DropdownMenuItem>
+            <DropdownMenuSeparator className="my-1 h-px bg-border" />
+            <DropdownMenuItem
+              className="text-destructive"
+              disabled={busy}
+              onSelect={() => setRemoving(true)}
+            >
+              <Trash2 className="size-3.5" /> Supprimer l’étape
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+      )}
+      {removing && canEdit && (
+        <RemoveTripStepDialog
+          item={item}
+          version={plan.version}
+          busy={busy}
+          mutate={mutate}
+          onClose={() => setRemoving(false)}
+          returnFocus={() => menuTrigger.current?.focus()}
+        />
       )}
       {nesting && (
         <ActivityNestingDialog
