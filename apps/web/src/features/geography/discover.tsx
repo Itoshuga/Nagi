@@ -17,7 +17,7 @@ export function DestinationHero({
     <div
       className={cn(
         'mb-10 grid items-center gap-6 sm:gap-8',
-        destination.cover_image_url && 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]',
+        'md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]',
       )}
     >
       <div>
@@ -28,15 +28,16 @@ export function DestinationHero({
           </p>
         )}
       </div>
-      {destination.cover_image_url && (
+      {
         <DestinationCover
+          id={destination.id}
           src={destination.cover_image_url}
           kind={kind}
           className="aspect-[16/8] rounded-3xl"
           iconClassName="size-14"
           eager
         />
-      )}
+      }
     </div>
   );
 }
@@ -74,6 +75,7 @@ export function DiscoverGrid({
                   className="group block h-full overflow-hidden rounded-3xl border border-border bg-card shadow-card transition-shadow hover:shadow-lg motion-reduce:transition-none"
                 >
                   <DestinationCover
+                    id={row.id}
                     kind={kind}
                     src={row.cover_image_url}
                     className="aspect-[16/10] [&>img]:transition-transform [&>img]:duration-500 group-hover:[&>img]:scale-105 motion-reduce:[&>img]:transform-none motion-reduce:[&>img]:transition-none"

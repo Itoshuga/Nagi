@@ -43,7 +43,7 @@ export function ActivityCardCopy({
         }
         src={imageUrl}
         source={place?.source}
-        category={category}
+        category={display?.categoryId ?? category}
         className="trip-step-photo"
         sizes="56px"
       />

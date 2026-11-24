@@ -15,6 +15,7 @@ import type { Destination } from '@nagi/database';
 import { saveDestination, type DestinationActionState } from './actions';
 import { CityPicker, type CityOption } from './city-picker';
 import { DestinationCover } from './cover';
+import { ImagePicker } from '@/features/images/components';
 import { selectClass } from './model';
 
 function Field({
@@ -300,8 +301,9 @@ export function DestinationForm({
                 if (!disabled) selectFile(event.dataTransfer.files[0]);
               }}
             >
-              {cover && (
+              {(cover || initial) && (
                 <DestinationCover
+                  id={!file && !removed ? initial?.id : undefined}
                   kind={kind}
                   src={cover}
                   className="aspect-[16/10] rounded-t-xl"
@@ -355,6 +357,25 @@ export function DestinationForm({
               <Button type="button" variant="ghost" size="sm" onClick={() => setRemoved(false)}>
                 Garder l’image actuelle
               </Button>
+            )}
+            {initial && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <p className="text-sm font-semibold">Photographie de couverture</p>
+                <ImagePicker
+                  reference={{
+                    source: 'nagi',
+                    id: initial.id,
+                    kind: (
+                      {
+                        countries: 'country',
+                        cities: 'city',
+                        neighborhoods: 'neighborhood',
+                      } as const
+                    )[kind],
+                  }}
+                  disabled={disabled || !!file || removed}
+                />
+              </div>
             )}
           </Card>
           <Card className="space-y-4 p-5 sm:p-6">

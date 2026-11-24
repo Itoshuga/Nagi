@@ -93,6 +93,7 @@ export function DestinationRows({
                 className="group col-start-1 row-start-1 flex min-w-0 items-center gap-3 rounded-lg"
               >
                 <DestinationCover
+                  id={row.id}
                   src={row.cover_image_url}
                   kind={kind}
                   className="h-11 w-14 shrink-0 rounded-lg"

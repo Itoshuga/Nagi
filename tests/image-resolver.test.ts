@@ -238,6 +238,27 @@ describe('conservative deterministic matching', () => {
   });
   it('rejects a namesake on another continent', () =>
     expect(matchEntity({ ...ctx, latitude: 48.85, longitude: 2.35 }, entity)).toBeNull());
+  it('rejects a neighbouring railway station whose alias equals the requested shrine', () => {
+    expect(
+      matchEntity(
+        { ...ctx, name: 'Fushimi Inari', category: 'shrine' },
+        {
+          ...entity,
+          labels: { en: { value: 'Fushimi Inari' } },
+          descriptions: { en: { value: 'railway station in Kyoto, Japan' } },
+        },
+      ),
+    ).toBeNull();
+    expect(
+      matchEntity(
+        { ...ctx, name: 'Fushimi Inari', category: 'shrine' },
+        {
+          ...entity,
+          labels: { en: { value: 'Fushimi Inari Taisha' } },
+        },
+      )?.confidence,
+    ).toBe('high');
+  });
   it('leaves location-free matches ambiguous', () =>
     expect(
       matchEntity({ ...ctx, latitude: undefined, longitude: undefined }, entity)?.confidence,

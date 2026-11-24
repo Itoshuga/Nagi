@@ -6,6 +6,7 @@ import { Building2, Globe2, MapPin } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { DestinationKind } from '@nagi/shared';
 import { isPrivateImage, privateImageLoader } from '@/features/media/private-loader';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 
 const icons = { countries: Globe2, cities: Building2, neighborhoods: MapPin };
 
@@ -15,15 +16,35 @@ export function DestinationCover({
   className,
   iconClassName,
   eager = false,
+  id,
 }: {
   src?: string | null;
   kind: DestinationKind;
   className?: string;
   iconClassName?: string;
   eager?: boolean;
+  id?: string;
 }) {
   const [failed, setFailed] = useState<string>();
   const Icon = icons[kind];
+  if (id && !src?.startsWith('blob:'))
+    return (
+      <PlaceImage
+        src={src}
+        eager={eager}
+        photoReference={{
+          source: 'nagi',
+          id,
+          kind: ({ countries: 'country', cities: 'city', neighborhoods: 'neighborhood' } as const)[
+            kind
+          ],
+        }}
+        className={className}
+        fallback={
+          <Icon className={cn('size-6 text-primary-ink/65', iconClassName)} strokeWidth={1.25} />
+        }
+      />
+    );
   return (
     <div
       aria-hidden="true"

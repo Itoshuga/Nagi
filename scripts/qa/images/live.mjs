@@ -12,6 +12,8 @@ if (process.env.NAGI_IMAGE_LIVE_QA !== '1')
   throw new Error('Set NAGI_IMAGE_LIVE_QA=1 to run the bounded provider audit.');
 for (const key of [
   'NAGI_IMAGE_USER_AGENT',
+  'WIKIMEDIA_CONTACT_EMAIL',
+  'NAGI_PRIVACY_CONTACT',
   'NAGI_OPENVERSE_CLIENT_ID',
   'NAGI_OPENVERSE_CLIENT_SECRET',
 ])

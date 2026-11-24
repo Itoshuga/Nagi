@@ -1159,6 +1159,438 @@ describe('Collaborative planner transactions', () => {
     color: '#739FD0',
     ...extra,
   });
+  describe('Serper discovery, private galleries and reviewed publication', () => {
+    const key = 'c'.repeat(64),
+      queryHash = 'd'.repeat(64),
+      photo = 'abc00000-0000-4000-8000-000000000011';
+    const item = {
+      id: photo,
+      urlKey: 'e'.repeat(64),
+      metadata: {
+        title: 'Kamakura waterfront',
+        imageUrl: 'https://venue.example.org/photo.jpg',
+        thumbnailUrl: 'https://images.example.org/thumb.jpg',
+        link: 'https://venue.example.org/photos',
+        source: 'Venue',
+        imageWidth: 1200,
+        imageHeight: 800,
+      },
+      sources: ['https://venue.example.org/photos'],
+      rank: 300,
+    };
+    beforeEach(async () => {
+      await asService();
+      await catalogAndDays();
+      await db.exec(
+        `insert into public.image_galleries(cache_key,place_source,place_kind,place_id) select '${key}','nagi','city',id::text from public.cities limit 1;`,
+      );
+    });
+    const reserve = (extra = '') =>
+      `select public.reserve_image_discovery('${userId}','${key}','${queryHash}'${extra}) as value`;
+    const finish = (lease: string, items: unknown[] = [item], extra = '') =>
+      `select public.finish_image_discovery('${key}','${lease}','${JSON.stringify(items).replaceAll("'", "''")}',2${extra}) as value`;
+    async function discovered() {
+      const lease = await scalar<{ lease: string }>(reserve());
+      await scalar(finish(lease.lease));
+    }
+    it('stores unknown references without publishing them, and rejects direct reads by members and administrators', async () => {
+      await discovered();
+      expect(
+        await scalar<number>('select count(*)::int as value from public.image_candidates'),
+      ).toBe(1);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.external_images'),
+      ).toBe(0);
+      await asUser();
+      await fails('select * from public.image_candidates', /permission denied/);
+      await fails('select * from public.image_galleries', /permission denied/);
+      await fails(reserve(), /permission denied/);
+      await fails(
+        `select public.review_image_candidate('${photo}','permission_granted','','','','Owner permission')`,
+        /image_forbidden/,
+      );
+      await asUser(adminId);
+      await fails('select * from public.image_candidates', /permission denied/);
+    });
+    it('deduplicates concurrent page reservations and refuses a stale completion', async () => {
+      const first = await scalar<{ lease: string }>(reserve());
+      expect(first.lease).toBeTruthy();
+      expect((await scalar<{ lease?: string }>(reserve())).lease).toBeUndefined();
+      expect(
+        await scalar(
+          `select public.finish_image_discovery('${key}','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','[]') as value`,
+        ),
+      ).toBe(false);
+      await scalar(finish(first.lease, [item, item]));
+      expect(
+        await scalar<number>('select count(*)::int as value from public.image_candidates'),
+      ).toBe(1);
+      expect(
+        await scalar<number>(
+          `select next_page as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe(2);
+    });
+    it('reuses a successful first page without reserving any paid continuation', async () => {
+      await discovered();
+      expect(
+        await scalar(`select state as value from public.image_galleries where cache_key='${key}'`),
+      ).toBe('complete');
+      expect((await scalar<{ lease?: string }>(reserve())).lease).toBeUndefined();
+      expect(
+        (await scalar<{ lease?: string }>(reserve(',p_continue=>true'))).lease,
+      ).toBeUndefined();
+    });
+    it('ignores legacy page limits and language variants to enforce exactly one first-page request', async () => {
+      const first = await scalar<{ lease: string; page: number; variant: number }>(
+        reserve(',p_pages=>50,p_total_pages=>100'),
+      );
+      expect(first).toMatchObject({ page: 1, variant: 0 });
+      await scalar(finish(first.lease));
+      expect(
+        await scalar(`select state as value from public.image_galleries where cache_key='${key}'`),
+      ).toBe('complete');
+      expect((await scalar<{ lease?: string }>(reserve())).lease).toBeUndefined();
+      expect(
+        (await scalar<{ lease?: string }>(reserve(',p_continue=>true'))).lease,
+      ).toBeUndefined();
+    });
+    it('does not spend on an alias search after a first page has no results', async () => {
+      const first = await scalar<{ lease: string }>(reserve());
+      await scalar(
+        `select public.finish_image_discovery('${key}','${first.lease}','[]',1,null,60,3) as value`,
+      );
+      expect(
+        await scalar(
+          `select query_index as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe(0);
+      expect(
+        (await scalar<{ lease?: string }>(reserve(',p_continue=>true'))).lease,
+      ).toBeUndefined();
+      await db.exec('reset role');
+      expect(
+        await scalar(
+          `select calls as value from private.image_resolver_usage where bucket='serper:global:day'`,
+        ),
+      ).toBe(1);
+    });
+    it.each(['network', 'canceled'])(
+      'does not retry a %s attempt when the first call may already have been charged',
+      async (reason) => {
+        const first = await scalar<{ lease: string }>(reserve());
+        await scalar(
+          `select public.finish_image_discovery('${key}','${first.lease}','[]',0,'${reason}') as value`,
+        );
+        expect((await scalar<{ lease?: string }>(reserve())).lease).toBeUndefined();
+        expect(
+          (await scalar<{ lease?: string }>(reserve(',p_continue=>true'))).lease,
+        ).toBeUndefined();
+      },
+    );
+    it('does not buy another request after an abandoned lease expires', async () => {
+      await scalar(reserve());
+      await db.exec(
+        `update public.image_galleries set lease_until=now()-interval '1 second' where cache_key='${key}'`,
+      );
+      expect((await scalar<{ lease?: string }>(reserve())).lease).toBeUndefined();
+      await db.exec('reset role');
+      expect(
+        await scalar(
+          `select calls as value from private.image_resolver_usage where bucket='serper:global:day'`,
+        ),
+      ).toBe(1);
+    });
+    it('refuses refresh and continuation permanently even after a day', async () => {
+      await discovered();
+      await db.exec(
+        `update public.image_galleries set searched_at=now()-interval '30 days' where cache_key='${key}'`,
+      );
+      for (const flags of [
+        '',
+        ',p_refresh=>true',
+        ',p_continue=>true',
+        ',p_refresh=>true,p_continue=>true',
+      ]) {
+        expect(await scalar<{ lease?: string; reason: string }>(reserve(flags))).toMatchObject({
+          reason: 'cached',
+        });
+        expect((await scalar<{ lease?: string }>(reserve(flags))).lease).toBeUndefined();
+      }
+    });
+    it('enforces shared budgets and provider cooldowns on genuinely new places', async () => {
+      await discovered();
+      const otherKey = 'b'.repeat(64),
+        thirdKey = 'e'.repeat(64);
+      await db.exec(
+        `insert into public.image_galleries(cache_key,place_source,place_kind,place_id) values('${otherKey}','mapbox','entry','other'),('${thirdKey}','mapbox','entry','third')`,
+      );
+      const other = (flags = '') => reserve(flags).replace(key, otherKey);
+      expect((await scalar<{ reason: string }>(other(',p_global_day=>1'))).reason).toBe(
+        'global_daily_budget',
+      );
+      const next = await scalar<{ lease: string }>(other());
+      await scalar(
+        `select public.finish_image_discovery('${otherKey}','${next.lease}','[]',0,'rate_limit',120) as value`,
+      );
+      expect((await scalar<{ reason: string }>(reserve().replace(key, thirdKey))).reason).toBe(
+        'rate_limit',
+      );
+    });
+    it('accepts at most ten candidates from an older worker response', async () => {
+      const first = await scalar<{ lease: string }>(reserve());
+      const many = Array.from({ length: 40 }, (_, index) => ({
+        ...item,
+        id: 'abc00000-0000-4000-8000-' + String(index + 100).padStart(12, '0'),
+        urlKey: index.toString(16).padStart(64, '0'),
+        metadata: { ...item.metadata, imageUrl: 'https://venue.example.org/' + index + '.jpg' },
+      }));
+      await scalar(finish(first.lease, many));
+      expect(
+        await scalar<number>('select count(*)::int as value from public.image_candidates'),
+      ).toBe(10);
+    });
+    it('uses the global ceiling for administrators instead of silently blocking their twenty-first search', async () => {
+      await db.exec('reset role');
+      await db.exec(
+        `insert into private.image_resolver_usage values('serper:global:day',date_trunc('day',now()),21),('serper:${userId}:day',date_trunc('day',now()),21),('serper:${adminId}:day',date_trunc('day',now()),21)`,
+      );
+      await asService();
+      expect((await scalar<{ reason: string }>(reserve())).reason).toBe('user_daily_budget');
+      expect(
+        (await scalar<{ lease?: string }>(reserve().replace(userId, adminId))).lease,
+      ).toBeTruthy();
+    });
+    it('does not let administrators bypass the shared global budget', async () => {
+      await db.exec('reset role');
+      await db.exec(
+        `insert into private.image_resolver_usage values('serper:global:day',date_trunc('day',now()),50)`,
+      );
+      await asService();
+      expect((await scalar<{ reason: string }>(reserve().replace(userId, adminId))).reason).toBe(
+        'global_daily_budget',
+      );
+    });
+    it('reports a busy global slot without charging or claiming the waiting place', async () => {
+      const otherKey = 'b'.repeat(64);
+      await db.exec(
+        `insert into public.image_galleries(cache_key,place_source,place_kind,place_id,lease_id,lease_until) values('${otherKey}','mapbox','entry','other',gen_random_uuid(),now()+interval '20 seconds')`,
+      );
+      expect(await scalar(reserve())).toMatchObject({ state: 'indexing', reason: 'busy' });
+      expect(
+        await scalar(
+          `select searched_at as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBeNull();
+    });
+    it('does not allow unknown, rejected or unsupported licence data into public images', async () => {
+      await fails(
+        `insert into public.external_images(id,provider,source_id,metadata) values('${photo}','serper','unknown','{"imageUrl":"https://example.org/a.jpg","thumbnailUrl":"https://example.org/a.jpg","sourceUrl":"https://example.org"}')`,
+        /constraint/,
+      );
+      await discovered();
+      await asUser(adminId);
+      await fails(
+        `select public.review_image_candidate('${photo}','permission_granted')`,
+        /image_rights_evidence_required/,
+      );
+      await fails(
+        `select public.review_image_candidate('${photo}','open_license','Author','CC BY-NC','https://creativecommons.org/licenses/by-nc/4.0/','Licence checked')`,
+        /image_license_required/,
+      );
+      await scalar(`select public.review_image_candidate('${photo}','restricted')`);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.external_images'),
+      ).toBe(0);
+    });
+    it('persists an authorized city cover, keeps proof private and restores upload priority', async () => {
+      await discovered();
+      await asUser(adminId);
+      await db.exec(
+        `select public.review_image_candidate('${photo}','permission_granted','Venue owner','','','Written permission for Nagi cover')`,
+      );
+      expect(
+        await scalar<number>(
+          `select public.set_catalog_image('${key}','manual','${photo}',0) as value`,
+        ),
+      ).toBe(1);
+      expect(
+        await scalar(
+          `select image_id::text as value from public.place_image_assignments where city_id is not null`,
+        ),
+      ).toBe(photo);
+      expect(
+        await scalar<boolean>(
+          `select metadata ? 'rights_evidence' as value from public.external_images where id='${photo}'`,
+        ),
+      ).toBe(false);
+      await fails(
+        `select public.set_catalog_image('${key}','manual','${photo}',0)`,
+        /image_conflict/,
+      );
+      await asService();
+      await db.exec(
+        `update public.cities set cover_image_url='/app/catalog-cover/cities/'||id::text||'/abc00000-0000-4000-8000-000000000099'`,
+      );
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+    });
+    it('keeps occurrence choices independent from other visits and the planning revision', async () => {
+      await discovered();
+      await asUser(adminId);
+      await db.exec(
+        `select public.review_image_candidate('${photo}','permission_granted','Owner','','','Owner authorization')`,
+      );
+      await asUser();
+      await scalar(operation(0, 'add_place', externalAdd(firstItem)));
+      await scalar(operation(1, 'add_place', externalAdd(secondItem)));
+      const version = await scalar(`select version as value from public.trips where id='${tripA}'`);
+      await scalar(
+        `select public.set_place_image(null,'${tripA}','${firstItem}','manual','${photo}',0) as value`,
+      );
+      expect(
+        await scalar<number>(
+          `select count(*)::int as value from public.place_image_assignments where visit_id='${secondItem}'`,
+        ),
+      ).toBe(0);
+      expect(await scalar(`select version as value from public.trips where id='${tripA}'`)).toBe(
+        version,
+      );
+    });
+    it('keeps a reviewed choice unchanged when a stale client tries to refresh', async () => {
+      await discovered();
+      await asUser(adminId);
+      await db.exec(
+        `select public.review_image_candidate('${photo}','permission_granted','Owner','','','Owner authorization')`,
+      );
+      await asService();
+      expect((await scalar<{ lease?: string }>(reserve(',p_refresh=>true'))).lease).toBeUndefined();
+      expect(
+        await scalar(
+          `select rights_status as value from public.image_candidates where id='${photo}'`,
+        ),
+      ).toBe('permission_granted');
+      expect(
+        await scalar(`select available as value from public.external_images where id='${photo}'`),
+      ).toBe(true);
+    });
+    it('persists an unknown development choice without creating a public image or cover assignment', async () => {
+      await discovered();
+      expect(
+        await scalar(
+          `select public.set_image_preview('${adminId}','${key}','manual','${photo}',0) as value`,
+        ),
+      ).toBe(1);
+      const read = () =>
+        scalar<Record<string, unknown>>(
+          `select development_previews->'${adminId}:global' as value from public.image_galleries where cache_key='${key}'`,
+        );
+      expect(await read()).toMatchObject({
+        mode: 'manual',
+        image: photo,
+        revision: 1,
+        selected_by: adminId,
+      });
+      expect((await read()).selected_at).toBeTruthy();
+      expect(
+        await scalar(
+          `select rights_status as value from public.image_candidates where id='${photo}'`,
+        ),
+      ).toBe('unknown');
+      expect(
+        await scalar<number>('select count(*)::int as value from public.external_images'),
+      ).toBe(0);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+      await asUser();
+      await fails('select development_previews from public.image_galleries', /permission denied/);
+      await asUser(adminId);
+      await fails(
+        `select public.set_image_preview('${adminId}','${key}','manual','${photo}',1)`,
+        /permission denied/,
+      );
+      await fails(
+        `select public.set_catalog_image('${key}','manual','${photo}',0)`,
+        /image_unavailable/,
+      );
+    });
+    it('checks administrator identity, gallery ownership and revision for private previews', async () => {
+      await discovered();
+      await fails(
+        `select public.set_image_preview('${userId}','${key}','manual','${photo}',0)`,
+        /image_preview_forbidden/,
+      );
+      await fails(
+        `select public.set_image_preview('${adminId}','${key}','manual','abc00000-0000-4000-8000-000000000099',0)`,
+        /image_preview_missing/,
+      );
+      await scalar(
+        `select public.set_image_preview('${adminId}','${key}','manual','${photo}',0) as value`,
+      );
+      await fails(
+        `select public.set_image_preview('${adminId}','${key}','fallback',null,0)`,
+        /image_preview_conflict/,
+      );
+      await scalar(
+        `select public.set_image_preview('${adminId}','${key}','published',null,1) as value`,
+      );
+      expect(
+        await scalar(
+          `select development_previews->'${adminId}:global'->>'mode' as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe('published');
+    });
+    it('keeps development choices separate for administrators and occurrences', async () => {
+      await discovered();
+      await scalar(
+        `select public.set_image_preview('${adminId}','${key}','manual','${photo}',0) as value`,
+      );
+      await scalar(
+        `select public.set_image_preview('${adminId}','${key}','fallback',null,0,'${firstItem}') as value`,
+      );
+      expect(
+        await scalar(
+          `select development_previews->'${adminId}:global'->>'mode' as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe('manual');
+      expect(
+        await scalar(
+          `select development_previews->'${adminId}:${firstItem}'->>'mode' as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe('fallback');
+      expect(
+        await scalar(
+          `select development_previews ? '${otherId}:global' as value from public.image_galleries where cache_key='${key}'`,
+        ),
+      ).toBe(false);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+    });
+    it('previews a licensed fallback only when it belongs to the same gallery', async () => {
+      const fallback = 'abc00000-0000-4000-8000-000000000088';
+      await db.exec(
+        `insert into public.external_images(id,provider,source_id,metadata) values('${fallback}','wikimedia','Preview fallback.jpg','{"license":"CC0","licenseUrl":"https://creativecommons.org/publicdomain/zero/1.0/","imageUrl":"https://upload.wikimedia.org/a.jpg","thumbnailUrl":"https://upload.wikimedia.org/a.jpg","sourceUrl":"https://commons.wikimedia.org/wiki/File:a.jpg"}')`,
+      );
+      await fails(
+        `select public.set_image_preview('${adminId}','${key}','manual','${fallback}',0)`,
+        /image_preview_missing/,
+      );
+      await db.exec(
+        `insert into public.image_resolution_cache(cache_key,candidates) values('${key}',array['${fallback}'::uuid])`,
+      );
+      expect(
+        await scalar(
+          `select public.set_image_preview('${adminId}','${key}','manual','${fallback}',0) as value`,
+        ),
+      ).toBe(1);
+      expect(
+        await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
+      ).toBe(0);
+    });
+  });
   describe('Open photography permissions and independent visit overrides', () => {
     const image = 'abc00000-0000-4000-8000-000000000001';
     beforeEach(async () => {

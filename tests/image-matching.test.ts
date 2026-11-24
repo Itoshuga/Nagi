@@ -73,6 +73,19 @@ describe('broader venue names with geographic confirmation', () => {
         description: 'An ordinary shopping street in Japan',
       }),
     ).toBe(false));
+  it('does not propose a namesake historic building as a photograph of a small shop', () => {
+    expect(
+      matchesPhoto(
+        { ...context, name: 'Les Fleurs', city: 'Paris', category: 'shop' },
+        {
+          ...photo,
+          title: 'Château des Fleurs, Paris',
+          sourceId: 'Château des Fleurs, rue des Vignes.jpg',
+          description: 'Vue de Paris, collection historique.',
+        },
+      ),
+    ).toBe(false);
+  });
   it('automatically chooses a named photo with close source coordinates', () =>
     expect(automaticCommonsPhoto(context, [photo])?.id).toBe('a'));
   it('keeps photos lacking coordinates and far-away namesakes out of automatic selection', () => {

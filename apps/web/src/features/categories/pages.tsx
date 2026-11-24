@@ -4,6 +4,9 @@ import { listCategories, listCategoryFields } from '@nagi/database';
 import { requireAdmin } from '@/features/auth/session';
 import { sessionDatabase } from '@/lib/supabase/server';
 import { AdminCategoryList, CategoryFields, CategoryRemoval, CategorySettings } from './admin';
+import { Card } from '@nagi/ui';
+import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { ImagePicker } from '@/features/images/components';
 
 export async function AdminCategories() {
   await requireAdmin();
@@ -46,6 +49,16 @@ export async function AdminCategory({ id }: { id?: string }) {
       />
       {category && (
         <>
+          <Card className="space-y-4">
+            <h2 className="text-lg font-bold">Photographie de couverture</h2>
+            <PlaceImage
+              photoReference={{ source: 'nagi', kind: 'category', id: category.id }}
+              category={category.name}
+              className="aspect-[16/7] rounded-2xl"
+              credits="dialog"
+            />
+            <ImagePicker reference={{ source: 'nagi', kind: 'category', id: category.id }} />
+          </Card>
           <CategoryFields categoryId={category.id} fields={fields} />
           <CategoryRemoval category={category} categories={categories} count={usage?.count ?? 0} />
         </>

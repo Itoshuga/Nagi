@@ -222,10 +222,10 @@ export function EntryForm({
             <div className="space-y-5">
               {entry && (
                 <Card className="space-y-4">
-                  <h2 className="text-lg font-bold">Photographie libre</h2>
+                  <h2 className="text-lg font-bold">Photographie de couverture</h2>
                   <p className="text-sm text-muted-foreground">
-                    Une sélection explicite peut illustrer cette fiche. Vos images importées sont
-                    conservées dans la galerie.
+                    Parcourez les photographies découvertes ou vos images importées. Seules les
+                    photographies dont les droits sont établis peuvent être publiées.
                   </p>
                   <PlaceImage
                     category={entry.category?.name}

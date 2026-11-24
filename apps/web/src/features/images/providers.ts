@@ -11,7 +11,13 @@ import {
   unsuitablePhoto,
 } from './metadata';
 import { emptyResolution, type ImageContext, type ImageResolution, type OpenImage } from './model';
-import { automaticCommonsPhoto, matchesPhoto, matchPlaceName, searchNames } from './matching';
+import {
+  automaticCommonsPhoto,
+  matchesPhoto,
+  matchPlaceName,
+  searchNames,
+  conflictsPlaceCategory,
+} from './matching';
 
 type Value = Record<string, unknown>;
 export const object = (value: unknown): Value =>
@@ -101,6 +107,7 @@ export function commonsPhoto(
   const coordinate = sourceLocations[0];
   return {
     id: photoId(title),
+    usageRights: 'open',
     provider,
     sourceId: title,
     sourceUrl,
@@ -170,6 +177,10 @@ export function matchEntity(
   entity: Value,
   locations: Value[] = [],
 ): EntityMatch | null {
+  const subjects = [...values(entity.labels), ...values(entity.descriptions)]
+    .map((value) => str(value.value))
+    .join(' ');
+  if (conflictsPlaceCategory(context.category, subjects)) return null;
   const name = entityNames(entity)
     .map((value) => matchPlaceName(context, value))
     .sort((a, b) => b.rank - a.rank)[0];
@@ -489,9 +500,14 @@ function dedupe(images: OpenImage[], selected?: OpenImage) {
 export async function resolveImages(
   context: ImageContext,
   options: { http?: ImageHttp; search?: string; openverse?: () => Promise<boolean> } = {},
-): Promise<ImageResolution> {
+): Promise<ImageResolution<OpenImage>> {
   const http = options.http ?? new ImageHttp();
-  const result: ImageResolution = { ...emptyResolution, candidates: [], reasons: [] };
+  const result: ImageResolution<OpenImage> = {
+    ...emptyResolution,
+    selected: null,
+    candidates: [],
+    reasons: [],
+  };
   if (!options.search && !context.wikidataId && normalizeName(context.name).length < 3)
     return { ...result, reasons: ['insufficient-name'] };
   let providerFailure: unknown;
@@ -542,7 +558,7 @@ export async function resolveImages(
       confidence: 'high',
       reasons: ['photo-name', 'photo-coordinates-near', 'license-verified'],
     };
-  if (!result.candidates.length && (!options.openverse || (await options.openverse())))
+  if (!options.openverse || (await options.openverse()))
     result.candidates.push(...(await attempt(() => openverse(http, context, options.search))));
   const externalAutomatic = options.search
     ? null

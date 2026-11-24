@@ -20,6 +20,16 @@ const request = (body: unknown, origin = 'https://nagi.test') =>
   });
 beforeEach(() => vi.clearAllMocks());
 describe('image endpoints', () => {
+  it.each(['refresh', 'continue'])(
+    'rejects a forged %s request before any permission or provider call',
+    async (flag) => {
+      const scope = vi.fn();
+      expect(
+        (await imageRoute(request({ operation: 'index', reference, [flag]: true }), scope)).status,
+      ).toBe(400);
+      expect(scope).not.toHaveBeenCalled();
+    },
+  );
   it('rejects cross-origin and oversized requests before authorising or calling providers', async () => {
     const scope = vi.fn();
     expect(
@@ -38,6 +48,24 @@ describe('image endpoints', () => {
     expect(
       (await imageRoute(request({ operation: 'fetch', url: 'http://169.254.169.254/' }), scope))
         .status,
+    ).toBe(400);
+    expect(scope).not.toHaveBeenCalled();
+  });
+  it('rejects persistent selection of a session-only provider image', async () => {
+    const scope = vi.fn();
+    expect(
+      (
+        await imageRoute(
+          request({
+            operation: 'select',
+            reference,
+            mode: 'manual',
+            image: 'mapbox-photo:00000000000000000000000000000000',
+            revision: 0,
+          }),
+          scope,
+        )
+      ).status,
     ).toBe(400);
     expect(scope).not.toHaveBeenCalled();
   });

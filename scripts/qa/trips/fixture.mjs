@@ -794,7 +794,12 @@ globalThis.fetch = async (...args) => {
   const start = performance.now();
   try {
     const r = await implementation(...args);
-    const failure = r.ok ? undefined : await r.clone().json().catch(() => ({}));
+    const failure = r.ok
+      ? undefined
+      : await r
+          .clone()
+          .json()
+          .catch(() => ({}));
     calls.push({
       endpoint: u.pathname,
       method: args[1]?.method ?? 'GET',

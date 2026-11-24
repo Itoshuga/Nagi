@@ -1,4 +1,5 @@
 'use client';
+import dynamic from 'next/dynamic';
 import {
   createContext,
   useCallback,
@@ -10,9 +11,16 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input } from '@nagi/ui';
-import { EntryImage } from '@/features/media/image';
-import type { ImageReference, ImageResolution, OpenImage } from './model';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@nagi/ui';
+import {
+  isOpenImage,
+  isTemporaryImage,
+  isPreviewImage,
+  imageRightsLabels,
+  imageProviderLabels,
+  type ImageReference,
+  type PlaceImageCandidate,
+} from './model';
 import { ImageSession, emptyImageState, imageReferenceKey } from './session';
 const Context = createContext<ImageSession | null>(null);
 // Catalogue surfaces share their own in-memory session. Neither contexts nor
@@ -61,7 +69,10 @@ export function useResolvedImage(reference?: ImageReference, eager = false) {
   const encoded = reference ? JSON.stringify(reference) : '';
   useEffect(() => {
     if (!encoded) return;
-    const ref: ImageReference = JSON.parse(encoded);
+    const ref: ImageReference = {
+      ...JSON.parse(encoded),
+      priority: eager || reference?.visit ? 'selected' : 'visible',
+    };
     if (ref.source === 'mapbox' && !ref.proof && !ref.visit) return;
     if (eager) return session.observe(ref);
     const node = element.current;
@@ -79,16 +90,73 @@ export function useResolvedImage(reference?: ImageReference, eager = false) {
       observer.disconnect();
       stop?.();
     };
-  }, [encoded, eager, session]);
+  }, [encoded, eager, reference?.visit, session]);
   return { ...state, observe, session, reference };
 }
 export function PhotoAttribution({
   image,
   cropped = true,
 }: {
-  image: OpenImage;
+  image: PlaceImageCandidate;
   cropped?: boolean;
 }) {
+  if (isPreviewImage(image))
+    return (
+      <div className="space-y-2 text-sm leading-relaxed">
+        <p className="font-semibold">{image.title}</p>
+        <p>Prévisualisation de développement · Droits : {imageRightsLabels[image.rightsStatus]}</p>
+        {image.creator && <p>Auteur : {image.creator}</p>}
+        {image.license && <p>Licence renseignée : {image.license}</p>}
+        <a className="underline" href={image.sourceUrl} target="_blank" rel="noreferrer">
+          Voir la page originale
+        </a>
+        <p className="text-muted-foreground">{image.attribution}</p>
+        <p className="text-muted-foreground">
+          Cet aperçu privé ne modifie pas la couverture publiée.
+        </p>
+      </div>
+    );
+  if (isTemporaryImage(image))
+    return (
+      <div className="space-y-2 text-sm leading-relaxed">
+        <p className="font-semibold">{image.title}</p>
+        <p>{imageProviderLabels[image.provider]}</p>
+        {image.creator && <p>Auteur : {image.creator}</p>}
+        <a className="underline" href={image.sourceUrl} target="_blank" rel="noreferrer">
+          Voir la source de la photographie
+        </a>
+        <p>{image.attribution}</p>
+        <p className="text-muted-foreground">
+          Affichage temporaire sous les conditions du fournisseur. Cette photographie n’est pas sous
+          licence libre.
+        </p>
+        {cropped && image.cropAllowed && (
+          <p className="text-muted-foreground">Présentation recadrée pour remplir le cadre.</p>
+        )}
+      </div>
+    );
+  if (!isOpenImage(image))
+    return (
+      <div className="space-y-2 text-sm leading-relaxed">
+        <p className="font-semibold">{image.title}</p>
+        {image.creator && <p>Auteur : {image.creator}</p>}
+        <a className="underline" href={image.sourceUrl} target="_blank" rel="noreferrer">
+          Voir la page originale
+        </a>
+        <p>
+          {image.license ??
+            (image.rightsStatus === 'permission_granted'
+              ? 'Autorisation de publication vérifiée'
+              : 'Licence ouverte vérifiée')}
+        </p>
+        {image.licenseUrl && (
+          <a className="block underline" href={image.licenseUrl} target="_blank" rel="noreferrer">
+            Consulter la licence
+          </a>
+        )}
+        <p className="text-muted-foreground">{image.attribution}</p>
+      </div>
+    );
   return (
     <div className="space-y-2 text-sm leading-relaxed">
       <p className="font-semibold">{image.title}</p>
@@ -132,18 +200,20 @@ export function ImageCredits({
   image,
   interactive = false,
 }: {
-  image: OpenImage;
+  image: PlaceImageCandidate;
   interactive?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const caption =
+    image.attribution +
+    (!isTemporaryImage(image) || image.cropAllowed ? ' — Présentation recadrée.' : '') +
+    ' Crédits complets dans les détails.';
   if (!interactive)
     return (
       <span
         className="absolute bottom-0.5 right-0.5 rounded bg-black/65 px-1 text-[9px] leading-4 text-white"
-        title={image.attribution + ' — Présentation recadrée. Crédits complets dans les détails.'}
-        aria-label={
-          image.attribution + '. Présentation recadrée. Crédits complets dans les détails.'
-        }
+        title={caption}
+        aria-label={caption}
       >
         ©
       </span>
@@ -173,174 +243,7 @@ export function ImageCredits({
     </>
   );
 }
-export function ImagePicker({
-  reference,
-  disabled = false,
-}: {
-  reference: ImageReference;
-  disabled?: boolean;
-}) {
-  const { result, session, error: loadError } = useResolvedImage(reference, true);
-  const [open, setOpen] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
-  const [search, setSearch] = useState(''),
-    [alternatives, setAlternatives] = useState<ImageResolution>();
-  const [inspected, setInspected] = useState<string>();
-  const current = alternatives ?? result;
-  async function choose(mode: 'automatic' | 'manual' | 'fallback', image: string | null) {
-    setBusy(true);
-    setError('');
-    try {
-      await session.select(reference, mode, image);
-      setOpen(false);
-      setAlternatives(undefined);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Choix non enregistré.');
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function more() {
-    setBusy(true);
-    setError('');
-    try {
-      setAlternatives(
-        await session.request({
-          operation: 'resolve',
-          reference,
-          browse: true,
-          ...(search.trim() ? { search: search.trim() } : {}),
-        }),
-      );
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Recherche indisponible.');
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => {
-          setOpen(true);
-          setError('');
-          if (!result?.candidates.length) void more();
-        }}
-      >
-        Changer la photographie
-      </Button>
-      <Dialog
-        open={open}
-        onOpenChange={(value) => {
-          if (!busy) setOpen(value);
-        }}
-      >
-        <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto" closeDisabled={busy}>
-          <DialogTitle className="font-display text-xl">Photographie du lieu</DialogTitle>
-          <DialogDescription className="mt-2 text-sm text-muted-foreground">
-            {reference.visit
-              ? 'Ce choix concerne uniquement cette visite dans le voyage.'
-              : 'Ce choix s’applique à la fiche du catalogue.'}{' '}
-            Confirmez que la photo représente bien ce lieu.
-          </DialogDescription>
-          <div className="my-5 grid grid-cols-2 gap-3">
-            {current?.candidates.map((image) => (
-              <div key={image.id} className="overflow-hidden rounded-2xl border border-border">
-                <EntryImage
-                  src={image.thumbnailUrl}
-                  alt={image.title}
-                  className="aspect-[4/3]"
-                  sizes="240px"
-                />
-                <div className="space-y-2 p-3">
-                  <p className="line-clamp-2 text-sm font-medium">{image.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {image.creator || 'Auteur non renseigné'} · {image.license}{' '}
-                    {image.licenseVersion}
-                  </p>
-                  <button
-                    type="button"
-                    className="text-xs text-primary-ink underline"
-                    onClick={() => setInspected(inspected === image.id ? undefined : image.id)}
-                  >
-                    Crédits et source
-                  </button>
-                  {inspected === image.id && <PhotoAttribution image={image} />}
-                  <Button
-                    type="button"
-                    className="w-full"
-                    disabled={busy}
-                    onClick={() => void choose('manual', image.id)}
-                  >
-                    Choisir cette image
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {!current?.candidates.length && (
-            <p role="status" className="my-4 text-sm text-muted-foreground">
-              {busy
-                ? 'Recherche de photographies…'
-                : current?.status === 'unavailable'
-                  ? 'Le fournisseur est momentanément indisponible.'
-                  : 'Aucune photographie fiable disponible. L’illustration du lieu est conservée.'}
-            </p>
-          )}
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void more();
-            }}
-          >
-            <Input
-              aria-label="Préciser le lieu pour rechercher des photographies"
-              placeholder="Nom exact, ville…"
-              value={search}
-              maxLength={160}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              disabled={busy || (reference.source === 'mapbox' && !reference.proof)}
-            >
-              Rechercher d’autres images
-            </Button>
-          </form>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void choose('automatic', null)}
-            >
-              Revenir au choix automatique
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void choose('fallback', null)}
-            >
-              Utiliser l’illustration
-            </Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
-              Conserver l’image actuelle
-            </Button>
-          </div>
-          {(error || loadError) && (
-            <p role="alert" className="mt-3 text-sm text-destructive">
-              {error || loadError}
-            </p>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
+export const ImagePicker = dynamic(
+  () => import('./gallery').then((module) => module.ImageGalleryPicker),
+  { ssr: false },
+);

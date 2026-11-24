@@ -119,6 +119,7 @@ export async function AdminDestinationDetail({
           <div className="flex min-w-0 items-center gap-4">
             {destination && (
               <DestinationCover
+                id={destination.id}
                 kind={kind}
                 src={destination.cover_image_url}
                 className="hidden size-16 shrink-0 rounded-2xl sm:grid"

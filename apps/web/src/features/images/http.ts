@@ -1,4 +1,6 @@
 import 'server-only';
+import { imageRequestConcurrency } from './config';
+import { imageDiagnostic } from './diagnostics';
 
 export class ImageProviderError extends Error {
   constructor(
@@ -22,9 +24,9 @@ const endpoints: Record<ImageEndpoint, string> = {
 let active = 0;
 const queue: (() => void)[] = [];
 const cooldown = new Map<string, number>();
-async function slot(signal?: AbortSignal) {
+export async function imageProviderSlot(signal?: AbortSignal) {
   if (signal?.aborted) throw signal.reason;
-  if (active >= 2)
+  if (active >= imageRequestConcurrency())
     await new Promise<void>((resolve, reject) => {
       const ready = () => {
         signal?.removeEventListener('abort', abort);
@@ -54,7 +56,8 @@ export function imageUserAgent() {
     /https?:\/\/|@/.test(configured)
   )
     return configured;
-  const contact = process.env.NAGI_PRIVACY_CONTACT?.trim();
+  const contact =
+    process.env.WIKIMEDIA_CONTACT_EMAIL?.trim() ?? process.env.NAGI_PRIVACY_CONTACT?.trim();
   if (contact && contact.length < 180 && !/[\r\n]/.test(contact) && /https?:\/\/|@/.test(contact))
     return `NagiImageResolver/1.0 (${contact})`;
   throw new ImageProviderError('configuration', 300);
@@ -64,7 +67,38 @@ export function retrySeconds(value: string | null, now = Date.now()) {
   const seconds = /^\d+$/.test(value) ? Number(value) : Math.ceil((Date.parse(value) - now) / 1000);
   return Number.isFinite(seconds) ? Math.max(1, Math.min(seconds, 86400)) : 60;
 }
-// One process shares two provider slots. Database leases additionally bound work
+export async function imageJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  if (
+    !/application\/(?:[^;]+\+)?json/i.test(response.headers.get('content-type') ?? '') ||
+    Number(response.headers.get('content-length') ?? 0) > 2_000_000
+  ) {
+    await response.body?.cancel();
+    throw new ImageProviderError('invalid_response');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new ImageProviderError('invalid_response');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > 2_000_000) {
+      await reader.cancel();
+      throw new ImageProviderError('invalid_response');
+    }
+    chunks.push(part.value);
+  }
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new ImageProviderError('invalid_response');
+    return value;
+  } catch {
+    throw new ImageProviderError('invalid_response');
+  }
+}
+// One process shares configurable provider slots. Database leases additionally bound work
 // across app instances. No user-supplied URL, redirect, binary body or proxy.
 export class ImageHttp {
   calls = 0;
@@ -93,9 +127,10 @@ export class ImageHttp {
       mediawiki ? { format: 'json', formatversion: '2', maxlag: '5', ...params } : params,
     ))
       url.searchParams.set(key, value);
-    const release = await slot(this.signal);
+    const release = await imageProviderSlot(this.signal);
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
+        const started = performance.now();
         const signal = AbortSignal.any([
           AbortSignal.timeout(6500),
           ...(this.signal ? [this.signal] : []),
@@ -112,8 +147,14 @@ export class ImageHttp {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         }).catch(() => {
+          imageDiagnostic(endpoint, 'network', performance.now() - started);
           throw new ImageProviderError('network');
         });
+        imageDiagnostic(
+          endpoint,
+          response.ok ? 'ok' : 'network-http-' + response.status,
+          performance.now() - started,
+        );
         if (response.status === 429 || response.status === 503) {
           const retry = retrySeconds(response.headers.get('Retry-After'));
           await response.body?.cancel();
@@ -128,35 +169,11 @@ export class ImageHttp {
           await response.body?.cancel();
           throw new ImageProviderError('network');
         }
-        if (
-          !/application\/(?:[^;]+\+)?json/i.test(response.headers.get('content-type') ?? '') ||
-          Number(response.headers.get('content-length') ?? 0) > 2_000_000
-        ) {
-          await response.body?.cancel();
-          throw new ImageProviderError('invalid_response');
-        }
-        const reader = response.body?.getReader();
-        if (!reader) throw new ImageProviderError('invalid_response');
-        const chunks: Uint8Array[] = [];
-        let size = 0;
-        while (true) {
-          const part = await reader.read();
-          if (part.done) break;
-          size += part.value.byteLength;
-          if (size > 2_000_000) {
-            await reader.cancel();
-            throw new ImageProviderError('invalid_response');
-          }
-          chunks.push(part.value);
-        }
-        let data;
-        try {
-          data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        } catch {
-          throw new ImageProviderError('invalid_response');
-        }
+        const data = await imageJsonResponse(response);
         if (data.error) {
-          if (['maxlag', 'ratelimited'].includes(data.error.code)) {
+          const code =
+            typeof data.error === 'object' && 'code' in data.error ? data.error.code : undefined;
+          if (typeof code === 'string' && ['maxlag', 'ratelimited'].includes(code)) {
             cooldown.set(host, Date.now() + 60000);
             throw new ImageProviderError('rate_limit');
           }

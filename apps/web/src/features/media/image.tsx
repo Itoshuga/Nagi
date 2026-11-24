@@ -9,6 +9,7 @@ import { imageSourceUrl } from '@nagi/shared';
 
 export function EntryImage({
   src,
+  fallbackSrc,
   alt = '',
   className,
   sizes = '(max-width: 640px) 100vw, 420px',
@@ -20,6 +21,7 @@ export function EntryImage({
   onError,
 }: {
   src?: string | null;
+  fallbackSrc?: string | null;
   alt?: string;
   className?: string;
   sizes?: string;
@@ -31,8 +33,16 @@ export function EntryImage({
   onError?: () => void;
 }) {
   const safeSource = imageSourceUrl(src);
+  const fallbackSource = imageSourceUrl(fallbackSrc);
+  const safeFallback = fallbackSource !== safeSource ? fallbackSource : undefined;
   const [failed, setFailed] = useState<string>();
-  const visible = safeSource && failed !== safeSource ? safeSource : undefined;
+  const [failedFallback, setFailedFallback] = useState<string>();
+  const visible =
+    safeSource && failed !== safeSource
+      ? safeSource
+      : safeFallback && failedFallback !== safeFallback
+        ? safeFallback
+        : undefined;
   return (
     <div
       ref={containerRef}
@@ -53,8 +63,10 @@ export function EntryImage({
           loading={eager ? 'eager' : 'lazy'}
           className={fit === 'contain' ? 'object-contain' : 'object-cover'}
           onError={() => {
-            setFailed(visible);
-            onError?.();
+            if (visible === safeSource) setFailed(visible);
+            else setFailedFallback(visible);
+            if (!safeFallback || safeFallback === visible || safeFallback === failedFallback)
+              onError?.();
           }}
         />
       ) : (

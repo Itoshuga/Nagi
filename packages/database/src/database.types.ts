@@ -506,6 +506,146 @@ export type Database = {
         Relationships: [
         ];
       };
+      image_candidates: {
+        Row: {
+          id: string;
+          gallery_key: string;
+          url_key: string;
+          provider: string;
+          title: string;
+          metadata: Json;
+          additional_sources: Json;
+          photo_id: string | null;
+          relevance: number;
+          rights_status: string;
+          creator: string | null;
+          license: string | null;
+          license_url: string | null;
+          rights_evidence: string | null;
+          reviewed_by: string | null;
+          verified_at: string | null;
+          availability_status: string;
+          is_excluded: boolean;
+          reports: number;
+          discovered_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          gallery_key: string;
+          url_key: string;
+          provider?: string;
+          title?: string;
+          metadata: Json;
+          additional_sources?: Json;
+          photo_id?: string | null;
+          relevance?: number;
+          rights_status?: string;
+          creator?: string | null;
+          license?: string | null;
+          license_url?: string | null;
+          rights_evidence?: string | null;
+          reviewed_by?: string | null;
+          verified_at?: string | null;
+          availability_status?: string;
+          is_excluded?: boolean;
+          reports?: number;
+          discovered_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          gallery_key?: string;
+          url_key?: string;
+          provider?: string;
+          title?: string;
+          metadata?: Json;
+          additional_sources?: Json;
+          photo_id?: string | null;
+          relevance?: number;
+          rights_status?: string;
+          creator?: string | null;
+          license?: string | null;
+          license_url?: string | null;
+          rights_evidence?: string | null;
+          reviewed_by?: string | null;
+          verified_at?: string | null;
+          availability_status?: string;
+          is_excluded?: boolean;
+          reports?: number;
+          discovered_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'image_candidates_gallery_key_fkey'; columns: ["gallery_key"]; isOneToOne: false; referencedRelation: 'image_galleries'; referencedColumns: ["cache_key"]; },
+          { foreignKeyName: 'image_candidates_photo_id_fkey'; columns: ["photo_id"]; isOneToOne: false; referencedRelation: 'external_images'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'image_candidates_reviewed_by_fkey'; columns: ["reviewed_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+        ];
+      };
+      image_galleries: {
+        Row: {
+          cache_key: string;
+          place_source: string;
+          place_kind: string;
+          place_id: string;
+          query_hash: string | null;
+          next_page: number;
+          query_index: number;
+          pages: number;
+          page_limit: number;
+          state: string;
+          stop_reason: string | null;
+          credits: number;
+          lease_id: string | null;
+          lease_until: string | null;
+          next_retry_at: string | null;
+          searched_at: string | null;
+          updated_at: string;
+          development_previews: Json;
+        };
+        Insert: {
+          cache_key: string;
+          place_source: string;
+          place_kind?: string;
+          place_id: string;
+          query_hash?: string | null;
+          next_page?: number;
+          query_index?: number;
+          pages?: number;
+          page_limit?: number;
+          state?: string;
+          stop_reason?: string | null;
+          credits?: number;
+          lease_id?: string | null;
+          lease_until?: string | null;
+          next_retry_at?: string | null;
+          searched_at?: string | null;
+          updated_at?: string;
+          development_previews?: Json;
+        };
+        Update: {
+          cache_key?: string;
+          place_source?: string;
+          place_kind?: string;
+          place_id?: string;
+          query_hash?: string | null;
+          next_page?: number;
+          query_index?: number;
+          pages?: number;
+          page_limit?: number;
+          state?: string;
+          stop_reason?: string | null;
+          credits?: number;
+          lease_id?: string | null;
+          lease_until?: string | null;
+          next_retry_at?: string | null;
+          searched_at?: string | null;
+          updated_at?: string;
+          development_previews?: Json;
+        };
+        Relationships: [
+        ];
+      };
       image_resolution_cache: {
         Row: {
           cache_key: string;
@@ -605,6 +745,11 @@ export type Database = {
           assigned_by: string | null;
           revision: number;
           updated_at: string;
+          country_id: string | null;
+          city_id: string | null;
+          neighborhood_id: string | null;
+          category_id: string | null;
+          gallery_key: string | null;
         };
         Insert: {
           id?: string;
@@ -616,6 +761,11 @@ export type Database = {
           assigned_by?: string | null;
           revision?: number;
           updated_at?: string;
+          country_id?: string | null;
+          city_id?: string | null;
+          neighborhood_id?: string | null;
+          category_id?: string | null;
+          gallery_key?: string | null;
         };
         Update: {
           id?: string;
@@ -627,11 +777,21 @@ export type Database = {
           assigned_by?: string | null;
           revision?: number;
           updated_at?: string;
+          country_id?: string | null;
+          city_id?: string | null;
+          neighborhood_id?: string | null;
+          category_id?: string | null;
+          gallery_key?: string | null;
         };
         Relationships: [
           { foreignKeyName: 'place_image_assignments_assigned_by_fkey'; columns: ["assigned_by"]; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_category_id_fkey'; columns: ["category_id"]; isOneToOne: true; referencedRelation: 'categories'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_city_id_fkey'; columns: ["city_id"]; isOneToOne: true; referencedRelation: 'cities'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_country_id_fkey'; columns: ["country_id"]; isOneToOne: true; referencedRelation: 'countries'; referencedColumns: ["id"]; },
           { foreignKeyName: 'place_image_assignments_entry_id_fkey'; columns: ["entry_id"]; isOneToOne: true; referencedRelation: 'entries'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_gallery_key_fkey'; columns: ["gallery_key"]; isOneToOne: true; referencedRelation: 'image_galleries'; referencedColumns: ["cache_key"]; },
           { foreignKeyName: 'place_image_assignments_image_id_fkey'; columns: ["image_id"]; isOneToOne: false; referencedRelation: 'external_images'; referencedColumns: ["id"]; },
+          { foreignKeyName: 'place_image_assignments_neighborhood_id_fkey'; columns: ["neighborhood_id"]; isOneToOne: true; referencedRelation: 'neighborhoods'; referencedColumns: ["id"]; },
           { foreignKeyName: 'place_image_assignments_trip_id_fkey'; columns: ["trip_id"]; isOneToOne: false; referencedRelation: 'trips'; referencedColumns: ["id"]; },
         ];
       };
@@ -1145,6 +1305,7 @@ export type Database = {
       enqueue_bot_sync: { Args: { p_application_id: string; p_scope: string; p_reason: string }; Returns: string; };
       finish_bot_sync: { Args: { p_id: string; p_token: string; p_success: boolean; p_error: string; p_commands: Json }; Returns: undefined; };
       finish_discord_refresh: { Args: { p_user_id: string; p_lease: string; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: boolean; };
+      finish_image_discovery: { Args: { p_key: string; p_lease: string; p_items?: Json | null; p_credits?: number | null; p_error?: string | null; p_retry?: number | null; p_variant_count?: number | null }; Returns: boolean; };
       is_guild_admin: { Args: { p_guild_id: string }; Returns: boolean; };
       is_guild_member: { Args: { p_guild_id: string }; Returns: boolean; };
       is_nagi_admin: { Args: Record<PropertyKey, never>; Returns: boolean; };
@@ -1164,14 +1325,18 @@ export type Database = {
       release_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string }; Returns: undefined; };
       release_discord_refresh: { Args: { p_user_id: string; p_lease: string }; Returns: undefined; };
       renew_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string; p_connected: boolean }; Returns: boolean; };
+      reserve_image_discovery: { Args: { p_actor: string; p_key: string; p_query_hash: string; p_pages?: number | null; p_total_pages?: number | null; p_concurrent?: number | null; p_global_day?: number | null; p_user_day?: number | null; p_user_minute?: number | null; p_continue?: boolean | null; p_refresh?: boolean | null; p_refresh_seconds?: number | null }; Returns: Json; };
       reserve_image_resolution: { Args: { p_actor: string; p_key: string; p_openverse?: boolean | null; p_coordinates?: boolean | null }; Returns: string; };
       reserve_mapbox_places: { Args: { p_actor: string; p_kind: string; p_user_daily: number; p_global_daily: number; p_user_minute: number; p_details_monthly: number }; Returns: undefined; };
       resolve_social_profile: { Args: { p_handle: string }; Returns: Json; };
+      review_image_candidate: { Args: { p_id: string; p_status: string; p_creator?: string | null; p_license?: string | null; p_license_url?: string | null; p_evidence?: string | null; p_excluded?: boolean | null }; Returns: undefined; };
       revoke_discord_credentials: { Args: { p_user_id: string; p_version: number }; Returns: undefined; };
       save_discord_credentials: { Args: { p_user_id: string; p_discord_id: string; p_profile: Json; p_encrypted_tokens: string; p_expires_at: string; p_scopes: (string)[] }; Returns: undefined; };
       save_social_customization: { Args: { p_user: string; p_revision: number; p_data: Json }; Returns: number; };
       save_user_calendar_color: { Args: { p_hex: string }; Returns: Json; };
+      set_catalog_image: { Args: { p_key: string; p_mode?: string | null; p_image?: string | null; p_revision?: number | null }; Returns: number; };
       set_discord_guild_presence: { Args: { p_application_id: string; p_guild: Json; p_present: boolean }; Returns: undefined; };
+      set_image_preview: { Args: { p_actor: string; p_key: string; p_mode: string; p_image?: string | null; p_revision?: number | null; p_visit?: string | null }; Returns: number; };
       set_place_image: { Args: { p_entry?: string | null; p_trip?: string | null; p_visit?: string | null; p_mode?: string | null; p_image?: string | null; p_revision?: number | null }; Returns: number; };
       social_profile_trips: { Args: { p_viewer: string; p_target: string; p_app: string; p_offset: number }; Returns: Json; };
       sync_discord_profile: { Args: Record<PropertyKey, never>; Returns: Database['public']['Tables']['profiles']['Row']; };

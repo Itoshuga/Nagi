@@ -26,6 +26,11 @@ const descriptors = new Set([
   'park',
   'temple',
   'shrine',
+  'taisha',
+  'jinja',
+  'jingu',
+  'shinto',
+  'buddhist',
   'hotel',
   'restaurant',
   'cafe',
@@ -62,6 +67,17 @@ export function nameWords(name: string) {
   );
 }
 const sorted = (words: string[]) => [...new Set(words)].sort().join(' ');
+/** A neighbouring station must not stand in for its namesake temple or shop. */
+export function conflictsPlaceCategory(category: string | undefined, subject: string) {
+  if (!category) return false;
+  const normalize = (value: string) =>
+    value.normalize('NFKD').replace(/\p{M}/gu, '').replace(/[_-]/g, ' ').toLowerCase();
+  const expected = normalize(category),
+    candidate = normalize(subject);
+  const transport =
+    /\b(station|gare|railway|railroad|airport|aeroport|subway|metro|bus stop)\b|鉄道|駅/;
+  return !transport.test(expected) && transport.test(candidate);
+}
 function oneEdit(a: string, b: string) {
   if (
     a.length < 6 ||
@@ -174,7 +190,18 @@ export function searchNames(context: ImageContext) {
     .slice(0, 4);
 }
 export function matchesPhoto(context: ImageContext, image: OpenImage) {
+  if (conflictsPlaceCategory(context.category, image.title + ' ' + image.sourceId)) return false;
   const text = [image.title, image.sourceId, image.description ?? ''].join(' ');
+  if (/shop|store|retail|mall|restaurant|cafe|hotel/i.test(context.category ?? '')) {
+    const identified = [image.title, image.sourceId.replace(/\.(?:jpe?g|png|webp)$/i, '')].some(
+      (name) => matchPlaceName(context, name).rank >= 2,
+    );
+    const establishment =
+      /\b(shop|store|boutique|florist|fleuriste|storefront|commerce|restaurant|cafe|hotel|shopping|mall)\b/i.test(
+        text,
+      );
+    if (!identified && !establishment) return false;
+  }
   const words = new Set(nameWords(text)),
     compact = normalizeName(text);
   const location = new Set(

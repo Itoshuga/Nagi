@@ -9,6 +9,7 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout } from 'node:timers';
 const { fetch, WebSocket } = globalThis;
 const development = process.env.NAGI_IMAGE_DEV_QA === '1';
+const previewQA = process.env.NAGI_PREVIEW_UI_QA === '1';
 // Synthetic trip and provider, isolated browser profile; production adapter tested separately.
 const root = process.cwd(),
   app = path.join(root, 'apps/web'),
@@ -50,19 +51,23 @@ const catalog = ['PARCO', 'Nintendo', 'Pokémon Center', 'SEGA'].map((title, i) 
   neighborhood: null,
   category,
 }));
-const entry = `import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {TripWorkbench} from './src/features/trips/workbench';import {optimisticTripChange} from './src/features/trips/mutation-model';
+const entry = `import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {ImagePicker} from './src/features/images/components';import {PlaceImage} from './src/features/integrations/mapbox/place-image';import {TripWorkbench} from './src/features/trips/workbench';import {optimisticTripChange} from './src/features/trips/mutation-model';
 const ids=${JSON.stringify(ids)},catalog=${JSON.stringify(catalog)},now='2026-11-19T12:00:00Z';
 const rootItem={source:"nagi",external_place_id:null,external_query:null,needs_place_relink:false,custom_title:null,custom_location:null,custom_latitude:null,custom_longitude:null,calendar_color:null,id:ids.parent,trip_id:ids.trip,trip_day_id:ids.day1,entry_id:catalog[0].id,entry:catalog[0],added_by:ids.viewer,notes:'Rendez-vous à l’entrée',sort_order:1024,start_time:'14:00',end_time:null,estimated_duration_minutes:120,version:0,created_at:now,updated_at:now,stops:[]};
 if(location.search.includes('full')||location.search.includes('group')||location.search.includes('moves'))rootItem.stops=catalog.slice(1).map((entry,i)=>({id:'aaaaaaaa-aaaa-4aaa-8aaa-'+String(i+1).padStart(12,'0'),trip_item_id:ids.parent,entry_id:entry.id,entry,added_by:ids.viewer,notes:'À retrouver au 6e étage',duration_minutes:40,sort_order:(i+1)*1024,version:0,created_at:now,updated_at:now}));
 const extra=location.search.includes('moves')?[{...rootItem,id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',entry:{...catalog[0],title:'Musée'},notes:'Autre visite',start_time:'17:00',estimated_duration_minutes:60,sort_order:2048,stops:[]}]:location.search.includes('drag')||location.search.includes('group')?[{...rootItem,id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',entry_id:catalog[1].id,entry:catalog[1],notes:'Billet réservé · étage 6',start_time:'15:00',estimated_duration_minutes:40,sort_order:2048,stops:[]}]:[];window.__changes=[];window.__plan={id:ids.trip,guild_id:ids.guild,title:'Tokyo, à notre rythme',description:'',cover_image_url:null,created_by:ids.viewer,created_at:now,updated_at:now,start_date:'2027-07-12',end_date:'2027-07-13',status:'planned',collaboration_mode:'all_members',timezone:'Asia/Tokyo',destination_country_id:catalog[0].country.id,destination:{...catalog[0].country,iso_code:'JP',is_published:true,cover_image_url:null},version:0,items:[rootItem,...extra],days:[{id:ids.day1,trip_id:ids.trip,day_number:1,title:'Shibuya',date:'2027-07-12',sort_order:0,created_at:now,updated_at:now},{id:ids.day2,trip_id:ids.trip,day_number:2,title:'Tokyo',date:'2027-07-13',sort_order:1,created_at:now,updated_at:now}],organizers:[{user_id:ids.viewer}],people:[{id:ids.viewer,username:'iris',display_name:'Iris Martin',avatar_url:null}],connections:[]};
 window.__edit=async(version,change,entry)=>{window.__changes.push(change);if(window.__failNext){window.__failNext=false;return {ok:false,error:'Échec simulé'}}const plan=optimisticTripChange(window.__plan,change,ids.viewer,entry??catalog.find(e=>e.id===change.data.entry));window.__plan={...plan,version:plan.version+1};window.__updatePlan(window.__plan);return {ok:true,version:window.__plan.version}};
 window.__searches=[];window.__externalRequests=[];window.__imageRequests=[];const originalFetch=window.fetch;window.fetch=function(url,options){if(String(url).endsWith('/external')&&options?.body)window.__externalRequests.push(JSON.parse(options.body));if(String(url).endsWith('/images')&&options?.body)window.__imageRequests.push(JSON.parse(options.body));return Reflect.apply(originalFetch,this,[url,options])};
-function App(){const[plan,setPlan]=useState(window.__plan);window.__updatePlan=setPlan;return <div className="nagi-space"><main className="app-container app-content py-10"><TripWorkbench guild={ids.guild} plan={plan} viewerId={ids.viewer} categories={[catalog[0].category]} canEdit canManage initialDay={ids.day1}/></main></div>}createRoot(document.getElementById('root')).render(<App/>);`;
+function App(){const[plan,setPlan]=useState(window.__plan);window.__updatePlan=setPlan;return <div className="nagi-space"><main className="app-container app-content py-10"><TripWorkbench guild={ids.guild} plan={plan} viewerId={ids.viewer} categories={[catalog[0].category]} canEdit canManage initialDay={ids.day1}/></main></div>}
+function Fixture(){const id=location.search.includes('economy-busy')?'economy-busy':location.search.includes('economy-failed')?'economy-failed':'economy-cold';const reference={source:'nagi',kind:'city',id};return location.search.includes('economy-')?<div className="nagi-space p-10"><div data-economy-cover><PlaceImage photoReference={reference} className="h-24 w-40"/></div><ImagePicker reference={reference}/></div>:<App/>}createRoot(document.getElementById('root')).render(<Fixture/>);`;
 const actions = `export async function editTrip(g,t,v,c){return window.__edit(v,c)}export async function removeTrip(){return {error:''}}export async function archivePlannedTrip(){return {ok:true,version:0}}export async function tripPlaceOptions(){return []}export async function editableTripOptions(){return []}export async function tripCatalogSearch(){return {rows:[],hasMore:false}}export async function tripRelatedPlaces(){return []}export async function createPlannedTrip(){return {error:''}}`;
 await build({
   stdin: {
     contents: development
-      ? entry.replace('render(<App/>)', 'render(<React.StrictMode><App/></React.StrictMode>)')
+      ? entry.replace(
+          'render(<Fixture/>)',
+          'render(<React.StrictMode><Fixture/></React.StrictMode>)',
+        )
       : entry,
     loader: 'tsx',
     resolveDir: app,
@@ -135,7 +140,7 @@ await build({
     },
   ],
 });
-const staticRoot = path.join(app, '.next/static');
+const staticRoot = path.join(app, process.env.NAGI_QA_DIST_DIR ?? '.next', 'static');
 const styles = fs
   .readdirSync(staticRoot, { recursive: true })
   .filter(
@@ -167,6 +172,78 @@ const photo = {
   verifiedAt: new Date().toISOString(),
 };
 const imageChoices = new Map();
+const previewChoices = new Map();
+const discovered = Array.from({ length: 80 }, (_, index) => ({
+  id: 'efefefef-0000-4000-8000-' + String(index + 1).padStart(12, '0'),
+  metadata: {
+    title: 'Vue du lieu ' + index,
+    imageUrl: 'https://photos.example.org/venue-' + index + '.jpg',
+    thumbnailUrl: 'https://photos.example.org/thumb-' + index + '.jpg',
+    source: 'Venue photographer',
+    link: 'https://venue.example.org/photos/' + index,
+    imageWidth: 1200,
+    imageHeight: 800,
+  },
+  rightsStatus: index === 1 ? 'permission_granted' : 'unknown',
+  availability: 'unknown',
+  excluded: false,
+  sources: [],
+}));
+function discoveredPhoto(item) {
+  return {
+    id: item.id,
+    provider: 'serper',
+    sourceId: 'serper:' + item.id,
+    sourceUrl: item.metadata.link,
+    imageUrl: item.metadata.imageUrl,
+    thumbnailUrl: item.metadata.thumbnailUrl,
+    previewUrl: item.metadata.imageUrl,
+    title: item.metadata.title,
+    attribution: 'Venue owner · Permission verified',
+    rightsStatus: item.rightsStatus,
+    usageRights: 'permission-granted',
+    verifiedAt: new Date().toISOString(),
+  };
+}
+function previewPhoto(item) {
+  return {
+    ...discoveredPhoto(item),
+    usageRights: 'development-preview',
+    verifiedAt: undefined,
+    attribution: 'Venue photographer · Preview',
+  };
+}
+let indexedPages = 1;
+const economyCalls = new Map();
+const economyReads = new Map();
+function galleryResponse(body) {
+  const filtered = discovered
+    .slice(0, 10)
+    .filter((item) =>
+      item.metadata.title.toLowerCase().includes((body.filter ?? '').toLowerCase()),
+    );
+  return {
+    items: filtered.map((item) => ({
+      ...item,
+      ...(previewQA ? { preview: previewPhoto(item) } : {}),
+      ...(['permission_granted', 'open_license'].includes(item.rightsStatus)
+        ? { photo: discoveredPhoto(item) }
+        : {}),
+    })),
+    total: filtered.length,
+    offset: 0,
+    hasMore: false,
+    state: 'complete',
+    stopReason: 'economy_limit',
+    pages: indexedPages,
+    credits: indexedPages * 2,
+    canReview: true,
+    searchEnabled: false,
+    searchSize: 10,
+    ...(previewQA ? { previewEnabled: true } : {}),
+    fallbacks: [],
+  };
+}
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   if (u.pathname.endsWith('/images')) {
@@ -175,19 +252,123 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw),
       key = body.reference.visit ?? body.reference.id;
+    const eligible = body.reference.source === 'mapbox' && body.reference.id !== 'mapbox-two';
+    if (body.reference.id.startsWith('economy-')) {
+      const id = body.reference.id,
+        count = economyCalls.get(id) ?? 0;
+      if (body.operation === 'read' || body.operation === 'resolve') {
+        const waiting = id === 'economy-busy' && count > 0 && !(economyReads.get(id) ?? 0);
+        const selected =
+          count > 0 && !waiting
+            ? previewQA
+              ? previewPhoto(discovered[0])
+              : discoveredPhoto(discovered[1])
+            : null;
+        res.end(
+          JSON.stringify({
+            selected,
+            candidates: selected ? [selected] : [],
+            confidence: selected ? 'high' : 'none',
+            reasons: waiting ? ['serper:waiting'] : [],
+            status: waiting ? 'pending' : 'ready',
+            retryAfter: waiting ? 1 : undefined,
+          }),
+        );
+        return;
+      }
+      if (body.operation === 'index') economyCalls.set(id, count + 1);
+      else if (body.operation === 'gallery' && count)
+        economyReads.set(id, (economyReads.get(id) ?? 0) + 1);
+      const loaded = (economyCalls.get(id) ?? 0) > 0,
+        busy = id === 'economy-busy' && loaded && !(economyReads.get(id) ?? 0);
+      const data = galleryResponse(body);
+      data.items = loaded && !busy ? data.items.slice(0, 10) : [];
+      data.total = loaded && !busy ? 10 : 0;
+      data.hasMore = false;
+      data.pages = loaded ? 1 : 0;
+      data.credits = loaded ? 1 : 0;
+      data.searchEnabled = !loaded && id !== 'economy-failed';
+      data.state = busy
+        ? 'indexing'
+        : loaded
+          ? body.operation === 'index'
+            ? 'more'
+            : 'complete'
+          : 'idle';
+      if (!loaded && id === 'economy-failed') {
+        data.state = 'unavailable';
+        data.searchIssue = 'La recherche unique n’a pas abouti.';
+      }
+      res.end(JSON.stringify(data));
+      return;
+    }
+    if (body.operation === 'gallery') {
+      res.end(JSON.stringify(galleryResponse(body)));
+      return;
+    }
+    if (body.operation === 'index') {
+      indexedPages++;
+      res.end(JSON.stringify(galleryResponse(body)));
+      return;
+    }
+    if (body.operation === 'review') {
+      const item = discovered.find((item) => item.id === body.image);
+      if (item) {
+        item.rightsStatus = body.rights;
+        item.excluded = body.excluded;
+        item.creator = body.creator;
+        item.evidence = body.evidence;
+      }
+      res.end(JSON.stringify(galleryResponse(body)));
+      return;
+    }
     const previous = imageChoices.get(key) ?? { mode: 'automatic', revision: 0 };
+    const previousPreview = previewChoices.get(key) ?? { mode: 'automatic', revision: 0 };
+    if (body.operation === 'preview')
+      previewChoices.set(key, {
+        mode: body.mode,
+        image: body.image,
+        revision: previousPreview.revision + 1,
+      });
     if (body.operation === 'select')
-      imageChoices.set(key, { mode: body.mode, revision: previous.revision + 1 });
+      imageChoices.set(key, {
+        mode: body.mode,
+        image: body.image,
+        revision: previous.revision + 1,
+      });
     const state = imageChoices.get(key) ?? previous;
-    const eligible = body.reference.source === 'mapbox';
+    let selected =
+      state.mode === 'fallback'
+        ? null
+        : state.mode === 'manual' && state.image !== photo.id
+          ? discoveredPhoto(discovered.find((item) => item.id === state.image))
+          : eligible
+            ? photo
+            : null;
+    const previewState = previewChoices.get(key) ?? previousPreview;
+    if (previewQA && previewState.mode === 'fallback') selected = null;
+    else if (previewQA && previewState.mode === 'manual')
+      selected =
+        previewState.image === photo.id
+          ? photo
+          : previewPhoto(discovered.find((item) => item.id === previewState.image));
     res.end(
       JSON.stringify({
-        selected: eligible && state.mode !== 'fallback' ? photo : null,
+        selected,
         candidates: eligible ? [photo] : [],
         confidence: eligible ? 'high' : 'none',
         reasons: [],
         status: 'ready',
         ...state,
+        ...(previewQA
+          ? {
+              previewEnabled: true,
+              previewRevision: previewState.revision,
+              previewMode: previewState.mode,
+              mode: previewState.mode === 'published' ? state.mode : previewState.mode,
+              coverHidden: previewState.mode === 'fallback',
+            }
+          : {}),
       }),
     );
     return;
@@ -415,8 +596,13 @@ try {
   }
   async function click(selector) {
     await wait(`!!document.querySelector(${JSON.stringify(selector)})`);
+    await ev(
+      `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`,
+    );
+    // Let anchored menus reposition after scrolling before reading hit coordinates.
+    await sleep(80);
     const r = await ev(
-      `(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const b=e.getBoundingClientRect();return{x:b.x+b.width/2,y:b.y+b.height/2}})()`,
+      `(()=>{const e=document.querySelector(${JSON.stringify(selector)});const b=e.getBoundingClientRect();return{x:b.x+b.width/2,y:b.y+b.height/2}})()`,
     );
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...r });
     await send('Input.dispatchMouseEvent', {
@@ -521,6 +707,7 @@ try {
     patterns: [
       { urlPattern: 'https://api.mapbox.com/styles/*' },
       { urlPattern: 'https://thumb.wikimedia.org/*' },
+      { urlPattern: 'https://photos.example.org/*' },
     ],
   });
   ws.addEventListener('message', (e) => {
@@ -528,9 +715,12 @@ try {
     if (x.method === 'Fetch.requestPaused')
       void send('Fetch.fulfillRequest', {
         requestId: x.params.requestId,
-        responseCode: 200,
+        responseCode: previewQA && x.params.request.url.endsWith('/venue-0.jpg') ? 404 : 200,
         responseHeaders: [{ name: 'Content-Type', value: 'image/png' }],
-        body: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1sAAAAASUVORK5CYII=',
+        body:
+          previewQA && x.params.request.url.endsWith('/venue-0.jpg')
+            ? ''
+            : 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1sAAAAASUVORK5CYII=',
       });
   });
   async function screenshot(name) {
@@ -557,8 +747,8 @@ try {
   await fill('[aria-label="Rechercher un lieu"]', 'Sensō-ji');
   await sleep(400);
   assert(
-    await ev('!!document.querySelector(".trip-step-photo [data-place-illustration]")'),
-    'a venue without a verified photo has a category illustration',
+    await ev('!!document.querySelector(".trip-step-photo [data-place-placeholder=shop]")'),
+    'a venue without a verified photo has a category pictogram',
   );
   assert(await ev('window.__externalRequests.length===0'), 'inactive Mapbox makes no searches');
   const started = performance.now();
@@ -567,11 +757,17 @@ try {
   const searchMs = Math.round(performance.now() - started);
   assert(
     await ev(
-      '[...document.querySelectorAll("[data-external-place-card]")].every(card=>card.querySelector("img,[data-place-illustration]"))',
+      '[...document.querySelectorAll("[data-external-place-card]")].every(card=>card.querySelector("img,[data-place-placeholder]"))',
     ),
-    'every visible result has a photo or an illustration',
+    'every visible result has a photo or a category pictogram',
   );
   await wait('!!document.querySelector("[data-external-place-card] img")');
+  assert(
+    await ev(
+      '!!document.querySelector(".trip-external-result-list li:nth-child(2) [data-place-placeholder=museum]")',
+    ),
+    'a Mapbox museum without a photo retains its museum pictogram',
+  );
   assert(await ev('window.__changes.length===0'), 'photo loading does not save the planner');
   await screenshot('catalog-desktop');
   assert(
@@ -661,10 +857,10 @@ try {
   );
   await key('Escape');
   await click(`[data-activity-id="${first}"] .trip-step-main`);
-  await textClick('Changer la photographie');
+  await textClick('Modifier la photo');
   await wait('!!document.querySelector("[role=dialog]")');
   const beforeChoice = await ev('window.__changes.length');
-  await textClick('Utiliser l’illustration');
+  await textClick('Utiliser le pictogramme');
   await wait('!document.querySelector("[role=dialog]")');
   assert(
     (await ev('window.__changes.length')) === beforeChoice,
@@ -672,14 +868,18 @@ try {
   );
   assert(
     await ev(
-      '!document.querySelector(' +
-        JSON.stringify(`[data-activity-id="${first}"] .trip-step-main img`) +
+      '!!document.querySelector(' +
+        JSON.stringify(
+          `[data-activity-id="${first}"] .trip-step-main [data-place-placeholder=landmark]`,
+        ) +
         ')',
     ),
-    'occurrence fallback is applied',
+    'occurrence fallback uses the venue category pictogram',
   );
-  await textClick('Changer la photographie');
-  await textClick('Choisir cette image');
+  await screenshot('place-pictogram');
+  await textClick('Modifier la photo');
+  await click('[aria-label="Sélectionner Vue du lieu 1"]');
+  await textClick('Choisir');
   await wait('!document.querySelector("[role=dialog]")');
   await wait(
     '!!document.querySelector(' +
@@ -690,6 +890,118 @@ try {
     (await ev('window.__changes.length')) === beforeChoice,
     'manual selection remains a presentation mutation',
   );
+  await textClick('Modifier la photo');
+  const beforeIndex = await ev('window.__imageRequests.filter(r=>r.operation==="index").length');
+  await wait('document.querySelectorAll("[data-image-candidate]").length===10');
+  await screenshot('serper-gallery-desktop');
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await sleep(100);
+  assert(
+    await ev(
+      'document.documentElement.scrollWidth<=390 && document.querySelector("[role=dialog]").getBoundingClientRect().width<=390',
+    ),
+    'the photo gallery fits a mobile viewport',
+  );
+  await screenshot('serper-gallery-mobile');
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await fill('[aria-label="Rechercher parmi les photographies"]', 'Vue du lieu 79');
+  await wait('document.querySelectorAll("[data-image-candidate]").length===0');
+  await fill('[aria-label="Rechercher parmi les photographies"]', 'Vue du lieu 9');
+  await wait('document.querySelectorAll("[data-image-candidate]").length===1');
+  await fill('[aria-label="Rechercher parmi les photographies"]', '');
+  await wait('document.querySelectorAll("[data-image-candidate]").length===10');
+  assert(
+    await ev(
+      '![...document.querySelectorAll("button")].some(b=>["Suivant","Précédent"].includes(b.textContent.trim()))',
+    ),
+    'a legacy collection exposes only the same ten choices',
+  );
+  await click('[aria-label="Sélectionner Vue du lieu 0"]');
+  if (previewQA) {
+    await wait(
+      `document.querySelector('[aria-label="Informations de la photographie"] img')?.src.includes("thumb-0.jpg")`,
+    );
+    assert(
+      await ev(
+        '![...document.querySelectorAll("button")].find(b=>b.textContent==="Choisir").disabled',
+      ),
+      'unknown rights are selectable in the private development preview',
+    );
+    assert(
+      !(await ev('!!document.querySelector("#photo-rights")')),
+      'preview never requires the publication review form',
+    );
+    await screenshot('serper-development-preview');
+  } else {
+    assert(
+      await ev(
+        '[...document.querySelectorAll("button")].find(b=>b.textContent==="Choisir").disabled',
+      ),
+      'unknown rights cannot publish a cover',
+    );
+    await fill('#photo-rights', 'permission_granted');
+    await fill('#photo-creator', 'Fixture owner');
+    await fill('#photo-evidence', 'Written permission for the Nagi cover');
+    await textClick('Enregistrer la vérification');
+    await wait(
+      '![...document.querySelectorAll("button")].find(b=>b.textContent==="Choisir").disabled',
+    );
+    await screenshot('serper-gallery-review');
+  }
+  await textClick('Choisir');
+  await wait('!document.querySelector("[role=dialog]")');
+  await wait(
+    'document.querySelector(".trip-detail-photo img")?.src.includes("photos.example.org")',
+  );
+  assert(
+    (await ev('window.__imageRequests.filter(r=>r.operation==="index").length')) === beforeIndex,
+    'browsing and selecting cached photographs never calls paid discovery',
+  );
+  assert(
+    (await ev('window.__changes.length')) === beforeChoice,
+    'a Serper cover never saves the planner',
+  );
+  await textClick('Crédits photo');
+  assert(
+    await ev(
+      previewQA
+        ? 'document.querySelector("[role=dialog]").textContent.includes("Droits : À vérifier")'
+        : 'document.querySelector("[role=dialog]").textContent.includes("Autorisation de publication vérifiée")',
+    ),
+    'published Serper credits preserve permission provenance',
+  );
+  await screenshot('serper-photo-credits');
+  await key('Escape');
+  if (previewQA) {
+    assert(
+      imageChoices.size === 0,
+      'development selections do not change public cover assignments',
+    );
+    assert(
+      discovered[0].rightsStatus === 'unknown',
+      'previewing never fabricates a permission or licence',
+    );
+    await textClick('Modifier la photo');
+    await textClick('Couverture publiée');
+    await wait('!document.querySelector("[role=dialog]")');
+    await wait(
+      'document.querySelector(".trip-detail-photo img")?.src.includes("thumb.wikimedia.org")',
+    );
+    assert(
+      imageChoices.size === 0,
+      'restoring the published cover remains a private preview action',
+    );
+  }
   for (const width of [834, 390, 320]) {
     await nav(width);
     await openSearch();
@@ -731,6 +1043,65 @@ try {
   await wait('document.querySelector(".trip-mapbox-search").textContent.includes("Aucun lieu")');
   await fill('[aria-label="Rechercher un lieu"]', 'Quota');
   await wait('document.querySelector(".trip-mapbox-search").textContent.includes("Quota atteint")');
+  const providerRequests = await ev('window.__externalRequests.length');
+  for (const id of ['economy-cold', 'economy-busy']) {
+    pages++;
+    await send('Page.navigate', { url: base + '/?' + id });
+    await wait('document.readyState==="complete"');
+    await textClick('Modifier la photo');
+    await wait('document.querySelectorAll("[data-image-candidate]").length===10');
+    await sleep(250);
+    assert(
+      economyCalls.get(id) === 1,
+      'a new place makes exactly one indexing request, including an in-flight lease',
+    );
+    assert(
+      await ev('window.__imageRequests.filter(r=>r.operation==="index").length===1'),
+      'waiting uses database reads and never another index request',
+    );
+    assert(
+      await ev(
+        '![...document.querySelectorAll("button")].some(b=>b.textContent.includes("Charger davantage"))',
+      ),
+      'the gallery cannot buy additional pages',
+    );
+    assert(
+      await ev(
+        '![...document.querySelectorAll("button")].some(b=>/Forcer|Actualiser|Rechercher des photos/.test(b.textContent))',
+      ),
+      'there is no way to buy a reload',
+    );
+    await key('Escape');
+    await textClick('Modifier la photo');
+    await wait('document.querySelectorAll("[data-image-candidate]").length===10');
+    assert(economyCalls.get(id) === 1, 'reopening ten cached photos costs no additional request');
+    await wait(
+      'document.querySelector("[data-economy-cover] img")?.src.includes("photos.example.org")',
+    );
+    await screenshot(id);
+    await key('Escape');
+  }
+  pages++;
+  await send('Page.navigate', { url: base + '/?economy-failed' });
+  await wait('document.readyState==="complete"');
+  await textClick('Modifier la photo');
+  await wait('document.querySelector("[role=dialog]")?.textContent.includes("unique")');
+  assert(!economyCalls.get('economy-failed'), 'a failed attempt is not billed again automatically');
+  assert(
+    await ev(
+      '![...document.querySelectorAll("button")].some(b=>/Forcer|Actualiser|Rechercher des photos/.test(b.textContent))',
+    ),
+    'a failed permanent attempt has no paid retry control',
+  );
+  await key('Escape');
+  await textClick('Modifier la photo');
+  await wait('document.querySelector("[role=dialog]")?.textContent.includes("unique")');
+  assert(
+    !economyCalls.get('economy-failed'),
+    'reopening a failed attempt cannot buy another search',
+  );
+  await screenshot('economy-permanent');
+  await key('Escape');
   assert(errors.length === 0, 'runtime errors: ' + errors.join(';'));
   assert(
     !requests.some((u) =>
@@ -742,10 +1113,12 @@ try {
     mode: 'mocked Mapbox transport, real Nagi React and DnD',
     searchMs,
     pages,
-    providerRequests: await ev('window.__externalRequests.length'),
+    providerRequests,
     runtimeErrors: errors,
     googleRequests: 0,
     passed: true,
+    developmentPreview: previewQA,
+    economyCases: 3,
   };
   console.log(JSON.stringify(report));
   fs.writeFileSync(path.join(temp, 'report.json'), JSON.stringify(report, null, 2));

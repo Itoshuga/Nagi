@@ -2,9 +2,9 @@
 import type { ComponentProps } from 'react';
 import { EntryImage } from '@/features/media/image';
 import { ImageCredits, useResolvedImage } from '@/features/images/components';
-import type { ImageReference } from '@/features/images/model';
-import { PlaceIllustration } from '@/features/images/place-illustration';
-/** A licensed venue photo or an original category illustration, always visible. */
+import { isPreviewImage, isTemporaryImage, type ImageReference } from '@/features/images/model';
+import { PlacePlaceholder } from '@/features/images/place-placeholder';
+/** A licensed venue photo or a category pictogram, always visible. */
 export function PlaceImage({
   source,
   category,
@@ -22,6 +22,8 @@ export function PlaceImage({
   return (
     <EntryImage
       {...props}
+      fit={image && isTemporaryImage(image) && !image.cropAllowed ? 'contain' : props.fit}
+      fallbackSrc={image && isPreviewImage(image) ? image.thumbnailUrl : props.fallbackSrc}
       containerRef={photo.observe}
       src={
         photo.result?.coverHidden ||
@@ -42,7 +44,7 @@ export function PlaceImage({
       }}
       fallback={
         props.fallback ?? (
-          <PlaceIllustration
+          <PlacePlaceholder
             category={category ?? (source === 'custom' ? 'lieu personnalisé' : undefined)}
           />
         )

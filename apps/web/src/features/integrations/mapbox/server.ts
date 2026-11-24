@@ -1,5 +1,7 @@
 import 'server-only';
 import { issueImageProof } from '@/features/images/proof';
+import { imageDiagnostic } from '@/features/images/diagnostics';
+import { imageJsonResponse, imageProviderSlot, retrySeconds } from '@/features/images/http';
 import { randomUUID } from 'node:crypto';
 import {
   mapboxSearchResultLimit,
@@ -51,6 +53,7 @@ export async function reserveMapbox(
 }
 const language = (query: string) =>
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(query) ? 'ja' : 'en';
+let detailsBlockedUntil = 0;
 async function request(
   actor: string,
   kind: 'suggest' | 'forward' | 'retrieve' | 'details',
@@ -58,6 +61,7 @@ async function request(
   params: Record<string, string>,
   signal?: AbortSignal,
 ) {
+  if (kind === 'details' && detailsBlockedUntil > Date.now()) throw new MapboxError(429, 'quota');
   await reserveMapbox(actor, kind);
   let response: Response;
   try {
@@ -75,14 +79,20 @@ async function request(
     throw new MapboxError(503, 'network');
   }
   if (!response.ok) {
+    if (kind === 'details' && [401, 403, 429].includes(response.status))
+      detailsBlockedUntil =
+        Date.now() + Math.max(3600, retrySeconds(response.headers.get('Retry-After'))) * 1000;
+    await response.body?.cancel();
     await serviceDatabase().rpc('mapbox_error', { p_code: `${kind}_http_${response.status}` });
     throw new MapboxError(
       response.status === 404 ? 404 : response.status === 429 ? 429 : 503,
-      response.status === 404
-        ? 'unavailable'
-        : response.status === 401 || response.status === 403
-          ? 'provider_access'
-          : 'provider',
+      kind === 'details' && response.status === 422
+        ? 'unsupported_id'
+        : response.status === 404
+          ? 'unavailable'
+          : response.status === 401 || response.status === 403
+            ? 'provider_access'
+            : 'provider',
       response.status === 404
         ? 'Ce lieu n’est plus disponible. Vos notes et votre planification sont conservées.'
         : response.status === 429
@@ -91,7 +101,7 @@ async function request(
     );
   }
   try {
-    return await response.json();
+    return kind === 'details' ? await imageJsonResponse(response) : await response.json();
   } catch {
     throw new MapboxError(503, 'response');
   }
@@ -276,15 +286,41 @@ export async function verifyMapboxReference(actor: string, trip: string, referen
   });
   if (error) throw new MapboxError(503, 'database');
 }
+const pendingDetails = new Map<string, Promise<Record<string, unknown>>>();
+export function retrieveMapboxDetailsData(actor: string, id: string, signal?: AbortSignal) {
+  const key = JSON.stringify([actor, id]);
+  let task = pendingDetails.get(key);
+  if (task) return task;
+  task = (async () => {
+    const release = await imageProviderSlot(signal);
+    const start = performance.now();
+    try {
+      const data = await request(
+        actor,
+        'details',
+        '/places/v1/details/retrieve/' + encodeURIComponent(id),
+        {},
+        signal,
+      );
+      imageDiagnostic(
+        'mapbox-details',
+        'returned',
+        performance.now() - start,
+        0,
+        data.mapbox_id ? 1 : 0,
+      );
+      return data;
+    } finally {
+      release();
+    }
+  })().finally(() => pendingDetails.delete(key));
+  pendingDetails.set(key, task);
+  return task;
+}
 export async function retrieveMapboxDetails(actor: string, id: string, signal?: AbortSignal) {
-  const data = await request(
-    actor,
-    'details',
-    '/places/v1/details/retrieve/' + encodeURIComponent(id),
-    {},
-    signal,
-  );
-  const place = mapboxPlaceDetails(data, mapboxConfig().photos);
+  const data = await retrieveMapboxDetailsData(actor, id, signal);
+  // Photograph rights and selection belong exclusively to Image Resolver.
+  const place = mapboxPlaceDetails(data, false);
   if (!place || place.id !== id) throw new MapboxError(503, 'response');
   return place;
 }

@@ -21,6 +21,7 @@ function builder(table: string) {
     eq: vi.fn(() => query),
     in: vi.fn(() => query),
     gt: vi.fn(() => query),
+    or: vi.fn(() => query),
     update: vi.fn((data) => {
       mocks.update(data);
       return query;

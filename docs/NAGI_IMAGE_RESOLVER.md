@@ -1,5 +1,7 @@
 # Nagi Image Resolver — phase 4.7.3
 
+État actuel : [Nagi Image Resolver 3.0 — Serper et galerie persistante](./NAGI_IMAGE_RESOLVER_3.md). Le présent rapport et celui de la phase 4.7.4 sont conservés comme historique ; les photos Mapbox ne font plus partie du parcours photographique actif.
+
 Implémentation et vérifications du 23 novembre 2026. Les photographies forment une couche de présentation indépendante du planning. Mapbox reste le fournisseur de recherche et de localisation.
 
 ## Comportement livré
@@ -7,10 +9,10 @@ Implémentation et vérifications du 23 novembre 2026. Les photographies forment
 - Recherche Wikidata avec labels et alias français, anglais et japonais : ordre des mots libre, qualificatifs de catégorie, variantes de langue et petites fautes sur les mots longs. Une recherche complémentaire est effectuée si la première ne confirme pas d’entité. Les branches contradictoires et numéros différents restent distincts.
 - Photographie P18 prioritaire, puis PageImages d’une page Wikipedia liée à la même entité, puis Commons, puis Openverse. Les légendes Commons sont prises en compte et GeoSearch complète les noms. Les fichiers Wikipedia locaux et non libres restent exclus.
 - Une entité confirmée ou une photographie Commons dont le nom et les coordonnées de source concordent permettent la sélection automatique. Les résultats uniquement textuels restent des propositions. Les coordonnées de sujet et de prise de vue fournies par Commons sont considérées, sans reprendre de coordonnées Mapbox dans les métadonnées photographiques.
-- Chaque lieu affiche un visuel : photographie pertinente ou illustration vectorielle originale adaptée à sa catégorie (boutique, café, restaurant, hôtel, musée, parc, transport, monument ou lieu générique). Les illustrations apparaissent immédiatement, ne font aucun appel réseau et sont identifiées comme illustrations pour l’accessibilité.
+- Chaque lieu affiche un visuel : photographie pertinente ou pictogramme Lucide adapté à sa catégorie (boutique, café, restaurant, hôtel, musée, parc, transport, monument ou lieu générique), centré sur un fond bleu discret. Les pictogrammes apparaissent immédiatement, sans appel réseau, avec un libellé accessible. Seules les icônes utilisées sont importées ; la bibliothèque de recherche d’icônes n’est pas chargée. Ce même visuel remplace une photo qui ne charge pas.
 - Affichage progressif dans les résultats Mapbox, les activités, les arrêts, les détails et les fiches du catalogue. Les blocs du calendrier restent inchangés. Les miniatures et aperçus utilisent les URL officielles `imageinfo`, y compris `thumb.wikimedia.org` et `thumburls` ; aucune URL de redimensionnement n’est inventée.
 - Crédits discrets sur les miniatures, accessibles en détail avec auteur, titre, œuvre originale, licence/version et indication de présentation recadrée. Les métadonnées HTML sont converties en texte, sans `dangerouslySetInnerHTML`.
-- Choix manuel, recherche précisée, conservation de l’image actuelle, retour au choix automatique et illustration. Le catalogue se modifie depuis la zone médias d’une fiche enregistrée ; un choix dans un voyage concerne uniquement la visite. L’import existant dans la galerie est conservé et une nouvelle couverture importée réinitialise le choix global.
+- Choix manuel, recherche précisée, conservation de l’image actuelle, retour au choix automatique et pictogramme. Le catalogue se modifie depuis la zone médias d’une fiche enregistrée ; un choix dans un voyage concerne uniquement la visite. L’import existant dans la galerie est conservé et une nouvelle couverture importée réinitialise le choix global.
 
 ## Fournisseurs et endpoints
 
@@ -56,9 +58,9 @@ L’analyse de sécurité signale les deux nouvelles fonctions `SECURITY DEFINER
 ## Sécurité et performances
 
 - Deux jobs client et deux appels fournisseur concurrents par processus ; deux baux de résolution partagés en base entre instances. Déduplication des recherches actives et des fichiers par URL/hash ; annulation des tâches encore en attente lorsqu’un résultat quitte l’écran.
-- IntersectionObserver, délai d’inactivité de 850 ms, aucune dépendance aux mutations du planning. Les réponses Mapbox restent affichées immédiatement avec leur illustration initiale.
+- IntersectionObserver, délai d’inactivité de 850 ms, aucune dépendance aux mutations du planning. Les réponses Mapbox restent affichées immédiatement avec leur pictogramme initial.
 - Cache positif 14 jours, propositions ambiguës 7 jours, absence de résultat 24 heures, indisponibilité au moins 5 minutes. Une suggestion ambiguë peut être réévaluée dès qu’un contexte signé apporte des coordonnées. Le choix manuel n’est jamais remplacé automatiquement.
-- Vérification des choix anciens à partir de 14 jours, disponibilité et licence contrôlées à nouveau. Un échec réseau du navigateur ne suffit pas à supprimer globalement une photo : une vérification serveur avec bail et budget est nécessaire. En cas d’échec, la carte revient à son illustration.
+- Vérification des choix anciens à partir de 14 jours, disponibilité et licence contrôlées à nouveau. Un échec réseau du navigateur ne suffit pas à supprimer globalement une photo : une vérification serveur avec bail et budget est nécessaire. En cas d’échec, la carte revient à son pictogramme.
 - 10 résolutions/minute et 100/jour/membre, 2 000/jour pour l’application ; Openverse limité prudemment à 1/minute et 90/jour globalement, même avec OAuth.
 - Timeout de 6,5 secondes par requête fournisseur, budget de 16 appels logiques par résolution, timeout global 70 secondes, une seule reprise possible pour un `Retry-After` court. Les réponses 429/503 imposent un délai partagé par hôte. Les variantes restent séquentielles et s’arrêtent dès qu’une photo fiable est disponible.
 - Les anciens résultats négatifs ou ambigus sont invalidés une fois pour adopter le moteur assoupli (`matcher-v2`). Les associations positives et les choix manuels restent réutilisés ; aucune migration SQL supplémentaire n’est nécessaire.
@@ -67,7 +69,7 @@ L’analyse de sécurité signale les deux nouvelles fonctions `SECURITY DEFINER
 
 ## Configuration serveur
 
-`NAGI_IMAGE_USER_AGENT` doit identifier Nagi et fournir une adresse ou URL réelle de contact. Le contact donné pour ce travail a été configuré dans `.env`, ignoré par Git. À reporter dans l’environnement serveur de déploiement. Sans contact valide, le résolveur conserve les illustrations.
+`NAGI_IMAGE_USER_AGENT` doit identifier Nagi et fournir une adresse ou URL réelle de contact. Le contact donné pour ce travail a été configuré dans `.env`, ignoré par Git. À reporter dans l’environnement serveur de déploiement. Sans contact valide, le résolveur conserve les pictogrammes.
 
 `NAGI_OPENVERSE_CLIENT_ID` et `NAGI_OPENVERSE_CLIENT_SECRET` sont facultatifs ; jeton OAuth conservé seulement côté serveur. Aucune création automatique de compte Openverse. `NAGI_TOKEN_ENCRYPTION_KEY` existante sert également à signer le contexte temporaire, avec un domaine de signature distinct. Aucun nouveau secret n’est exposé au navigateur.
 
@@ -104,7 +106,7 @@ Audit réel, langue française, lieux résolus avec coordonnées :
 
 L’audit initial utilisait 32 requêtes de métadonnées. Le nouveau moteur a aussi été contrôlé sur « PARCO Shibuya », « Louvre Museum Paris », « Shinjuku Gyoen National Garden » et « Tour Eiffel » : quatre sélections automatiques avec licences vérifiées, 17 requêtes au total, environ 0,8 à 1,2 seconde par lieu. La photo P18 de la tour Eiffel déclarant « Public domain » sans URL de licence exploitable reste écartée ; une autre photographie CC BY-SA est sélectionnée avec les coordonnées Commons. Référence : [GeoSearch Commons](https://commons.wikimedia.org/wiki/Commons:API/MediaWiki).
 
-Ces audits ne font aucun appel Mapbox, aucune écriture Supabase et aucun téléchargement d’originaux. Ils ne mesurent pas le chargement CDN des fichiers ni la latence depuis tous les pays. Ils ne garantissent pas une photo libre pour chaque établissement ; l’illustration de catégorie couvre ce cas.
+Ces audits ne font aucun appel Mapbox, aucune écriture Supabase et aucun téléchargement d’originaux. Ils ne mesurent pas le chargement CDN des fichiers ni la latence depuis tous les pays. Ils ne garantissent pas une photo libre pour chaque établissement ; le pictogramme de catégorie couvre ce cas.
 
 Audit additionnel sans coordonnées : Shibuya Parco et Pokémon Center SHIBUYA confirmés par pays/ville (environ 2 secondes) ; Sensō-ji reste ambigu avec des propositions (environ 3 secondes). Son contexte obtenu après sélection permet une nouvelle vérification géographique. L’affichage initial des résultats Mapbox simulés prenait 562 ms pendant le test navigateur ; la photo n’en bloque pas l’apparition.
 
@@ -124,7 +126,7 @@ node tests/browser/mapbox-places.mjs
 
 ## Fichiers
 
-Nouveaux modules : `apps/web/src/features/images/{model,metadata,matching,http,proof,providers,server,route,session,components,place-illustration}` ; routes `/api/images` et `/app/[guildId]/trips/[tripId]/images` ; migrations ci-dessus ; `tests/image-{resolver,matching,cache,route,session}.test.ts` ; `scripts/qa/images/live.mjs` ; ce document.
+Nouveaux modules : `apps/web/src/features/images/{model,metadata,matching,http,proof,providers,server,route,session,components,place-placeholder}` ; routes `/api/images` et `/app/[guildId]/trips/[tripId]/images` ; migrations ci-dessus ; `tests/image-{resolver,matching,cache,route,session}.test.ts` ; `scripts/qa/images/live.mjs` ; ce document.
 
 Intégrations modifiées : types partagés des lieux et types SQL générés ; serveur, provider React et `PlaceImage` Mapbox ; `EntryImage` ; cartes de catalogue et d’activités ; détails d’activités et d’arrêts ; fiches publiques et formulaire d’administration ; flux de synchronisation photo séparé ; `.env.example` ; tests PostgreSQL et scénario navigateur Mapbox.
 
