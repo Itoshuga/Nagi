@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   banner: vi.fn(),
 }));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 vi.mock('@/lib/supabase/server', () => ({
   sessionDatabase: async () => ({
     auth: { getClaims: mocks.claims },

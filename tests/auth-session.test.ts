@@ -201,11 +201,14 @@ describe('Nagi authentication, aligned with Kitsu', () => {
       access_token: access,
       refresh_token: 'fixture-refresh-token',
     });
+    network.mockClear();
     const fresh = createAuthClient(config, cookies.methods);
     const { data, error } = await fresh.auth.getClaims();
     expect(error).toBeNull();
     expect(data?.claims.sub).toBe(id);
-    expect(network).toHaveBeenCalled();
+    expect(
+      network.mock.calls.some(([url]) => new URL(String(url)).pathname === '/auth/v1/user'),
+    ).toBe(true);
   });
 
   it('refuses a token rejected by the authentication server', async () => {

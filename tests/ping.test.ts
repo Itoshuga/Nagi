@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setTimeout as delay } from 'node:timers/promises';
 import ping from '../apps/bot/src/commands/general/ping';
 import { handleInteraction } from '../apps/bot/src/handlers/interaction';
 import { validateCommand } from '../apps/bot/src/handlers/load-commands';
@@ -63,8 +62,10 @@ function fixture() {
 describe('Public /ping diagnostics', () => {
   it('replies publicly with the bot thumbnail and a dated requester footer', async () => {
     const f = fixture();
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
     f.interaction.deferReply.mockImplementation(async () => {
-      await delay(20);
+      now += 20;
     });
     const { payload, embed, section } = await f.run();
     expect(f.interaction.deferReply).toHaveBeenCalledWith({});
@@ -74,7 +75,6 @@ describe('Public /ping diagnostics', () => {
     expect(f.query.eq).toHaveBeenCalledWith('scope', scope);
     expect(f.query.limit).toHaveBeenCalledWith(1);
     expect(f.query.abortSignal.mock.calls[0]![0]).toBeInstanceOf(AbortSignal);
-    expect(embed.title).toContain('Aye Sir !!');
     expect(embed.title).toBe('Aye Sir !! Nagi au rapport.');
     expect(embed.description).toContain(
       'J’ai inspecté toutes les machines et bonne nouvelle !\nÇa ronronne comme il faut !',
@@ -91,7 +91,7 @@ describe('Public /ping diagnostics', () => {
     expect(embed.fields).toBeUndefined();
     expect(embed.color).toBe(0x73a6df);
     expect(section('Discord')).toContain('> A répondu `🟢 Connecté` en **48ms**.');
-    expect(Number(section('API Discord').match(/\d+/)?.[0])).toBeGreaterThanOrEqual(10);
+    expect(section('API Discord')).toContain('**20ms**');
     expect(section('Supabase')).toContain('🟢 Connecté');
     expect(embed.thumbnail.url).toBe('https://cdn.discordapp.com/embed/avatars/0.png');
     expect(payload.allowedMentions).toEqual({ parse: [] });
@@ -120,6 +120,8 @@ describe('Public /ping diagnostics', () => {
 
   it('aborts an unresponsive database and publishes a timeout diagnosis', async () => {
     const f = fixture();
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
     let signal: AbortSignal | undefined;
     f.query.abortSignal.mockImplementation((requestSignal: AbortSignal) => {
       signal = requestSignal;
@@ -127,7 +129,11 @@ describe('Public /ping diagnostics', () => {
         requestSignal.addEventListener('abort', () => reject(new Error('timeout')), { once: true }),
       );
     });
-    const { embed, section } = await f.run();
+    const pending = f.run();
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    deadline.abort(new DOMException('Deadline expired', 'TimeoutError'));
+    const { embed, section } = await pending;
+    expect(timeout).toHaveBeenCalledWith(2500);
     expect(signal?.aborted).toBe(true);
     expect(embed.color).toBe(0xa87a36);
     expect(section('Supabase')).toContain('Délai dépassé');

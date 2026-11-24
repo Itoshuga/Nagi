@@ -200,7 +200,8 @@ export class TripMutationQueue {
     }
   };
   private pump() {
-    if (this.disposed || !this.snapshot.online || this.snapshot.revoked) return;
+    if (this.disposed || !this.snapshot.online || this.snapshot.revoked || !this.snapshot.canEdit)
+      return;
     const blocked = new Set<string>(this.suspendedKeys);
     for (const task of this.tasks) {
       const waiting = task.keys.some((key) => blocked.has(key));
@@ -415,7 +416,12 @@ export class TripMutationQueue {
     this.confirmed = plan;
     for (const version of this.buffer.keys())
       if (version <= plan.version) this.buffer.delete(version);
-    this.publish({ canEdit, canManage });
+    if (!canEdit && this.tasks.length) {
+      for (const task of this.tasks) clearTimeout(task.timer);
+      this.tasks = [];
+      this.permanentError = 'Ce voyage est désormais en lecture seule.';
+    }
+    this.publish({ canEdit, canManage, error: this.permanentError || this.snapshot.error });
   };
   setOnline = (online: boolean) => {
     if (this.snapshot.online === online) return;

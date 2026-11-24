@@ -3,10 +3,10 @@ import {
   botPresence,
   categoryInputSchema,
   commandScope,
-  entryInputSchema,
+  catalogEntryInput,
   isPrivatePath,
   parseEnv,
-  relationInputSchema,
+  entryRelationInput,
   safeNext,
   serviceEnvSchema,
 } from '../packages/shared/src';
@@ -57,16 +57,35 @@ describe('Route boundaries and OAuth redirect validation', () => {
     expect(safeNext('/admin/categories?sort=name')).toBe('/admin/categories?sort=name'));
 });
 describe('Model validation and shared services', () => {
-  it('rejects malformed slugs, unexpected role fields and self-relations', () => {
+  it('rejects malformed slugs, unexpected role fields and invalid catalogue identifiers', () => {
     expect(categoryInputSchema.safeParse({ name: 'Valid', slug: 'Invalid Slug' }).success).toBe(
       false,
     );
     expect(
       categoryInputSchema.safeParse({ name: 'Valid', slug: 'valid', role: 'admin' }).success,
     ).toBe(false);
-    expect(entryInputSchema.safeParse({ city_id: 'bad-id' }).success).toBe(false);
     const id = '11111111-1111-4111-8111-111111111111';
-    expect(relationInputSchema.safeParse({ source_id: id, target_id: id }).success).toBe(false);
+    const entry = {
+      title: 'Tokyo Tower',
+      summary: '',
+      description: '',
+      country_id: id,
+      city_id: id,
+      neighborhood_id: '',
+      category_id: id,
+      latitude: '',
+      longitude: '',
+      published: 'false',
+      sort_order: '0',
+    };
+    expect(catalogEntryInput.safeParse(entry).success).toBe(true);
+    expect(catalogEntryInput.safeParse({ ...entry, city_id: 'bad-id' }).success).toBe(false);
+    expect(
+      entryRelationInput.safeParse({ target: id, type: id, direction: 'forward' }).success,
+    ).toBe(true);
+    expect(
+      entryRelationInput.safeParse({ target: 'bad-id', type: id, direction: 'forward' }).success,
+    ).toBe(false);
   });
   it('authorizes and validates before any privileged database write', async () => {
     const from = vi.fn();

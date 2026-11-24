@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const { commonsPhoto, matchEntity, resolveImages } =
   await import('../apps/web/src/features/images/providers');
 const { ImageHttp, retrySeconds } = await import('../apps/web/src/features/images/http');

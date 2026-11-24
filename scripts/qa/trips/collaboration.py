@@ -8,9 +8,9 @@ def encode(value):return base64.urlsafe_b64encode(json.dumps(value).encode()).de
 def auth(sub):
  now=int(time.time());token=encode({'alg':'HS256','typ':'JWT'})+'.'+encode({'sub':sub,'aud':'authenticated','role':'authenticated','iat':now,'exp':now+86400})+'.c2lnbmF0dXJl'
  return 'base64-'+encode({'access_token':token,'refresh_token':'fixture-refresh','expires_at':now+86400,'token_type':'bearer','expires_in':86400})
-def state():return json.loads((args.output/'state.json').read_text())
+def state():return json.loads((args.output/'state.json').read_text(encoding='utf-8'))
 def config(**value):
- tmp=args.output/'config.tmp';tmp.write_text(json.dumps(value));tmp.replace(args.output/'config.json')
+ tmp=args.output/'config.tmp';tmp.write_text(json.dumps(value), encoding='utf-8');tmp.replace(args.output/'config.json')
 
 with sync_playwright() as p:
  browser=p.chromium.launch();errors=[];passed=[]
@@ -33,10 +33,27 @@ with sync_playwright() as p:
   choose(a,'Vert',tower);expect(event(b,tower)).to_have_attribute('style',re.compile('#69AA91'));saved(a);log('cross-account color propagated through private SSE + authorized SQL journal')
   choose(a,'Violet',tower);event(b,tower).locator('.trip-event-resize.is-end').press('ArrowDown');expect(event(a,tower)).to_have_attribute('style',re.compile('42px'));expect(event(b,tower)).to_have_attribute('style',re.compile('#A28BC9'));saved(a);saved(b);log('simultaneous duration and color changes merged on both clients')
   menu(a,tower);menu(b,tower);a.get_by_role('menuitemradio',name='Vert',exact=True).dispatch_event('click');b.get_by_role('menuitemradio',name='Orange',exact=True).dispatch_event('click');expect(b.locator('.trip-workspace').get_by_role('alert')).to_contain_text('entre-temps');expect(event(b,tower)).to_have_attribute('style',re.compile('#69AA91'));expect(event(b,tower)).to_have_attribute('style',re.compile('42px'));b.get_by_role('button',name='Fermer le message').click();log('same-property conflict reported; unrelated duration retained')
-  cb.set_offline(True);event(b,tower).locator('.trip-calendar-event-copy').click();panel=b.locator('.trip-context-panel');panel.get_by_label('Notes du voyage',exact=True).fill('Billets conservés pendant la coupure');panel.get_by_role('button',name='Enregistrer les notes',exact=True).click();expect(b.locator('.trip-save-status')).to_have_attribute('data-save-state','offline');choose(a,'Violet',tower);saved(a);cb.set_offline(False);saved(b);expect(event(b,tower)).to_have_attribute('style',re.compile('#A28BC9'));assert next(i for i in state()['items'] if i['id']==tower)['notes']=='Billets conservés pendant la coupure';panel.get_by_role('button',name='Fermer les détails').click();log('offline intent replayed after reconnection; missed remote changes preserved')
+  cb.set_offline(True)
+  event(b,tower).locator('.trip-calendar-event-copy').click()
+  panel=b.locator('.trip-context-panel')
+  panel.get_by_role('button',name='Modifier la photo',exact=True).click()
+  expect(panel.get_by_text('La galerie est indisponible. Vérifiez votre connexion puis réessayez.',exact=True)).to_be_visible()
+  expect(b.locator('.trip-workspace')).to_be_visible()
+  log('optional gallery chunk failure leaves the offline planner and notes available')
+  panel.get_by_label('Notes du voyage',exact=True).fill('Billets conservés pendant la coupure')
+  panel.get_by_role('button',name='Enregistrer les notes',exact=True).click()
+  expect(b.locator('.trip-save-status')).to_have_attribute('data-save-state','offline')
+  choose(a,'Violet',tower);saved(a);cb.set_offline(False);saved(b)
+  expect(event(b,tower)).to_have_attribute('style',re.compile('#A28BC9'))
+  assert next(i for i in state()['items'] if i['id']==tower)['notes']=='Billets conservés pendant la coupure'
+  panel.get_by_role('button',name='Modifier la photo',exact=True).click()
+  expect(b.get_by_role('dialog',name='Choisir une photographie',exact=True)).to_be_visible()
+  b.keyboard.press('Escape')
+  panel.get_by_role('button',name='Fermer les détails').click()
+  log('offline intent replayed after reconnection; missed remote changes preserved and gallery retry succeeded')
   config(delay=500,invalidIds=[tower]);event(b,tower).locator('.trip-event-resize.is-end').press('ArrowDown');choose(a,'Orange',parent);saved(a);expect(b.locator('.trip-workspace').get_by_role('alert')).to_be_visible();expect(event(b,tower)).to_have_attribute('style',re.compile('42px'));expect(event(b,parent)).to_have_attribute('style',re.compile('#D9A16C'));b.get_by_role('button',name='Fermer le message').click();config(delay=2000);log('definitive failure rolled back only its event; independent edit persisted')
   choose(a,'Vert',parent);expect(event(a,parent)).to_have_attribute('style',re.compile('#69AA91'));a.get_by_role('link',name='Tous les voyages',exact=True).click();a.get_by_role('link',name=re.compile('Tokyo, à notre rythme')).first.click();a.get_by_role('tab',name='Calendrier',exact=True).click();expect(event(a,parent)).to_have_attribute('style',re.compile('#69AA91'));saved(a);log('queued save survived internal navigation away and back')
   a.get_by_role('link',name='Tous les voyages',exact=True).click();a.get_by_role('link',name=re.compile('Autre voyage')).first.click();a.get_by_role('tab',name='Calendrier',exact=True).click();expect(a.locator('[data-calendar-item-id]')).to_have_count(1);expect(a.locator('h1')).to_have_text('Autre voyage');log('trip switching isolated the workspace and its queue')
   assert not errors,errors
-  (args.output/'collaboration.json').write_text(json.dumps({'passed':passed,'syncInteractionToRemoteMs':sync_samples,'browserErrors':errors,'transport':'Phoenix transport shim only; production HTTP/SSE handlers and real PostgreSQL migration/RPC/RLS'},indent=2,ensure_ascii=False))
+  (args.output/'collaboration.json').write_text(json.dumps({'passed':passed,'syncInteractionToRemoteMs':sync_samples,'browserErrors':errors,'transport':'Phoenix transport shim only; production HTTP/SSE handlers and real PostgreSQL migration/RPC/RLS'},indent=2,ensure_ascii=False), encoding='utf-8')
  finally:ca.close();cb.close();config();browser.close()

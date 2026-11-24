@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NagiDatabase } from '../packages/database/src/client';
 import { imageMatcherRevision } from '../apps/web/src/features/images/model';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({ from: vi.fn(), update: vi.fn(), resolve: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({ serviceDatabase: () => ({ from: mocks.from }) }));
 vi.mock('@/features/images/proof', () => ({

@@ -6,7 +6,7 @@
   "packageManager": "pnpm@12.21.0",
   "engines": {
     "node": ">=24.0.0",
-    "pnpm": ">=11.0.0"
+    "pnpm": ">=12.21.0 <13"
   },
   "scripts": {
     "preinstall": "node scripts/check-package-manager.mjs",

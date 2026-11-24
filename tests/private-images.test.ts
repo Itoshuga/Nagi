@@ -2,7 +2,6 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 import { isPrivateImage, privateImageLoader } from '../apps/web/src/features/media/private-loader';
 
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const { privateImageResponse } = await import('../apps/web/src/features/media/private-response');
 const sharp = createRequire(new URL('../apps/web/package.json', import.meta.url))('sharp');
 const request = (width: number) => new Request(`https://nagi.test/app/entry-media/test?w=${width}`);

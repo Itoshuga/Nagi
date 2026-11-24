@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const { canonicalImageUrl, serperCandidates, serperQueries, serperImagePage } =
   await import('../apps/web/src/features/images/serper');
 const { imageContextSchema } = await import('../apps/web/src/features/images/model');

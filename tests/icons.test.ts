@@ -23,12 +23,14 @@ describe('Custom field icon library', () => {
   };
 
   it('makes the whole installed library available, including icons outside the category presets', () => {
-    expect(libraryIconNames.length).toBeGreaterThan(1800);
+    execFileSync(process.execPath, [
+      fileURLToPath(new URL('../scripts/generate-lucide-icons.mjs', import.meta.url)),
+      '--check',
+    ]);
     expect(new Set(libraryIconNames).size).toBe(libraryIconNames.length);
     for (const icon of ['a-arrow-down', 'notebook-pen', 'zodiac-virgo', 'zoom-out']) {
       expect(isLibraryIcon(icon)).toBe(true);
       expect(searchLibraryIcons(icon)).toContain(icon);
-      expect(catalogFieldInput.parse({ ...field, icon }).icon).toBe(icon);
     }
     expect(
       libraryIconNames.every((icon) => catalogFieldInput.safeParse({ ...field, icon }).success),

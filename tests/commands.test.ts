@@ -59,8 +59,9 @@ describe('Automatic command loading', () => {
     const dir = await fixture();
     await writeFile(join(dir, 'bad.mjs'), 'export default {name:"bad"}');
     await expect(loadCommands(dir)).rejects.toThrow();
-    await writeFile(join(dir, 'throw.mjs'), 'throw new Error("broken import")');
-    await expect(loadCommands(dir)).rejects.toThrow();
+    const brokenImport = await fixture();
+    await writeFile(join(brokenImport, 'throw.mjs'), 'throw new Error("broken import")');
+    await expect(loadCommands(brokenImport)).rejects.toThrow('Impossible d’importer');
     expect(() =>
       validateCommand(
         command('ping', { data: { toJSON: () => ({ name: 'other', description: 'A command' }) } }),

@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({ read: vi.fn(), select: vi.fn(), broken: vi.fn() }));
 vi.mock('@/features/images/server', () => ({
   readImages: mocks.read,

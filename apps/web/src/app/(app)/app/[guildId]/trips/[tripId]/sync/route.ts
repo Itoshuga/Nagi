@@ -32,8 +32,10 @@ export async function GET(
         { headers },
       );
     }
+    // Finish fallible I/O before allocating stream timers and a Realtime channel.
+    const initialPayload = await enrichTripChanges(initial, catalog, session.db);
     if (!request.headers.get('accept')?.includes('text/event-stream'))
-      return Response.json(await enrichTripChanges(initial, catalog, session.db), { headers });
+      return Response.json(initialPayload, { headers });
     const { data } = await session.db.auth.getSession();
     if (!data.session?.access_token) return new Response(null, { status: 401, headers });
     await session.db.realtime.setAuth(data.session.access_token);
@@ -41,7 +43,7 @@ export async function GET(
       encoder = new TextEncoder();
     let cleanup = () => {};
     const body = new ReadableStream<Uint8Array>({
-      async start(controller) {
+      start(controller) {
         let closed = false,
           cursor = since,
           reading = false,
@@ -99,16 +101,21 @@ export async function GET(
           return;
         }
         request.signal.addEventListener('abort', abort, { once: true });
-        send('change', await enrichTripChanges(initial, catalog, session.db));
+        send('change', initialPayload);
         cursor = initial.version;
         if (closed) return;
-        channel
-          .on('broadcast', { event: 'refresh' }, () => void flush())
-          .on('broadcast', { event: 'image_changed' }, () => send('images', {}))
-          .subscribe((status) => {
-            if (status === 'SUBSCRIBED') void flush();
-            else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) close();
-          });
+        try {
+          channel
+            .on('broadcast', { event: 'refresh' }, () => void flush())
+            .on('broadcast', { event: 'image_changed' }, () => send('images', {}))
+            .subscribe((status) => {
+              if (status === 'SUBSCRIBED') void flush();
+              else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) close();
+            });
+        } catch (error) {
+          close(true);
+          throw error;
+        }
       },
       cancel() {
         cleanup();

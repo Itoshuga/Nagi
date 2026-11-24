@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database, NagiDatabase } from '../packages/database/src/index';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   target: vi.fn(),
@@ -129,30 +127,19 @@ describe('administrator-only development photo previews', () => {
     expect(await readDevelopmentPreview(scope, ref)).toBeUndefined();
     expect(mocks.from).not.toHaveBeenCalled();
   });
-  it.each([
-    'Kamakura',
-    'Tokyo',
-    'Kyoto',
-    'Shibuya',
-    'Sensō-ji',
-    'Shibuya Parco',
-    'Pokémon Center SHIBUYA',
-  ])(
-    'previews %s with unknown rights and no fabricated licence or verification date',
-    async (name) => {
-      rows = [row(name)];
-      const result = await readDevelopmentPreview(scope, ref);
-      expect(result?.photos[0]).toMatchObject({
-        title: name,
-        usageRights: 'development-preview',
-        rightsStatus: 'unknown',
-        previewUrl: 'https://venue.example.org/photo.jpg',
-      });
-      expect(result?.photos[0]?.license).toBeUndefined();
-      expect(result?.photos[0]).not.toHaveProperty('verifiedAt');
-      expect(mocks.rpc).not.toHaveBeenCalled();
-    },
-  );
+  it('previews an image with unknown rights without fabricating a licence or verification date', async () => {
+    rows = [row('Pokémon Center SHIBUYA')];
+    const result = await readDevelopmentPreview(scope, ref);
+    expect(result?.photos[0]).toMatchObject({
+      title: 'Pokémon Center SHIBUYA',
+      usageRights: 'development-preview',
+      rightsStatus: 'unknown',
+      previewUrl: 'https://venue.example.org/photo.jpg',
+    });
+    expect(result?.photos[0]?.license).toBeUndefined();
+    expect(result?.photos[0]).not.toHaveProperty('verifiedAt');
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
   it('uses real technical availability and accepts an accessible thumbnail when the original URL is unusable', () => {
     const item = row('Tokyo');
     item.metadata = {

@@ -4,3 +4,8 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+overrides:
+  # GHSA-g7r4-m6w7-qqqr: tsup's development server on Windows.
+  esbuild@0.27.7: 0.28.2
+  # GHSA-g3hv-75wg-m249: TypeScript ESLint's glob matcher.
+  minimatch@10.2.6: 11.0.1

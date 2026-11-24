@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), config: vi.fn() }));
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 vi.mock('@/lib/supabase/server', () => ({ serviceDatabase: () => ({ rpc: mocks.rpc }) }));
 vi.mock('@/features/integrations/mapbox/config', () => ({ mapboxConfig: mocks.config }));
 const { searchMapbox, resolveMapbox, verifyMapboxReference, retrieveMapboxDetails } =

@@ -139,16 +139,9 @@ describe('Shared travel workspace model', () => {
     ).toContain('22 décembre');
   });
   it('validates bounded map searches and rejects invalid coordinates and identifiers', () => {
-    expect(
-      tripPlaceQuery.safeParse({
-        mode: 'nearby',
-        south: '35',
-        north: '36',
-        west: '139',
-        east: '140',
-      }).success,
-    ).toBe(true);
-    expect(tripPlaceQuery.safeParse({ mode: 'nearby', north: '100' }).success).toBe(false);
+    const viewport = { mode: 'nearby', south: '35', north: '36', west: '139', east: '140' };
+    expect(tripPlaceQuery.safeParse(viewport).success).toBe(true);
+    expect(tripPlaceQuery.safeParse({ ...viewport, north: '100' }).success).toBe(false);
     expect(tripPlaceQuery.safeParse({ entry: 'other-trip' }).success).toBe(false);
   });
   it('uses chronological order within each day while grouping the whole-trip map by day', () => {
