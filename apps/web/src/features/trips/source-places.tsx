@@ -38,12 +38,9 @@ export function MapboxPlaceSearch({
   active,
   filters,
   plan,
-  day,
-  parent,
-  time,
+  placement,
   defaultDuration,
   canAdd,
-  panel,
   add,
   onLoading,
   resultsId,
@@ -53,16 +50,14 @@ export function MapboxPlaceSearch({
   active: boolean;
   filters: MapboxSearchFilters;
   plan: TripPlan;
-  day: string | null;
-  parent?: string;
-  time?: string;
+  placement: CatalogPlacement;
   defaultDuration: number;
   canAdd: boolean;
-  panel: boolean;
   add: SourcePlaceAdder;
   onLoading: (busy: boolean) => void;
   resultsId: string;
 }) {
+  const { day } = placement;
   const session = useExternalPlaces(),
     id = useId();
   const [state, setState] = useState<MapboxSearchState>({ phase: 'idle', places: [] }),
@@ -146,17 +141,17 @@ export function MapboxPlaceSearch({
       setResolving(undefined);
     }
   };
-  const insert = async (place: CatalogPlace, placement: CatalogPlacement) => {
+  const insert = async (place: CatalogPlace, target: CatalogPlacement) => {
     try {
       const result = await add(await reference(place), {
-        ...placement,
-        parent: placement.parent ?? parent,
-        time: placement.time ?? time,
-        duration: placement.duration ?? (placement.time || time ? defaultDuration : null),
+        ...target,
+        duration: target.duration ?? null,
       });
       setError(result.ok ? '' : result.error);
+      return result;
     } catch {
-      /* The targeted resolution error is already displayed; no occurrence exists. */
+      // The targeted resolution error is already displayed; no occurrence exists.
+      return { ok: false as const, error: 'La localisation du lieu est indisponible.' };
     }
   };
   return (
@@ -216,9 +211,9 @@ export function MapboxPlaceSearch({
                 proof: place.proof,
               }}
               plan={plan}
-              initialDay={day}
+              placement={placement}
               defaultDuration={defaultDuration}
-              draggable={panel}
+              draggable
               canAdd={canAdd}
               active={false}
               id={id + '-' + index}
@@ -230,20 +225,12 @@ export function MapboxPlaceSearch({
                 entry={entry}
                 place={place}
                 onClick={() => {
-                  if (panel)
-                    void reference(place)
-                      .then(() => {
-                        const resolved = session?.get(place.id).place;
-                        if (resolved) session?.preview?.(resolved);
-                      })
-                      .catch(() => {});
-                  else if (canAdd)
-                    void insert(place, {
-                      day,
-                      parent,
-                      time,
-                      duration: time ? defaultDuration : null,
-                    });
+                  void reference(place)
+                    .then(() => {
+                      const resolved = session?.get(place.id).place;
+                      if (resolved) session?.preview?.(resolved);
+                    })
+                    .catch(() => {});
                 }}
               />
             </CatalogResult>

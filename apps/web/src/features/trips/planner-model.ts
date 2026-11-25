@@ -26,6 +26,9 @@ export type WorkspaceViewProps = {
   selectedDay: DaySelection;
   selectedItem?: string;
   mutationStates?: Readonly<Record<string, TripEntitySaveState>>;
+  recentItem?: string;
+  catalogOpen?: boolean;
+  catalogPanelId?: string;
   onDay: (day: DaySelection) => void;
   onItinerary: () => void;
   onDetails: (item: TripPlanItem) => void;

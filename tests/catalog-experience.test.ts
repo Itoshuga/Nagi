@@ -37,6 +37,15 @@ const event = (target?: object, y = 112) =>
   }) as unknown as Parameters<typeof catalogPlacement>[2];
 
 describe('Reusable catalogue visit placement', () => {
+  it('keeps an explicitly unknown duration when a quick addition has a time', () => {
+    expect(
+      sourceVisitChange(
+        { source: 'mapbox', placeId: 'mapbox-place-example', query: 'My search' },
+        { day: id(1), time: '14:30', duration: null },
+        id(2),
+      ),
+    ).toMatchObject({ success: true, data: { data: { start_time: '14:30', duration: null } } });
+  });
   it('creates Mapbox calendar occurrences through the same clock placement and clips at midnight', () => {
     const place = {
       source: 'mapbox' as const,

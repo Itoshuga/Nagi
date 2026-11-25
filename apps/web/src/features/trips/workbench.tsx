@@ -89,6 +89,7 @@ import {
   isCatalogDrag,
   isCalendarDrop,
   type CatalogEntry,
+  type CatalogPlacement,
 } from './catalog-drag';
 
 const TripMap = dynamic(() => import('./map'), { ssr: false, loading: () => <LoadingState /> });
@@ -210,19 +211,26 @@ export function TripWorkbench({
   const [day, setDay] = useState<DaySelection>(initialDay),
     [organize, setOrganize] = useState(initialMode !== 'read');
   const [sidebar, setSidebar] = useState(true),
-    [panel, setPanel] = useState<'catalog' | 'detail' | null>(initialItem ? 'detail' : null);
+    [panel, setPanel] = useState<'catalog' | 'detail' | null>(
+      initialEntry ? 'catalog' : initialItem ? 'detail' : null,
+    );
   const [selectedId, setSelectedId] = useState(initialItem),
     [preview, setPreview] = useState<EntryCardRow>();
   const [previewParent, setPreviewParent] = useState<string>();
   const [previewMapbox, setPreviewMapbox] = useState<CatalogPlace>();
-  const previewMapboxPlace = useCallback((place: CatalogPlace) => {
-    setPreview(catalogPlaceEntry(place));
-    setPreviewMapbox(place);
-    setSelectedId(undefined);
-    setPreviewParent(undefined);
-    setPicker(null);
-    setPanel('detail');
-  }, []);
+  const [catalogTarget, setCatalogTarget] = useState<CatalogPlacement>({
+    day: initialDay === 'all' || initialDay === 'pending' ? null : initialDay,
+  });
+  const previewMapboxPlace = useCallback(
+    (place: CatalogPlace) => {
+      setPreview(catalogPlaceEntry(place));
+      setPreviewMapbox(place);
+      setSelectedId(undefined);
+      setPreviewParent(catalogTarget.parent);
+      setPanel('detail');
+    },
+    [catalogTarget.parent],
+  );
   const [replacement, setReplacement] = useState<string>();
   const replacePlace = useCallback((id: string) => {
     setReplacement(id);
@@ -231,11 +239,7 @@ export function TripWorkbench({
   const [expandedStops, setExpandedStops] = useState<Record<string, boolean>>({});
   const toggleStops = (parent: string) =>
     setExpandedStops((current) => ({ ...current, [parent]: !(current[parent] ?? true) }));
-  const [picker, setPicker] = useState<{
-    day: string | null;
-    time?: string;
-    parent?: string;
-  } | null>(initialEntry ? { day: null } : null);
+  const [recentItem, setRecentItem] = useState<string>();
   const [deleteOpen, setDeleteOpen] = useState(false),
     [localError, setLocalError] = useState('');
   const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
@@ -283,18 +287,28 @@ export function TripWorkbench({
     window.history.replaceState(null, '', url);
   }, [view, activeDay, organize, selectedId]);
   useEffect(() => {
-    if (panel) panelRef.current?.focus();
+    if (panel === 'catalog')
+      panelRef.current
+        ?.querySelector<HTMLInputElement>('[aria-label="Rechercher un lieu"]')
+        ?.focus();
+    else if (panel) panelRef.current?.focus();
   }, [panel]);
   useEffect(() => {
     document
       .querySelector('.trip-day-nav-item.is-active')
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeDay]);
+  useEffect(() => {
+    if (!recentItem) return;
+    const timer = setTimeout(() => setRecentItem(undefined), 1500);
+    return () => clearTimeout(timer);
+  }, [recentItem]);
   const execute = (change: TripEdit, version?: number, entry?: EntryCardRow) =>
     queue.enqueue(change, version, entry);
   const mutate: PlanMutation = (change, version, context) =>
     queue.enqueue(change, version, undefined, context);
   const add: PlaceAdder = async (entry, targetDay, time, _repeat, parent, placement) => {
+    if (!editing) return { ok: false, error: 'Ce voyage n’est pas modifiable.' };
     if (replacement) {
       const result = await execute(
         {
@@ -313,7 +327,6 @@ export function TripWorkbench({
       }
       return result;
     }
-    if (!editing) return { ok: false, error: 'Ce voyage n’est pas modifiable.' };
     if (parent && !displayed.items.some((item) => item.id === parent))
       return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
     // One intentional gesture creates one identity. The queue retains it through retries.
@@ -323,6 +336,7 @@ export function TripWorkbench({
       displayed.version,
       entry,
     );
+    if (result.ok) setRecentItem(parent ?? id);
     return { ...result, ...(result.ok ? { id } : {}) };
   };
   const addSource: SourcePlaceAdder = async (place, placement, metadata) => {
@@ -352,12 +366,24 @@ export function TripWorkbench({
         error: parsed.error.issues[0]?.message ?? 'Vérifiez les informations de l’étape.',
       };
     const result = await execute(parsed.data);
+    if (result.ok) setRecentItem(placement.parent ?? id);
     return { ...result, ...(result.ok ? { id } : {}) };
   };
   function openPicker(targetDay: string | null, time?: string) {
     setReplacement(undefined);
+    setSelectedId(undefined);
+    setPreview(undefined);
+    setPreviewMapbox(undefined);
+    setPreviewParent(undefined);
     lastTrigger.current = document.activeElement as HTMLElement;
-    setPicker({ day: targetDay, time });
+    setCatalogTarget({ day: targetDay, time });
+    setPanel('catalog');
+    if (panel === 'catalog')
+      requestAnimationFrame(() =>
+        panelRef.current
+          ?.querySelector<HTMLInputElement>('[aria-label="Rechercher un lieu"]')
+          ?.focus(),
+      );
   }
   function details(item: TripPlanItem) {
     setPreviewMapbox(undefined);
@@ -372,6 +398,11 @@ export function TripWorkbench({
     setPreviewMapbox(undefined);
     setReplacement(undefined);
     setPanel(null);
+    if (initialEntry) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('ajouter');
+      window.history.replaceState(null, '', url);
+    }
     setPreview(undefined);
     setPreviewParent(undefined);
     setSelectedId(undefined);
@@ -379,6 +410,7 @@ export function TripWorkbench({
   }
   function chooseDay(next: DaySelection) {
     setDay(next);
+    setCatalogTarget({ day: next === 'all' || next === 'pending' ? null : next });
     if (
       currentItem &&
       next !== 'all' &&
@@ -406,11 +438,18 @@ export function TripWorkbench({
       lastTrigger.current =
         document.querySelector<HTMLElement>(`[data-activity-id="${parent}"] .trip-step-main`) ??
         lastTrigger.current;
-    setPicker({ day: item.trip_day_id, parent });
+    setReplacement(undefined);
+    setCatalogTarget({ day: item.trip_day_id, parent });
+    setPanel('catalog');
+    if (panel === 'catalog')
+      requestAnimationFrame(() =>
+        panelRef.current
+          ?.querySelector<HTMLInputElement>('[aria-label="Rechercher un lieu"]')
+          ?.focus(),
+      );
   }
   function previewEntry(entry: EntryCardRow, parent?: string) {
     setPreviewMapbox(undefined);
-    setPicker(null);
     setPreview(entry);
     setPreviewParent(parent);
     setSelectedId(undefined);
@@ -425,6 +464,9 @@ export function TripWorkbench({
     selectedDay: activeDay,
     selectedItem: selectedId,
     mutationStates: sync.entityStates,
+    recentItem,
+    catalogOpen: panel === 'catalog',
+    catalogPanelId: `${prefix}-panel`,
     onDay: chooseDay,
     onItinerary: () => setView('itinerary'),
     onDetails: details,
@@ -754,32 +796,22 @@ export function TripWorkbench({
                     <span>{organize ? 'Consulter' : 'Organiser'}</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="trip-icon-button"
-                  aria-label="Explorer le catalogue"
+                <Button
+                  className="trip-primary-add"
+                  aria-label={editing ? 'Ajouter une étape' : 'Explorer le catalogue'}
                   aria-expanded={panel === 'catalog'}
+                  aria-controls={`${prefix}-panel`}
+                  size="sm"
+                  variant={editing ? 'default' : 'secondary'}
                   onClick={() => {
-                    lastTrigger.current = document.activeElement as HTMLElement;
-                    setReplacement(undefined);
-                    setPanel(panel === 'catalog' ? null : 'catalog');
+                    if (panel === 'catalog') closePanel();
+                    else
+                      openPicker(activeDay === 'all' || activeDay === 'pending' ? null : activeDay);
                   }}
                 >
-                  <Compass className="size-4" />
-                </button>
-                {editing && (
-                  <Button
-                    className="trip-primary-add"
-                    aria-label="Ajouter une étape"
-                    size="sm"
-                    onClick={() =>
-                      openPicker(activeDay === 'all' || activeDay === 'pending' ? null : activeDay)
-                    }
-                  >
-                    <Plus className="size-4" />
-                    <span>Ajouter une étape</span>
-                  </Button>
-                )}
+                  <Compass className="size-4" aria-hidden="true" />
+                  <span>{editing ? 'Ajouter une étape' : 'Explorer le catalogue'}</span>
+                </Button>
               </div>
             </div>
             {error && (
@@ -875,6 +907,7 @@ export function TripWorkbench({
                 {panel && (
                   <motion.aside
                     ref={panelRef}
+                    id={`${prefix}-panel`}
                     tabIndex={-1}
                     className="trip-context-panel"
                     aria-label={panel === 'catalog' ? 'Catalogue du voyage' : 'Détails de l’étape'}
@@ -912,20 +945,20 @@ export function TripWorkbench({
                     {panel === 'catalog' ? (
                       <TripPlacePicker
                         addSource={addSource}
-                        key={activeDay}
-                        panel
                         guild={guild}
                         plan={displayed}
                         categories={categories}
-                        initialDay={
-                          activeDay === 'all' || activeDay === 'pending' ? null : activeDay
+                        placement={catalogTarget}
+                        onDayChange={(next) =>
+                          setCatalogTarget((current) => ({ ...current, day: next, before: null }))
                         }
+                        initialEntry={initialEntry}
                         add={add}
                         mutate={mutate}
                         busy={busy}
                         canAdd={editing}
                         onClose={closePanel}
-                        onPreview={previewEntry}
+                        onPreview={(entry) => previewEntry(entry, catalogTarget.parent)}
                       />
                     ) : detailEntry ? (
                       <TripPlaceDetails
@@ -965,31 +998,6 @@ export function TripWorkbench({
                 )}
               </AnimatePresence>
             </div>
-            {picker && editing && (
-              <TripPlacePicker
-                addSource={addSource}
-                guild={guild}
-                plan={displayed}
-                categories={categories}
-                initialDay={picker.day}
-                initialTime={picker.time}
-                parentId={picker.parent}
-                initialEntry={initialEntry}
-                add={add}
-                mutate={mutate}
-                busy={busy}
-                onClose={() => {
-                  setPicker(null);
-                  requestAnimationFrame(returnFocus);
-                  if (initialEntry) {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete('ajouter');
-                    window.history.replaceState(null, '', url);
-                  }
-                }}
-                onPreview={(entry) => previewEntry(entry, picker.parent)}
-              />
-            )}
             {deleteOpen && (
               <DeleteTripDialog
                 guild={guild}

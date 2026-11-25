@@ -58,7 +58,7 @@ if(location.search.includes('full')||location.search.includes('group')||location
 const extra=location.search.includes('moves')?[{...rootItem,id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',entry:{...catalog[0],title:'Musée'},notes:'Autre visite',start_time:'17:00',estimated_duration_minutes:60,sort_order:2048,stops:[]}]:location.search.includes('drag')||location.search.includes('group')?[{...rootItem,id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',entry_id:catalog[1].id,entry:catalog[1],notes:'Billet réservé · étage 6',start_time:'15:00',estimated_duration_minutes:40,sort_order:2048,stops:[]}]:[];window.__changes=[];window.__plan={id:ids.trip,guild_id:ids.guild,title:'Tokyo, à notre rythme',description:'',cover_image_url:null,created_by:ids.viewer,created_at:now,updated_at:now,start_date:'2027-07-12',end_date:'2027-07-13',status:'planned',collaboration_mode:'all_members',timezone:'Asia/Tokyo',destination_country_id:catalog[0].country.id,destination:{...catalog[0].country,iso_code:'JP',is_published:true,cover_image_url:null},version:0,items:[rootItem,...extra],days:[{id:ids.day1,trip_id:ids.trip,day_number:1,title:'Shibuya',date:'2027-07-12',sort_order:0,created_at:now,updated_at:now},{id:ids.day2,trip_id:ids.trip,day_number:2,title:'Tokyo',date:'2027-07-13',sort_order:1,created_at:now,updated_at:now}],organizers:[{user_id:ids.viewer}],people:[{id:ids.viewer,username:'iris',display_name:'Iris Martin',avatar_url:null}],connections:[]};
 window.__edit=async(version,change,entry)=>{window.__changes.push(change);if(window.__failNext){window.__failNext=false;return {ok:false,error:'Échec simulé'}}const plan=optimisticTripChange(window.__plan,change,ids.viewer,entry??catalog.find(e=>e.id===change.data.entry));window.__plan={...plan,version:plan.version+1};window.__updatePlan(window.__plan);return {ok:true,version:window.__plan.version}};
 window.__searches=[];window.__externalRequests=[];window.__imageRequests=[];const originalFetch=window.fetch;window.fetch=function(url,options){if(String(url).endsWith('/external')&&options?.body)window.__externalRequests.push(JSON.parse(options.body));if(String(url).endsWith('/images')&&options?.body)window.__imageRequests.push(JSON.parse(options.body));return Reflect.apply(originalFetch,this,[url,options])};
-function App(){const[plan,setPlan]=useState(window.__plan);window.__updatePlan=setPlan;return <div className="nagi-space"><main className="app-container app-content py-10"><TripWorkbench guild={ids.guild} plan={plan} viewerId={ids.viewer} categories={[catalog[0].category]} canEdit canManage initialDay={ids.day1}/></main></div>}
+function App(){const[plan,setPlan]=useState(window.__plan);window.__updatePlan=setPlan;return <div className="nagi-space"><main className="app-container app-content py-10"><TripWorkbench guild={ids.guild} plan={plan} viewerId={ids.viewer} categories={[catalog[0].category]} canEdit={!location.search.includes('readonly')} canManage={!location.search.includes('readonly')} initialDay={ids.day1}/></main></div>}
 function Fixture(){const id=location.search.includes('economy-busy')?'economy-busy':location.search.includes('economy-failed')?'economy-failed':'economy-cold';const reference={source:'nagi',kind:'city',id};return location.search.includes('economy-')?<div className="nagi-space p-10"><div data-economy-cover><PlaceImage photoReference={reference} className="h-24 w-40"/></div><ImagePicker reference={reference}/></div>:<App/>}createRoot(document.getElementById('root')).render(<Fixture/>);`;
 const actions = `export async function editTrip(g,t,v,c){return window.__edit(v,c)}export async function removeTrip(){return {error:''}}export async function archivePlannedTrip(){return {ok:true,version:0}}export async function tripPlaceOptions(){return []}export async function editableTripOptions(){return []}export async function tripCatalogSearch(){return {rows:[],hasMore:false}}export async function tripRelatedPlaces(){return []}export async function createPlannedTrip(){return {error:''}}`;
 await build({
@@ -123,7 +123,7 @@ await build({
             a.path === 'colors'
               ? "export async function listCalendarColors(){return {ok:true,data:[]}}export async function addCalendarColor(){return {ok:false,error:'fixture'}}export async function removeCalendarColor(){return {ok:true}}"
               : a.path === 'queue'
-                ? "export function useTripMutations(g,plan){return {state:{plan,canEdit:true,canManage:true,pending:0,failed:false,error:'',online:true,connected:true,revoked:false},queue:{enqueue:(c,v,e)=>window.__edit(v,c,e),retry(){},clearError(){}}}}"
+                ? "export function useTripMutations(g,plan,v,canEdit,canManage){return {state:{plan,canEdit,canManage,pending:0,failed:false,error:'',online:true,connected:true,revoked:false},queue:{enqueue:(c,v,e)=>window.__edit(v,c,e),retry(){},clearError(){}}}}"
                 : a.path === 'live'
                   ? 'export function useTripLive(){}'
                   : actions,
@@ -732,18 +732,41 @@ try {
   }
   const card = '.trip-external-result-list li:first-child [data-external-place-card]';
   async function openSearch(query = 'Sensō-ji') {
-    await click('[aria-label="Explorer le catalogue"]');
+    await click('.trip-primary-add');
     await wait('!!document.querySelector(".trip-source-tabs")');
     await fill('[aria-label="Rechercher un lieu"]', query);
     await textClick('Mapbox', 'document.querySelector(".trip-source-tabs")');
     await wait('document.querySelectorAll("[data-external-place-card]").length===2');
   }
   async function key(key, code = key) {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code });
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code });
+    const windowsVirtualKeyCode = { Enter: 13, Escape: 27, Tab: 9, ArrowDown: 40, ArrowUp: 38 }[
+      key
+    ];
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode });
   }
   await nav();
-  await click('[aria-label="Explorer le catalogue"]');
+  assert(
+    await ev(
+      'document.querySelectorAll(".trip-toolbar-actions .trip-primary-add").length===1 && !!document.querySelector(".trip-primary-add .lucide-compass") && !document.querySelector(".trip-toolbar-actions > .trip-icon-button")',
+    ),
+    'one fused Compass button replaces the redundant catalogue icon',
+  );
+  await click('.trip-primary-add');
+  await wait('document.activeElement===document.querySelector(".trip-picker-search input")');
+  assert(
+    await ev(
+      '!document.querySelector(".trip-place-dialog") && !document.querySelector("[role=dialog]") && document.querySelector(".trip-primary-add").getAttribute("aria-expanded")==="true" && document.querySelector(".trip-primary-add").getAttribute("aria-controls")===document.querySelector(".trip-context-panel").id',
+    ),
+    'the fused trigger opens the existing panel with coherent accessibility state, without a modal',
+  );
+  await key('Escape');
+  await wait('!document.querySelector(".trip-context-panel")');
+  assert(
+    await ev('document.activeElement===document.querySelector(".trip-primary-add")'),
+    'closing returns focus to the fused trigger',
+  );
+  await click('.trip-primary-add');
   await fill('[aria-label="Rechercher un lieu"]', 'Sensō-ji');
   await sleep(400);
   assert(
@@ -1010,6 +1033,38 @@ try {
       await ev('document.documentElement.scrollWidth<=innerWidth'),
       'responsive source picker ' + width,
     );
+    assert(
+      await ev(
+        'getComputedStyle(document.querySelector(".trip-primary-add span")).display!=="none"',
+      ),
+      'the fused button keeps its visible label on mobile',
+    );
+    await fill('.trip-picker-target select', ids.day2);
+    const quickBefore = await ev('window.__plan.items.length');
+    await click('.trip-external-result-list li:first-child .trip-picker-add');
+    await wait(`window.__plan.items.length===${quickBefore + 1}`);
+    assert(
+      await ev(
+        'window.__plan.items.at(-1).trip_day_id===' +
+          JSON.stringify(ids.day2) +
+          ' && window.__plan.items.at(-1).estimated_duration_minutes===null && !document.querySelector(".trip-catalog-destination") && !!document.querySelector(".trip-picker-panel") && document.querySelector(".trip-picker-search input").value==="Sensō-ji"',
+      ),
+      'one quick click preserves the day and query, leaves the catalogue open and invents no duration',
+    );
+    await click('.trip-external-result-list li:first-child .trip-picker-add');
+    await wait(`window.__plan.items.length===${quickBefore + 2}`);
+    assert(
+      await ev('new Set(window.__plan.items.map(i=>i.id)).size===window.__plan.items.length'),
+      'quick repeats create independent occurrence IDs',
+    );
+    await click('.trip-external-result-list li:nth-child(2) .trip-picker-add');
+    await wait(`window.__plan.items.length===${quickBefore + 3}`);
+    assert(
+      await ev(
+        'window.__plan.items.at(-1).external_place_id==="mapbox-two" && !!document.querySelector(".trip-picker-panel")',
+      ),
+      'a different place can be added next without closing the catalogue',
+    );
     await click('.trip-external-result-list li:first-child .trip-catalog-action');
     await wait('!!document.querySelector(".trip-catalog-destination")');
     await fill('[aria-label="Destination de la visite"]', ids.day2);
@@ -1021,7 +1076,7 @@ try {
     );
   }
   await nav();
-  await click('[aria-label="Explorer le catalogue"]');
+  await click('.trip-primary-add');
   await fill('[aria-label="Rechercher un lieu"]', 'Tokyo');
   await textClick('Mapbox', 'document.querySelector(".trip-source-tabs")');
   await click('[aria-label="Rechercher un lieu"]');
@@ -1043,6 +1098,30 @@ try {
   await wait('document.querySelector(".trip-mapbox-search").textContent.includes("Aucun lieu")');
   await fill('[aria-label="Rechercher un lieu"]', 'Quota');
   await wait('document.querySelector(".trip-mapbox-search").textContent.includes("Quota atteint")');
+  await nav();
+  await openSearch('ResolutionFail');
+  await click('.trip-external-result-list li:first-child .trip-picker-add');
+  await wait(
+    'document.querySelector(".trip-mapbox-search").textContent.includes("Localisation indisponible")',
+  );
+  assert(
+    await ev(
+      'window.__plan.items.length===1 && !document.querySelector(".trip-picker-add[data-added=true]")',
+    ),
+    'a failed quick resolution neither adds a visit nor reports success',
+  );
+  await nav(1280, 'readonly');
+  await openSearch();
+  assert(
+    await ev(
+      '!document.querySelector(".trip-picker-add,.trip-catalog-action,.trip-catalog-draggable,.trip-add-step")',
+    ),
+    'read-only catalogue has no creation or drag controls',
+  );
+  await ev('document.querySelector(".trip-picker-search input").focus()');
+  await key('Enter');
+  await sleep(400);
+  assert(await ev('window.__changes.length===0'), 'read-only keyboard cannot create a visit');
   const providerRequests = await ev('window.__externalRequests.length');
   for (const id of ['economy-cold', 'economy-busy']) {
     pages++;

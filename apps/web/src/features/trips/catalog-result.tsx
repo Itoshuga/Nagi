@@ -1,10 +1,10 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { MoreHorizontal } from 'lucide-react';
+import { Check, LoaderCircle, MoreHorizontal, Plus } from 'lucide-react';
 import { Button, Input, Popover, PopoverContent, PopoverTrigger, cn } from '@nagi/ui';
 import type { TripPlan } from '@nagi/database';
-import type { TripPlaceReference } from '@nagi/shared';
+import type { TripPlaceReference, TripResult } from '@nagi/shared';
 import { CatalogSelect } from '@/features/catalog/admin-form';
 import { dayLabel } from './add-place-dialog';
 import type { CatalogEntry, CatalogPlacement } from './catalog-drag';
@@ -13,7 +13,7 @@ import { useExternalPlaces } from '@/features/integrations/mapbox/components';
 export function CatalogResult({
   entry,
   plan,
-  initialDay,
+  placement,
   defaultDuration,
   draggable,
   canAdd,
@@ -27,14 +27,14 @@ export function CatalogResult({
 }: {
   entry: CatalogEntry;
   plan: TripPlan;
-  initialDay: string | null;
+  placement: CatalogPlacement;
   defaultDuration: number;
   draggable: boolean;
   canAdd: boolean;
   active: boolean;
   id: string;
   onActive: () => void;
-  insert: (placement: CatalogPlacement) => Promise<void>;
+  insert: (placement: CatalogPlacement) => Promise<TripResult>;
   children: ReactNode;
   reference?: TripPlaceReference;
   onCommit?: () => void | TripPlaceReference | Promise<void | TripPlaceReference>;
@@ -53,15 +53,45 @@ export function CatalogResult({
     disabled: !draggable || !canAdd,
   });
   const [open, setOpen] = useState(false);
-  const [destination, setDestination] = useState(initialDay ?? '');
+  const [destination, setDestination] = useState('');
   const [time, setTime] = useState('');
+  const [pending, setPending] = useState(false),
+    [added, setAdded] = useState(false);
+  const adding = useRef(false);
+  useEffect(() => {
+    if (!added) return;
+    const timer = setTimeout(() => setAdded(false), 1400);
+    return () => clearTimeout(timer);
+  }, [added]);
+  function changeOpen(value: boolean) {
+    if (value) {
+      setDestination(placement.parent ? `stop:${placement.parent}` : (placement.day ?? ''));
+      setTime(placement.time ?? '');
+    }
+    setOpen(value);
+  }
+  async function create(target: CatalogPlacement) {
+    if (adding.current || !canAdd) return;
+    adding.current = true;
+    setPending(true);
+    try {
+      const result = await insert(target);
+      if (result.ok) {
+        setAdded(true);
+        setOpen(false);
+      }
+    } finally {
+      adding.current = false;
+      setPending(false);
+    }
+  }
   const action = (event: React.MouseEvent | React.TouchEvent) =>
     event.nativeEvent
       .composedPath()
       .some(
         (node) =>
           node instanceof Element &&
-          node.matches('.trip-catalog-action,[role="dialog"],input,select,a'),
+          node.matches('.trip-catalog-action,.trip-picker-add,[role="dialog"],input,select,a'),
       );
   return (
     <li
@@ -83,24 +113,58 @@ export function CatalogResult({
       onContextMenu={(e) => {
         if (canAdd && draggable) {
           e.preventDefault();
-          setOpen(true);
+          changeOpen(true);
         }
       }}
       onKeyDown={(e) => {
         if (canAdd && draggable && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
           e.preventDefault();
-          setOpen(true);
+          changeOpen(true);
         }
       }}
     >
       {children}
+      {canAdd && (
+        <button
+          type="button"
+          className="trip-picker-add"
+          aria-label={`Ajouter ${entry.title}`}
+          title={
+            added
+              ? 'Ajouté · Ajouter une autre occurrence'
+              : placement.parent
+                ? 'Ajouter un arrêt à cette activité'
+                : 'Ajouter à la journée choisie'
+          }
+          data-added={added || undefined}
+          aria-disabled={pending}
+          onClick={(event) => {
+            if (event.detail < 2) void create(placement);
+          }}
+          onKeyDown={(event) => {
+            if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
+          }}
+        >
+          {pending ? (
+            <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+          ) : added ? (
+            <Check className="size-4" />
+          ) : (
+            <Plus className="size-4" />
+          )}
+        </button>
+      )}
+      <span className="sr-only" role="status">
+        {added ? `${entry.title} ajouté au voyage.` : ''}
+      </span>
       {draggable && canAdd && (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={changeOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
               className="trip-icon-button trip-catalog-action"
               aria-label={`Ajouter au voyage · ${entry.title}`}
+              disabled={pending}
             >
               <MoreHorizontal className="size-4" />
             </button>
@@ -119,13 +183,16 @@ export function CatalogResult({
                     : undefined;
                   if (destination.startsWith('stop:') && !parent) return;
                   try {
-                    await onCommit?.();
-                    await insert({
+                    await create({
                       day: parent ? parent.trip_day_id : destination || null,
                       parent: parent?.id,
                       time: parent || !time ? undefined : time,
+                      before:
+                        (parent?.id ?? null) === (placement.parent ?? null) &&
+                        (parent ? parent.trip_day_id : destination || null) === placement.day
+                          ? placement.before
+                          : null,
                     });
-                    setOpen(false);
                   } catch {
                     /* Resolution errors remain in the source panel. */
                   }
@@ -180,7 +247,7 @@ export function CatalogResult({
                     />
                   </label>
                 )}
-                <Button size="sm" type="submit">
+                <Button size="sm" type="submit" disabled={pending}>
                   Ajouter au voyage
                 </Button>
               </form>

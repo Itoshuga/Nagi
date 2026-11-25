@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   CornerDownRight,
+  Compass,
   GripVertical,
   MoreHorizontal,
   Pencil,
@@ -145,6 +146,7 @@ export function TripStep({
         isOver && !isDragging && !isNestOver && 'is-drop-over',
         isNestOver && !isDragging && (nestingIssue ? 'is-nesting-blocked' : 'is-nesting-over'),
         selectedItem === item.id && 'is-selected',
+        props.recentItem === item.id && !active && 'is-added',
       )}
     >
       <div className="trip-step-time">
@@ -447,9 +449,11 @@ function DayTimeline({
             type="button"
             className="trip-add-step"
             disabled={props.busy}
+            aria-expanded={props.catalogOpen ?? false}
+            aria-controls={props.catalogPanelId}
             onClick={() => props.onAdd(day?.id ?? null)}
           >
-            <Plus className="size-4" /> Ajouter une étape
+            <Compass className="size-4" aria-hidden="true" /> Ajouter une étape
           </button>
         )}
       </TripDropTarget>
@@ -520,7 +524,15 @@ export function TripItinerary(props: WorkspaceViewProps) {
         <div className="trip-workspace-empty">
           <h2>Le voyage commence avec une idée.</h2>
           <p>Ajoutez une journée, ou gardez des lieux à organiser.</p>
-          {props.canEdit && <Button onClick={() => props.onAdd(null)}>Ajouter une étape</Button>}
+          {props.canEdit && (
+            <Button
+              onClick={() => props.onAdd(null)}
+              aria-expanded={props.catalogOpen ?? false}
+              aria-controls={props.catalogPanelId}
+            >
+              <Compass className="size-4" aria-hidden="true" /> Ajouter une étape
+            </Button>
+          )}
         </div>
       )}
       {selectedDay === 'all' && visibleTripItems(plan, 'pending').length > 0 && (

@@ -41,12 +41,13 @@ export function sourceVisitChange(
       parent: placement.parent,
       before: placement.before ?? null,
       start_time: placement.time ?? null,
-      duration: placement.time
-        ? Math.min(
-            placement.duration ?? 30,
-            1440 - Number(placement.time.slice(0, 2)) * 60 - Number(placement.time.slice(3, 5)),
-          )
-        : (placement.duration ?? null),
+      duration:
+        placement.time && placement.duration !== null
+          ? Math.min(
+              placement.duration ?? 30,
+              1440 - Number(placement.time.slice(0, 2)) * 60 - Number(placement.time.slice(3, 5)),
+            )
+          : (placement.duration ?? null),
       notes: metadata?.notes ?? '',
       color: metadata?.color ?? null,
     },

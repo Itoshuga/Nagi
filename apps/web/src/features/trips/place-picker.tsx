@@ -1,22 +1,12 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Check, LoaderCircle, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
-import {
-  Button,
-  Input,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@nagi/ui';
+import { Check, LoaderCircle, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Button, Input, Popover, PopoverContent, PopoverTrigger } from '@nagi/ui';
 import type { CatalogLocation, EntryCardRow, TripCatalogLink, TripPlan } from '@nagi/database';
 import { CatalogPicker } from '@/features/catalog/picker';
 import { CatalogSelect } from '@/features/catalog/admin-form';
 import { tripPlaceOptions } from './actions';
-import { dayLabel, TripDaySelect } from './add-place-dialog';
+import { TripDaySelect } from './add-place-dialog';
 import type { PlaceAdder, PlanMutation, SourcePlaceAdder } from './planner-model';
 import { CustomStepDialog, MapboxPlaceSearch } from './source-places';
 import { CatalogPlaceCard } from './catalog-place-card';
@@ -26,7 +16,6 @@ import {
 } from '@/features/integrations/mapbox/search-model';
 import { CatalogResult } from './catalog-result';
 import {
-  catalogDuration,
   catalogDurationKey,
   catalogHintKey,
   type CatalogEntry,
@@ -37,37 +26,33 @@ export function TripPlacePicker({
   guild,
   plan,
   categories,
-  initialDay,
-  initialTime,
+  placement,
+  onDayChange,
   initialEntry,
   add,
   mutate,
   busy,
   onClose,
   onPreview,
-  panel = false,
   canAdd = true,
-  parentId,
   addSource,
 }: {
   guild: string;
   plan: TripPlan;
   categories: { id: string; name: string }[];
-  initialDay: string | null;
-  initialTime?: string;
+  placement: CatalogPlacement;
+  onDayChange: (day: string | null) => void;
   initialEntry?: EntryCardRow;
   add: PlaceAdder;
   mutate: PlanMutation;
   busy: boolean;
   onClose: () => void;
   onPreview: (entry: EntryCardRow) => void;
-  panel?: boolean;
   canAdd?: boolean;
-  parentId?: string;
   addSource?: SourcePlaceAdder;
 }) {
-  const [day, setDay] = useState(initialDay ?? ''),
-    [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
+  const { day, time: initialTime, parent: parentId } = placement;
+  const [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
   const [source, setSource] = useState<'nagi' | 'mapbox'>('nagi');
   const [mapboxRequest, setMapboxRequest] = useState({ query: '', nonce: 0 });
   const [mapboxFilters, setMapboxFilters] = useState(defaultMapboxFilters),
@@ -90,12 +75,10 @@ export function TripPlacePicker({
     page: number;
     error?: string;
   }>();
-  const [receipt, setReceipt] = useState<{ id: string; title: string }>(),
+  const [receipt, setReceipt] = useState<{ id: string; title: string; stop: boolean }>(),
     [error, setError] = useState('');
-  const input = useRef<HTMLInputElement>(null),
-    id = useId(),
+  const id = useId(),
     adding = useRef(false);
-  const [viewport, setViewport] = useState<{ height: number; bottom: number }>();
   const parent = plan.items.find((item) => item.id === parentId);
   const [hint, setHint] = useState(false);
   const [defaultDuration, setDefaultDuration] = useState(30);
@@ -116,26 +99,6 @@ export function TripPlacePicker({
       window.removeEventListener('nagi:catalog-dropped', used);
     };
   }, []);
-  useEffect(() => {
-    const visual = window.visualViewport;
-    const update = () => {
-      if (matchMedia('(max-width: 639px)').matches && visual)
-        setViewport({
-          height: visual.height,
-          bottom: Math.max(0, window.innerHeight - visual.height - visual.offsetTop),
-        });
-      else setViewport(undefined);
-    };
-    update();
-    visual?.addEventListener('resize', update);
-    visual?.addEventListener('scroll', update);
-    window.addEventListener('resize', update);
-    return () => {
-      visual?.removeEventListener('resize', update);
-      visual?.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-    };
-  }, []);
   const key = JSON.stringify([
     query.trim(),
     category,
@@ -147,9 +110,6 @@ export function TripPlacePicker({
     retry,
   ]);
   const ready = data?.key === key ? data : undefined;
-  useEffect(() => {
-    input.current?.focus();
-  }, []);
   useEffect(() => {
     const controller = new AbortController();
     if (source !== 'nagi') return () => controller.abort();
@@ -204,76 +164,58 @@ export function TripPlacePicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guild, plan.id, key, page, source]);
   const rows = ready?.rows ?? [];
-  async function insert(entry: CatalogEntry, placement?: CatalogPlacement) {
-    if (adding.current || busy || !canAdd) return;
+  async function insert(entry: CatalogEntry, target: CatalogPlacement) {
+    if (adding.current || busy || !canAdd)
+      return { ok: false as const, error: 'Cet ajout n’est pas disponible.' };
     if (parentId && !parent) {
-      setError('Cette activité ne fait plus partie du voyage.');
-      return;
+      const error = 'Cette activité ne fait plus partie du voyage.';
+      setError(error);
+      return { ok: false as const, error };
     }
     adding.current = true;
     setError('');
     try {
-      const result = await add(
-        entry,
-        placement ? placement.day : parentId ? parent!.trip_day_id : day || null,
-        placement?.time ?? initialTime,
-        undefined,
-        placement?.parent ?? parentId,
-        {
-          ...placement,
-          duration:
-            placement?.time || initialTime
-              ? Math.min(
-                  catalogDuration(entry, defaultDuration),
-                  1440 -
-                    Number((placement?.time ?? initialTime)!.slice(0, 2)) * 60 -
-                    Number((placement?.time ?? initialTime)!.slice(3, 5)),
-                )
-              : null,
-        },
-      );
-      if (result.ok && result.id) setReceipt({ id: result.id, title: entry.title });
+      const time = target.time;
+      const suggested = entry.suggested_duration_minutes;
+      const duration =
+        target.duration !== undefined
+          ? target.duration
+          : suggested && Number.isInteger(suggested) && suggested > 0 && suggested <= 1440
+            ? suggested
+            : null;
+      const result = await add(entry, target.day, time, undefined, target.parent, {
+        before: target.before,
+        duration:
+          time && duration != null
+            ? Math.min(duration, 1440 - Number(time.slice(0, 2)) * 60 - Number(time.slice(3, 5)))
+            : duration,
+      });
+      if (result.ok && result.id)
+        setReceipt({ id: result.id, title: entry.title, stop: !!target.parent });
       else if (!result.ok) setError(result.error);
+      return result;
     } finally {
       adding.current = false;
     }
   }
-  const target = plan.days.find((d) => d.id === day),
-    title = parentId
-      ? (parent?.entry?.title ?? 'Activité indisponible')
-      : target
-        ? dayLabel(target, plan.days)
-        : 'À organiser';
+  const title = parent?.entry?.title ?? (parent ? 'Cette activité' : 'Activité indisponible');
   const heading = (
     <div className="trip-picker-heading">
       <div>
-        {panel ? (
-          <h2>Explorer le catalogue</h2>
-        ) : (
-          <DialogTitle>{parentId ? 'Ajouter un arrêt' : 'Ajouter une étape'}</DialogTitle>
-        )}
-        {panel ? (
-          <p>
-            Catalogue mondial
-            {initialTime ? ` · ${initialTime}` : ''}
-          </p>
-        ) : (
-          <DialogDescription>
-            {title}
-            {initialTime ? ` · ${initialTime}` : ''}
-          </DialogDescription>
-        )}
+        <h2>Explorer le catalogue</h2>
+        <p>
+          {parentId ? `Ajouter un arrêt · ${title}` : 'Catalogue mondial'}
+          {initialTime ? ` · ${initialTime}` : ''}
+        </p>
       </div>
-      {panel && (
-        <button
-          type="button"
-          className="trip-icon-button"
-          aria-label="Fermer le catalogue"
-          onClick={onClose}
-        >
-          <X className="size-4" />
-        </button>
-      )}
+      <button
+        type="button"
+        className="trip-icon-button"
+        aria-label="Fermer le catalogue"
+        onClick={onClose}
+      >
+        <X className="size-4" />
+      </button>
     </div>
   );
   const content = (
@@ -282,7 +224,6 @@ export function TripPlacePicker({
       <div className="trip-picker-search">
         <Search className="size-4 shrink-0" />
         <input
-          ref={input}
           role="combobox"
           aria-label="Rechercher un lieu"
           aria-expanded
@@ -325,12 +266,10 @@ export function TripPlacePicker({
                 onPreview(rows[active]);
                 return;
               }
-              if (panel)
-                document
-                  .getElementById(`${id}-${active}`)
-                  ?.querySelector<HTMLButtonElement>('.trip-catalog-action')
-                  ?.click();
-              else void insert(rows[active]);
+              document
+                .getElementById(`${id}-${active}`)
+                ?.querySelector<HTMLButtonElement>('.trip-picker-add')
+                ?.click();
             }
           }}
         />
@@ -406,6 +345,7 @@ export function TripPlacePicker({
                 <label className="grid gap-1 text-xs font-semibold">
                   Catégorie
                   <CatalogSelect
+                    aria-label="Catégorie"
                     value={category}
                     onChange={(e) => {
                       setCategory(e.target.value);
@@ -484,13 +424,27 @@ export function TripPlacePicker({
                   }}
                 />
                 <small className="text-muted-foreground">
-                  Pour les créneaux sans durée conseillée. Modifiable ensuite.
+                  Pour les lieux glissés dans le calendrier sans durée conseillée.
                 </small>
               </label>
             )}
           </PopoverContent>
         </Popover>
       </div>
+      {canAdd && !parentId && (
+        <div className="trip-picker-target">
+          <label htmlFor={`${id}-target`}>Ajouter à</label>
+          <TripDaySelect
+            id={`${id}-target`}
+            days={plan.days}
+            value={day ?? ''}
+            onChange={(v) => {
+              onDayChange(v || null);
+              setPage(0);
+            }}
+          />
+        </div>
+      )}
       {addSource && (
         <div className="trip-source-tabs" role="tablist" aria-label="Source des lieux">
           {(['nagi', 'mapbox'] as const).map((value) => (
@@ -535,12 +489,9 @@ export function TripPlacePicker({
             onLoading={setMapboxBusy}
             request={mapboxRequest}
             plan={plan}
-            day={day || null}
-            parent={parentId}
-            time={initialTime}
+            placement={placement}
             defaultDuration={defaultDuration}
-            canAdd={canAdd}
-            panel={panel}
+            canAdd={canAdd && !busy && (!parentId || !!parent)}
             add={addSource}
           />
         </div>
@@ -601,21 +552,7 @@ export function TripPlacePicker({
             )}
           </div>
         )}
-        {canAdd && !parentId && !panel && (
-          <div className="trip-picker-target">
-            <label htmlFor={`${id}-target`}>Ajouter à</label>
-            <TripDaySelect
-              id={`${id}-target`}
-              days={plan.days}
-              value={day}
-              onChange={(v) => {
-                setDay(v);
-                setPage(0);
-              }}
-            />
-          </div>
-        )}
-        {panel && canAdd && hint && (
+        {canAdd && hint && (
           <p className="trip-catalog-hint">Glissez un lieu directement dans votre itinéraire.</p>
         )}
         <div className="trip-picker-results">
@@ -634,10 +571,10 @@ export function TripPlacePicker({
                   key={entry.id}
                   entry={entry}
                   plan={plan}
-                  initialDay={day || null}
+                  placement={placement}
                   defaultDuration={defaultDuration}
-                  draggable={panel}
-                  canAdd={canAdd}
+                  draggable
+                  canAdd={canAdd && !busy && (!parentId || !!parent)}
                   active={active === i}
                   id={`${id}-${i}`}
                   onActive={() => setActive(i)}
@@ -650,17 +587,6 @@ export function TripPlacePicker({
                       </em>
                     )}
                   </CatalogPlaceCard>
-                  {canAdd && !panel && (
-                    <button
-                      type="button"
-                      className="trip-picker-add"
-                      disabled={busy || (!!parentId && !parent)}
-                      aria-label={`Ajouter ${entry.title}`}
-                      onClick={() => void insert(entry)}
-                    >
-                      <Plus className="size-4" />
-                    </button>
-                  )}
                 </CatalogResult>
               );
             })}
@@ -710,7 +636,7 @@ export function TripPlacePicker({
           Créer une étape personnalisée
         </button>
       )}
-      {addSource && customOpen && (
+      {addSource && canAdd && customOpen && (
         <CustomStepDialog
           open
           onClose={() => setCustomOpen(false)}
@@ -732,7 +658,7 @@ export function TripPlacePicker({
                 disabled={busy}
                 onClick={async () => {
                   const r = await mutate({
-                    operation: parentId ? 'delete_stop' : 'delete_item',
+                    operation: receipt.stop ? 'delete_stop' : 'delete_item',
                     data: { id: receipt.id },
                   });
                   if (r.ok) setReceipt(undefined);
@@ -763,42 +689,5 @@ export function TripPlacePicker({
       )}
     </>
   );
-  return panel ? (
-    <div className="trip-picker-panel">{content}</div>
-  ) : (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !filtersOpen && !busy) onClose();
-      }}
-    >
-      <DialogContent
-        className="trip-place-dialog"
-        style={
-          viewport
-            ? {
-                height: Math.min(660, viewport.height - 24),
-                maxHeight: viewport.height - 24,
-                bottom: viewport.bottom,
-              }
-            : undefined
-        }
-        closeDisabled={busy}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-          input.current?.focus();
-        }}
-        onEscapeKeyDown={(e) => {
-          if (busy) e.preventDefault();
-          else if (filtersOpen) {
-            e.preventDefault();
-            setFiltersOpen(false);
-          }
-        }}
-      >
-        {content}
-      </DialogContent>
-    </Dialog>
-  );
+  return <div className="trip-picker-panel">{content}</div>;
 }
