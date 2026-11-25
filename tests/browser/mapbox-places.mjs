@@ -826,6 +826,22 @@ try {
   await drag(card, '[aria-label="Détails de PARCO"]');
   await wait('window.__plan.items[0].stops.length===1');
   assert(await ev('window.__plan.items[0].stops[0].source==="mapbox"'), 'nested Mapbox stop');
+  const nestedId = await ev('window.__plan.items[0].stops[0].id');
+  await click(`[data-stop-id="${nestedId}"] .trip-stop-main`);
+  await wait('!!document.querySelector(".trip-external-facts a")');
+  assert(
+    await ev(
+      'document.querySelector(".trip-context-panel").textContent.includes("Sensō-ji") && !!document.querySelector(".trip-detail-content textarea") && !document.querySelector("[role=dialog]")',
+    ),
+    'a Mapbox stop opens the same place details panel, without the stop editing modal',
+  );
+  assert(
+    await ev('window.__changes.length===3'),
+    'opening a stop details panel does not mutate the itinerary',
+  );
+  await click('[aria-label="Fermer les détails"]');
+  await wait('!document.querySelector(".trip-context-panel")');
+  await openSearch();
   const beforeViews = await ev('window.__externalRequests.length');
   await textClick('Calendrier');
   await wait('!!document.querySelector(".trip-calendar")');
@@ -1122,6 +1138,33 @@ try {
   await key('Enter');
   await sleep(400);
   assert(await ev('window.__changes.length===0'), 'read-only keyboard cannot create a visit');
+  for (const [width, fixture] of [
+    [1280, 'full'],
+    [390, 'full-readonly'],
+  ]) {
+    await nav(width, fixture);
+    await click('[data-stop-id] .trip-stop-main');
+    await wait('document.querySelector(".trip-detail-content h3")?.textContent==="Nintendo"');
+    assert(
+      await ev(
+        '!document.querySelector("[role=dialog]") && document.querySelector(".trip-stop-main[aria-pressed=true]") && window.__changes.length===0',
+      ),
+      'a Nagi stop opens its own place details in a panel with no mutation',
+    );
+    if (fixture.includes('readonly'))
+      assert(
+        await ev(
+          '!document.querySelector(".trip-detail-content textarea,.trip-detail-content .trip-time-button")',
+        ),
+        'read-only stop details expose no editing controls',
+      );
+    await key('Escape');
+    await wait('!document.querySelector(".trip-context-panel")');
+    assert(
+      await ev('document.activeElement.matches(".trip-stop-main")'),
+      'closing stop details restores focus to the stop, including on mobile',
+    );
+  }
   const providerRequests = await ev('window.__externalRequests.length');
   for (const id of ['economy-cold', 'economy-busy']) {
     pages++;

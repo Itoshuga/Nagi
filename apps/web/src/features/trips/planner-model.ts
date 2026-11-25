@@ -25,6 +25,7 @@ export type WorkspaceViewProps = {
   mutate: PlanMutation;
   selectedDay: DaySelection;
   selectedItem?: string;
+  selectedStop?: string;
   mutationStates?: Readonly<Record<string, TripEntitySaveState>>;
   recentItem?: string;
   catalogOpen?: boolean;
@@ -32,6 +33,7 @@ export type WorkspaceViewProps = {
   onDay: (day: DaySelection) => void;
   onItinerary: () => void;
   onDetails: (item: TripPlanItem) => void;
+  onStopDetails?: (stop: TripPlanStop) => void;
   onAdd: (day: string | null, time?: string) => void;
   onAddStop: (parent: string) => void;
   expandedStops?: Readonly<Record<string, boolean>>;
@@ -55,10 +57,13 @@ export type TripDetailEntry = Omit<EntryCardRow, 'country' | 'city' | 'category'
   city: EntryCardRow['city'] | null;
   category: EntryCardRow['category'] | null;
 };
-export function unavailableTripEntry(item: TripPlanItem): TripDetailEntry {
+export function unavailableTripEntry(item: TripPlanItem | TripPlanStop): TripDetailEntry {
   return {
     id: item.entry_id ?? item.id,
-    title: 'Fiche indisponible',
+    title:
+      item.source === 'custom'
+        ? (item.custom_title ?? 'Étape personnalisée')
+        : 'Fiche indisponible',
     slug: 'fiche-indisponible',
     summary: '',
     cover_image_url: null,

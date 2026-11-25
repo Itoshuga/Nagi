@@ -18,6 +18,32 @@ with sync_playwright() as p:
  def watch(kind):
   page.evaluate("""kind=>{window.__measure={start:performance.now()};document.addEventListener('pointerup',()=>window.__measure.start=performance.now(),{capture:true,once:true});const get=()=>[...document.querySelectorAll(kind==='day'?'.trip-day-nav-item':'[data-activity-id]')].map(e=>e.textContent+e.getAttribute('data-activity-id')).join();const old=get();const observer=new MutationObserver(()=>{if(get()!==old){window.__measure.visual=performance.now()-window.__measure.start;observer.disconnect()}});observer.observe(document.querySelector('.trip-workspace'),{subtree:true,childList:true,characterData:true})}""",kind)
  try:
+  original_stop=next(s for s in state()['stops'] if s['id']=='dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+  original_parent=next(i for i in state()['items'] if i['id']==original_stop['trip_item_id'])
+  stop_button=page.locator(f'[data-stop-id="{original_stop["id"]}"] .trip-stop-main')
+  stop_button.click()
+  stop_panel=page.locator('.trip-context-panel')
+  expect(stop_panel.locator('h3')).to_have_text('Pokémon Center SHIBUYA')
+  expect(page.locator('.trip-stop-dialog')).to_have_count(0)
+  page.reload(wait_until='domcontentloaded')
+  expect(stop_panel.locator('h3')).to_have_text('Pokémon Center SHIBUYA')
+  stop_panel.get_by_label('Notes de l’arrêt',exact=True).fill('Retrait du billet au sixième étage')
+  stop_panel.get_by_role('button',name='Enregistrer les notes',exact=True).click()
+  expect(page.locator('.trip-save-status')).to_have_attribute('data-save-state','saved',timeout=20000)
+  edited_stop=next(s for s in state()['stops'] if s['id']==original_stop['id'])
+  assert edited_stop['notes']=='Retrait du billet au sixième étage' and edited_stop['duration_minutes']==original_stop['duration_minutes']
+  stop_panel.get_by_role('button',name='Modifier la durée de l’arrêt Pokémon Center SHIBUYA',exact=True).click()
+  stop_duration=page.locator('.trip-quick-editor')
+  stop_duration.get_by_label('Durée (min)',exact=True).fill('35')
+  stop_duration.get_by_role('button',name='Enregistrer',exact=True).click()
+  expect(page.locator('.trip-save-status')).to_have_attribute('data-save-state','saved',timeout=20000)
+  assert next(s for s in state()['stops'] if s['id']==original_stop['id'])['duration_minutes']==35
+  unchanged_parent=next(i for i in state()['items'] if i['id']==original_parent['id'])
+  assert all(unchanged_parent[k]==original_parent[k] for k in ['start_time','end_time','estimated_duration_minutes','notes','calendar_color'])
+  results['stopDetailsAndEditing']=True
+  page.screenshot(path=str(args.output/'stop-details.png'))
+  stop_panel.get_by_role('button',name='Fermer les détails',exact=True).click()
+  expect(stop_button).to_be_focused()
   page.get_by_role('button',name='Ajouter une étape',exact=True).first.click();picker=page.locator('.trip-picker-panel');expect(page.locator('.trip-place-dialog')).to_have_count(0);picker.get_by_role('combobox',name='Ajouter à',exact=True).select_option(days[0]['id']);picker.get_by_role('combobox',name='Rechercher un lieu',exact=True).fill('Nintendo');add=picker.get_by_role('button',name='Ajouter Nintendo TOKYO',exact=True);expect(add).to_be_visible();watch('item');add.click();page.wait_for_function('window.__measure.visual!==undefined');results['addVisualMs']=page.evaluate('window.__measure.visual');picker.get_by_role('button',name='Terminé',exact=True).click();expect(page.locator('.trip-save-status')).to_have_attribute('data-save-state','saving')
   page.get_by_role('button',name='Ajouter une journée',exact=True).click();dialog=page.get_by_role('dialog',name='Ajouter une journée',exact=True);dialog.get_by_label('Titre (facultatif)',exact=True).fill('Journée optimiste');watch('day');dialog.get_by_role('button',name='Ajouter la journée',exact=True).click();page.wait_for_function('window.__measure.visual!==undefined');results['dayVisualMs']=page.evaluate('window.__measure.visual')
   page.get_by_role('button',name='Détails de Nintendo TOKYO',exact=True).click();panel=page.locator('.trip-context-panel')

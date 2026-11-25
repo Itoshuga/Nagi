@@ -16,6 +16,7 @@ import type {
   EntryCardRow,
   TripPlan,
   TripPlanItem,
+  TripPlanStop,
 } from '@nagi/database';
 import {
   catalogButtonsValue,
@@ -31,12 +32,13 @@ import { EntryRichText } from '@/features/entries/rich-text';
 import { entryHref } from '@/features/entries/links';
 import { UserIdentity } from '@/features/profiles/identity';
 import { TripDaySelect } from './add-place-dialog';
-import { ActivityStops } from './activity-stops';
+import { ActivityStops, StopTiming } from './activity-stops';
 import { RemoveTripStepDialog } from './remove-step-dialog';
 import { CalendarColorAction } from './calendar-colors';
 import { CustomPlaceEditor } from './source-places';
 import {
   itemDuration,
+  activityStops,
   minuteTime,
   timeMinutes,
   type PlaceAdder,
@@ -201,6 +203,7 @@ export function TripPlaceDetails({
   plan,
   entry,
   item,
+  stop,
   canEdit,
   busy,
   mutate,
@@ -210,6 +213,8 @@ export function TripPlaceDetails({
   defaultDay = null,
   parentId,
   onAddStop,
+  onStopDetails,
+  selectedStop,
   expandedStops,
   onToggleStops,
   externalPlaceId,
@@ -220,6 +225,7 @@ export function TripPlaceDetails({
   plan: TripPlan;
   entry: TripDetailEntry;
   item?: TripPlanItem;
+  stop?: TripPlanStop;
   canEdit: boolean;
   busy: boolean;
   mutate: PlanMutation;
@@ -229,16 +235,20 @@ export function TripPlaceDetails({
   defaultDay?: string | null;
   parentId?: string;
   onAddStop?: (parent: string) => void;
+  onStopDetails?: (stop: TripPlanStop) => void;
+  selectedStop?: string;
   expandedStops?: Readonly<Record<string, boolean>>;
   onToggleStops?: (parent: string) => void;
   externalPlaceId?: string;
   externalQuery?: string;
   addSource?: import('./planner-model').SourcePlaceAdder;
 }) {
-  const mapboxId = externalPlaceId ?? (item?.source === 'mapbox' ? item.external_place_id : null);
-  const query = externalQuery ?? item?.external_query ?? '';
+  const occurrence = stop ?? item;
+  const mapboxId =
+    externalPlaceId ?? (occurrence?.source === 'mapbox' ? occurrence.external_place_id : null);
+  const query = externalQuery ?? occurrence?.external_query ?? '';
   const external = useExternalPlaces();
-  const imagePresentation = usePlacePresentation(item, item?.entry, true);
+  const imagePresentation = usePlacePresentation(occurrence, occurrence?.entry, true);
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -246,24 +256,28 @@ export function TripPlaceDetails({
     [retry, setRetry] = useState(0);
   const notes = useRef<HTMLTextAreaElement>(null),
     id = useId();
-  const base = useRef({ trip: plan.version, item: item?.version });
+  const base = useRef({ trip: plan.version, item: occurrence?.version });
   const dirtyNotes = useRef(false);
-  const notesBase = useRef(item);
-  const originalNotes = useRef(item?.notes ?? '');
-  const latestNotes = item?.notes,
-    latestVersion = item?.version;
+  const notesBase = useRef(occurrence);
+  const originalNotes = useRef(occurrence?.notes ?? '');
+  const latestNotes = occurrence?.notes,
+    latestVersion = occurrence?.version;
   useEffect(() => {
     if (latestVersion === undefined) return;
     if (!dirtyNotes.current || latestNotes === originalNotes.current) {
       base.current = { trip: plan.version, item: latestVersion };
       if (!dirtyNotes.current) {
         originalNotes.current = latestNotes ?? '';
-        notesBase.current = item;
+        notesBase.current = occurrence;
         if (notes.current) notes.current.value = latestNotes ?? '';
       }
     }
-  }, [plan.version, latestNotes, latestVersion, item]);
+  }, [plan.version, latestNotes, latestVersion, occurrence]);
   const parent = plan.items.find((activity) => activity.id === parentId);
+  const stopTime =
+    stop && parent
+      ? (activityStops(parent).find(({ stop: child }) => child.id === stop.id)?.time ?? null)
+      : null;
   const targetDay = item ? item.trip_day_id : parentId ? (parent?.trip_day_id ?? null) : defaultDay;
   const fullEntry =
     entry.country && entry.city && entry.category
@@ -288,7 +302,7 @@ export function TripPlaceDetails({
   }
   useEffect(() => {
     const controller = new AbortController();
-    if (externalPlaceId || (item?.source && item.source !== 'nagi'))
+    if (externalPlaceId || (occurrence?.source && occurrence.source !== 'nagi'))
       return () => controller.abort();
     fetch(`/app/${guild}/trips/${plan.id}/places?mode=detail&entry=${entry.id}`, {
       signal: controller.signal,
@@ -309,19 +323,19 @@ export function TripPlaceDetails({
           setLoadError('Les informations du lieu sont indisponibles.');
       });
     return () => controller.abort();
-  }, [guild, plan.id, entry.id, retry, item?.source, externalPlaceId]);
-  const person = plan.people.find((p) => p.id === item?.added_by);
+  }, [guild, plan.id, entry.id, retry, occurrence?.source, externalPlaceId]);
+  const person = plan.people.find((p) => p.id === occurrence?.added_by);
   const custom = detail?.entry.custom_values;
-  const photoReference = item
+  const photoReference = occurrence
     ? {
-        source: item.source ?? ('nagi' as const),
+        source: occurrence.source ?? ('nagi' as const),
         id:
-          item.source === 'mapbox'
-            ? item.external_place_id!
-            : item.source === 'custom'
-              ? item.id
-              : item.entry_id!,
-        visit: item.id,
+          occurrence.source === 'mapbox'
+            ? occurrence.external_place_id!
+            : occurrence.source === 'custom'
+              ? occurrence.id
+              : occurrence.entry_id!,
+        visit: occurrence.id,
         proof: imagePresentation.place?.imageProof,
         located: !!imagePresentation.place?.coordinates,
       }
@@ -342,7 +356,7 @@ export function TripPlaceDetails({
       <div className="trip-detail-content">
         {mapboxId ? (
           <ExternalPlaceView
-            occurrence={item?.id ?? `preview:${mapboxId}`}
+            occurrence={occurrence?.id ?? `preview:${mapboxId}`}
             placeId={mapboxId}
             query={query}
             full
@@ -381,6 +395,36 @@ export function TripPlaceDetails({
             </button>
           </QuickStepEditor>
         )}
+        {canEdit && stop && (
+          <StopTiming
+            stop={stop}
+            time={stopTime}
+            plan={plan}
+            canEdit={canEdit}
+            busy={busy}
+            mutate={mutate}
+          >
+            <button
+              type="button"
+              className="trip-detail-schedule"
+              disabled={busy}
+              aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+            >
+              <Clock3 className="size-4" aria-hidden="true" />
+              <span>
+                {stopTime ? `≈ ${stopTime}` : 'Horaire libre'} ·{' '}
+                {formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}
+              </span>
+              <ArrowLeft className="size-3 rotate-180" aria-hidden="true" />
+            </button>
+          </StopTiming>
+        )}
+        {!canEdit && stop && (
+          <p className="text-sm">
+            {stopTime ? `≈ ${stopTime}` : 'Horaire libre'} ·{' '}
+            {formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}
+          </p>
+        )}
         {!canEdit && item && (
           <p className="text-sm">
             {formatTripTime(item.start_time) ?? 'Horaire libre'}
@@ -388,19 +432,25 @@ export function TripPlaceDetails({
           </p>
         )}
         {canEdit && item && <CalendarColorAction item={item} />}
-        {item?.source === 'custom' && item.custom_location && (
-          <p className="trip-detail-location">{item.custom_location}</p>
+        {occurrence?.source === 'custom' && occurrence.custom_location && (
+          <p className="trip-detail-location">{occurrence.custom_location}</p>
         )}
-        {item?.needs_place_relink && (
+        {occurrence?.needs_place_relink && (
           <Alert>
             Associez un nouveau lieu à cette étape. Vos horaires, notes, couleurs et arrêts ont été
             conservés.
           </Alert>
         )}
-        {canEdit && item && item.source !== 'nagi' && <ReplaceExternalPlace id={item.id} />}
-        {canEdit && item?.source === 'custom' && <CustomPlaceEditor place={item} mutate={mutate} />}
+        {canEdit && occurrence && (occurrence.source ?? 'nagi') !== 'nagi' && (
+          <ReplaceExternalPlace id={occurrence.id} />
+        )}
+        {canEdit && occurrence?.source === 'custom' && (
+          <CustomPlaceEditor place={occurrence} mutate={mutate} />
+        )}
         {parentId && (
-          <p className="trip-stop-help">Ajout dans {parent?.entry?.title ?? 'cette activité'}.</p>
+          <p className="trip-stop-help">
+            {stop ? 'Arrêt de' : 'Ajout dans'} {parent?.entry?.title ?? 'cette activité'}.
+          </p>
         )}
         {item && (
           <ActivityStops
@@ -410,34 +460,46 @@ export function TripPlaceDetails({
             busy={busy}
             mutate={mutate}
             onAdd={onAddStop ? () => onAddStop(item.id) : undefined}
+            onDetails={onStopDetails}
+            selectedStop={selectedStop}
             always
             expanded={expandedStops?.[item.id]}
             onExpandedChange={onToggleStops ? () => onToggleStops(item.id) : undefined}
           />
         )}
-        {item && (
+        {occurrence && (
           <section className="trip-detail-section">
-            <h4>Notes du voyage</h4>
+            <h4>{stop ? 'Notes de l’arrêt' : 'Notes du voyage'}</h4>
             {canEdit ? (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const expectedItemVersion = base.current.item!;
-                  const original = notesBase.current ?? item;
+                  const original = notesBase.current ?? occurrence;
                   const result = await mutate(
-                    {
-                      operation: 'edit_item',
-                      data: {
-                        id: item.id,
-                        item_version: base.current.item!,
-                        start_time: original.start_time?.slice(0, 5) ?? null,
-                        end_time: original.end_time?.slice(0, 5) ?? null,
-                        duration: original.estimated_duration_minutes,
-                        notes: notes.current?.value ?? '',
-                      },
-                    },
+                    'trip_item_id' in original
+                      ? {
+                          operation: 'edit_stop',
+                          data: {
+                            id: original.id,
+                            stop_version: base.current.item!,
+                            duration: original.duration_minutes,
+                            notes: notes.current?.value ?? '',
+                          },
+                        }
+                      : {
+                          operation: 'edit_item',
+                          data: {
+                            id: original.id,
+                            item_version: base.current.item!,
+                            start_time: original.start_time?.slice(0, 5) ?? null,
+                            end_time: original.end_time?.slice(0, 5) ?? null,
+                            duration: original.estimated_duration_minutes,
+                            notes: notes.current?.value ?? '',
+                          },
+                        },
                     base.current.trip,
-                    { item: original },
+                    'trip_item_id' in original ? { stop: original } : { item: original },
                   );
                   if (result.ok) {
                     setError('');
@@ -449,18 +511,18 @@ export function TripPlaceDetails({
                 }}
               >
                 <Label htmlFor={id} className="sr-only">
-                  Notes du voyage
+                  {stop ? 'Notes de l’arrêt' : 'Notes du voyage'}
                 </Label>
                 <CatalogTextarea
                   ref={notes}
                   id={id}
-                  defaultValue={item.notes}
+                  defaultValue={occurrence.notes}
                   maxLength={4000}
                   placeholder="Billets, accès, idées à garder…"
                   onFocus={() => {
                     if (!dirtyNotes.current) {
-                      base.current = { trip: plan.version, item: item.version };
-                      notesBase.current = item;
+                      base.current = { trip: plan.version, item: occurrence.version };
+                      notesBase.current = occurrence;
                     }
                   }}
                   onChange={() => {
@@ -475,7 +537,8 @@ export function TripPlaceDetails({
               </form>
             ) : (
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {item.notes || 'Aucune note pour cette étape.'}
+                {occurrence.notes ||
+                  (stop ? 'Aucune note pour cet arrêt.' : 'Aucune note pour cette étape.')}
               </p>
             )}
           </section>
@@ -595,7 +658,7 @@ export function TripPlaceDetails({
             Consulter la fiche complète <ArrowUpRight className="size-3.5" />
           </Link>
         )}
-        {!item && canEdit && fullEntry && (
+        {!occurrence && canEdit && fullEntry && (
           <Button disabled={busy} onClick={() => void addEntry(fullEntry)}>
             {present(entry.id)
               ? 'Ajouter une autre visite'
@@ -604,7 +667,7 @@ export function TripPlaceDetails({
                 : 'Ajouter une étape'}
           </Button>
         )}
-        {!item && canEdit && externalPlaceId && addSource && (
+        {!occurrence && canEdit && externalPlaceId && addSource && (
           <Button
             onClick={async () => {
               const result = await addSource(await external!.reference(externalPlaceId, query), {

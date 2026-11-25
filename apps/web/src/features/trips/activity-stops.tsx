@@ -65,6 +65,7 @@ function StopCard({
   canEdit,
   busy,
   children,
+  selected,
 }: {
   stop: TripPlanStop;
   parent: TripPlanItem;
@@ -72,6 +73,7 @@ function StopCard({
   canEdit: boolean;
   busy: boolean;
   children: React.ReactNode;
+  selected?: boolean;
 }) {
   const instance = useId();
   const { active } = useDndContext();
@@ -99,6 +101,7 @@ function StopCard({
         'trip-step trip-stop',
         canEdit && !busy && 'trip-card-can-drag',
         isDragging && 'is-dragging',
+        selected && 'is-selected',
         isOver && !isDragging && (issue ? 'is-nesting-blocked' : 'is-drop-over'),
       )}
       {...cardListeners}
@@ -124,13 +127,14 @@ function StopCard({
   );
 }
 
-function StopTiming({
+export function StopTiming({
   stop,
   time,
   plan,
   canEdit,
   busy,
   mutate,
+  children,
 }: {
   stop: TripPlanStop;
   time: string | null;
@@ -138,6 +142,7 @@ function StopTiming({
   canEdit: boolean;
   busy: boolean;
   mutate: PlanMutation;
+  children?: React.ReactNode;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -176,15 +181,17 @@ function StopTiming({
       }}
     >
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="trip-time-button trip-time-stack"
-          disabled={busy}
-          aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
-          title={time ? 'Horaire indicatif · Modifier la durée' : 'Définir une durée'}
-        >
-          {label}
-        </button>
+        {children ?? (
+          <button
+            type="button"
+            className="trip-time-button trip-time-stack"
+            disabled={busy}
+            aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+            title={time ? 'Horaire indicatif · Modifier la durée' : 'Définir une durée'}
+          >
+            {label}
+          </button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         className="trip-quick-editor"
@@ -483,6 +490,8 @@ export function ActivityStops({
   always = false,
   expanded: controlledExpanded,
   onExpandedChange,
+  onDetails,
+  selectedStop,
 }: {
   item: TripPlanItem;
   plan: TripPlan;
@@ -493,6 +502,8 @@ export function ActivityStops({
   always?: boolean;
   expanded?: boolean;
   onExpandedChange?: () => void;
+  onDetails?: (stop: TripPlanStop) => void;
+  selectedStop?: string;
 }) {
   const id = useId();
   const { active } = useDndContext();
@@ -669,6 +680,7 @@ export function ActivityStops({
                 plan={plan}
                 canEdit={canEdit && expanded}
                 busy={busy}
+                selected={selectedStop === stop.id}
               >
                 <div className="trip-step-time">
                   <StopTiming
@@ -688,8 +700,11 @@ export function ActivityStops({
                 <button
                   type="button"
                   className="trip-step-main trip-stop-main"
-                  onClick={() => setEditor({ id: stop.id, removing: false })}
+                  onClick={() =>
+                    onDetails ? onDetails(stop) : setEditor({ id: stop.id, removing: false })
+                  }
                   disabled={busy}
+                  aria-pressed={selectedStop === stop.id}
                   aria-label={`Détails de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
                 >
                   <ActivityCardCopy entry={stop.entry} notes={stop.notes} place={stop}>

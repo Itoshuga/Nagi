@@ -430,6 +430,8 @@ function DayTimeline({
               busy={props.busy}
               mutate={props.mutate}
               onAdd={() => props.onAddStop(item.id)}
+              onDetails={props.onStopDetails}
+              selectedStop={props.selectedStop}
               expanded={props.expandedStops?.[item.id]}
               onExpandedChange={
                 props.onToggleStops ? () => props.onToggleStops!(item.id) : undefined

@@ -267,8 +267,11 @@ export function TripWorkbench({
   const editing = canEdit && organize,
     path = `/app/${guild}/trips/${plan.id}`;
   const currentItem = displayed.items.find((i) => i.id === selectedId);
+  const currentParent = displayed.items.find((i) => i.stops.some((stop) => stop.id === selectedId));
+  const currentStop = currentParent?.stops.find((stop) => stop.id === selectedId);
+  const occurrence = currentStop ?? currentItem;
   const detailEntry =
-    preview ?? currentItem?.entry ?? (currentItem ? unavailableTripEntry(currentItem) : undefined);
+    preview ?? occurrence?.entry ?? (occurrence ? unavailableTripEntry(occurrence) : undefined);
   const dragVersion = useRef(plan.version);
   const lastTrigger = useRef<HTMLElement | null>(null),
     panelRef = useRef<HTMLElement>(null);
@@ -385,7 +388,7 @@ export function TripWorkbench({
           ?.focus(),
       );
   }
-  function details(item: TripPlanItem) {
+  function details(item: TripPlanItem | TripPlanStop) {
     setPreviewMapbox(undefined);
     setReplacement(undefined);
     lastTrigger.current = document.activeElement as HTMLElement;
@@ -412,9 +415,9 @@ export function TripWorkbench({
     setDay(next);
     setCatalogTarget({ day: next === 'all' || next === 'pending' ? null : next });
     if (
-      currentItem &&
+      (currentItem || currentParent) &&
       next !== 'all' &&
-      currentItem.trip_day_id !== (next === 'pending' ? null : next)
+      (currentItem ?? currentParent)!.trip_day_id !== (next === 'pending' ? null : next)
     ) {
       setSelectedId(undefined);
       if (panel === 'detail') {
@@ -424,9 +427,15 @@ export function TripWorkbench({
     }
   }
   function returnFocus() {
+    const occurrenceTrigger = selectedId
+      ? document.querySelector<HTMLElement>(
+          `[data-stop-id="${selectedId}"] .trip-stop-main, [data-activity-id="${selectedId}"] .trip-step-main`,
+        )
+      : null;
     const target = lastTrigger.current?.isConnected
       ? lastTrigger.current
-      : document.querySelector<HTMLElement>('.trip-primary-add, .trip-day-nav-item.is-active');
+      : (occurrenceTrigger ??
+        document.querySelector<HTMLElement>('.trip-primary-add, .trip-day-nav-item.is-active'));
     target?.focus();
   }
   function openStopPicker(parent: string) {
@@ -462,7 +471,8 @@ export function TripWorkbench({
     busy,
     mutate,
     selectedDay: activeDay,
-    selectedItem: selectedId,
+    selectedItem: currentParent?.id ?? selectedId,
+    selectedStop: currentStop?.id,
     mutationStates: sync.entityStates,
     recentItem,
     catalogOpen: panel === 'catalog',
@@ -470,6 +480,7 @@ export function TripWorkbench({
     onDay: chooseDay,
     onItinerary: () => setView('itinerary'),
     onDetails: details,
+    onStopDetails: details,
     onAdd: openPicker,
     onAddStop: openStopPicker,
     expandedStops,
@@ -965,11 +976,12 @@ export function TripWorkbench({
                         externalPlaceId={preview ? previewMapbox?.id : undefined}
                         externalQuery={preview ? previewMapbox?.query : undefined}
                         addSource={addSource}
-                        key={currentItem?.id ?? detailEntry.id}
+                        key={occurrence?.id ?? detailEntry.id}
                         guild={guild}
                         plan={displayed}
                         entry={detailEntry}
                         item={preview ? undefined : currentItem}
+                        stop={preview ? undefined : currentStop}
                         defaultDay={
                           activeDay === 'all' || activeDay === 'pending' ? null : activeDay
                         }
@@ -979,10 +991,12 @@ export function TripWorkbench({
                         add={add}
                         onClose={closePanel}
                         onPreview={(entry) =>
-                          previewEntry(entry, preview ? previewParent : undefined)
+                          previewEntry(entry, preview ? previewParent : currentParent?.id)
                         }
-                        parentId={preview ? previewParent : undefined}
+                        parentId={preview ? previewParent : currentParent?.id}
                         onAddStop={openStopPicker}
+                        onStopDetails={details}
+                        selectedStop={currentStop?.id}
                         expandedStops={expandedStops}
                         onToggleStops={toggleStops}
                       />
