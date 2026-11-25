@@ -362,6 +362,7 @@ export function DestinationForm({
               <div className="space-y-2 border-t border-border pt-4">
                 <p className="text-sm font-semibold">Photographie de couverture</p>
                 <ImagePicker
+                  currentSrc={initial.cover_image_url}
                   reference={{
                     source: 'nagi',
                     id: initial.id,

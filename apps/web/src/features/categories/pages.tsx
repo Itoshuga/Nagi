@@ -57,7 +57,10 @@ export async function AdminCategory({ id }: { id?: string }) {
               className="aspect-[16/7] rounded-2xl"
               credits="dialog"
             />
-            <ImagePicker reference={{ source: 'nagi', kind: 'category', id: category.id }} />
+            <ImagePicker
+              reference={{ source: 'nagi', kind: 'category', id: category.id }}
+              category={category.name}
+            />
           </Card>
           <CategoryFields categoryId={category.id} fields={fields} />
           <CategoryRemoval category={category} categories={categories} count={usage?.count ?? 0} />

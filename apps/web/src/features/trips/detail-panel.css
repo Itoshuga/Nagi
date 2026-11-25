@@ -55,12 +55,6 @@
     var(--muted)
   );
 }
-.trip-detail-hero button {
-  font-size: 10px;
-  line-height: 1.6;
-  padding: 4px 9px;
-  background: #142b48b8;
-}
 .trip-detail-content .trip-detail-identity-copy {
   display: grid;
   justify-items: start;

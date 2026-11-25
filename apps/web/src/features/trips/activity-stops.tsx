@@ -380,7 +380,13 @@ function StopEditor({
             className="trip-detail-photo"
           />
         )}
-        {!removing && canEdit && <ImagePicker reference={photoReference} />}
+        {!removing && canEdit && (
+          <ImagePicker
+            reference={photoReference}
+            currentSrc={stop.entry?.cover_image_url}
+            category={stop.entry?.category?.name}
+          />
+        )}
         {!removing && canEdit && stop.source === 'custom' && (
           <CustomPlaceEditor place={stop} mutate={mutate} />
         )}

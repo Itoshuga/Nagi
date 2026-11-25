@@ -587,7 +587,12 @@ export function TripPlaceDetails({
                   </CalendarColorAction>
                 )}
                 {photoReference && (
-                  <ImagePicker reference={photoReference} className="trip-detail-action">
+                  <ImagePicker
+                    reference={photoReference}
+                    currentSrc={entry.cover_image_url}
+                    category={category}
+                    className="trip-detail-action"
+                  >
                     <DetailActionContent
                       icon={ImagePlus}
                       label="Modifier la photo"

@@ -234,7 +234,11 @@ export function EntryForm({
                     credits="dialog"
                     className="aspect-[16/9] rounded-2xl"
                   />
-                  <ImagePicker reference={{ source: 'nagi', id: entry.id }} />
+                  <ImagePicker
+                    reference={{ source: 'nagi', id: entry.id }}
+                    currentSrc={entry.cover_image_url}
+                    category={entry.category?.name}
+                  />
                 </Card>
               )}
               {media}

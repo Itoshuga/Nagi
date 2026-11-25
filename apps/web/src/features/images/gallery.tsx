@@ -1,6 +1,15 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ExternalLink, Info, Loader2, Search } from 'lucide-react';
+import {
+  Check,
+  ExternalLink,
+  Image as ImageIcon,
+  Info,
+  Loader2,
+  Search,
+  Shapes,
+  Sparkles,
+} from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -12,7 +21,7 @@ import {
   cn,
 } from '@nagi/ui';
 import { EntryImage } from '@/features/media/image';
-import { useResolvedImage, PhotoAttribution } from './components';
+import { useResolvedImage, PhotoAttribution, PhotoStatus } from './components';
 import type {
   DiscoveryCandidate,
   ImageGallery,
@@ -21,15 +30,20 @@ import type {
   PersistentImage,
   PreviewImage,
 } from './model';
-import { imageRightsLabels as rightsLabels } from './model';
+import { imageRightsLabels as rightsLabels, isTemporaryImage, isOpenImage } from './model';
+import { PlacePlaceholder } from './place-placeholder';
 export function ImageGalleryPicker({
   reference,
   disabled = false,
   initiallyOpen = false,
   className,
   children,
+  currentSrc,
+  category,
 }: {
   reference: ImageReference;
+  currentSrc?: string | null;
+  category?: string;
   disabled?: boolean;
   initiallyOpen?: boolean;
   className?: string;
@@ -44,13 +58,12 @@ export function ImageGalleryPicker({
     [indexing, setIndexing] = useState(false),
     [saving, setSaving] = useState(false);
   const [chosen, setChosen] = useState<PersistentImage | PreviewImage>(),
-    [inspected, setInspected] = useState<DiscoveryCandidate>();
+    [inspected, setInspected] = useState<DiscoveryCandidate>(),
+    [inspectedPhoto, setInspectedPhoto] = useState<PersistentImage>();
   const readAbort = useRef<AbortController | null>(null),
     indexAbort = useRef<AbortController | null>(null);
   const inspector = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    inspector.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [inspected?.id]);
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const initialIndex = useRef(false),
     indexAction = useRef<() => Promise<void>>(async () => {});
   const encoded = JSON.stringify(reference);
@@ -159,6 +172,7 @@ export function ImageGalleryPicker({
       setIndexing(false);
       setChosen(undefined);
       setInspected(undefined);
+      setInspectedPhoto(undefined);
       initialIndex.current = false;
     }
     setOpen(value);
@@ -235,6 +249,38 @@ export function ImageGalleryPicker({
   const fallbacks = (gallery?.fallbacks ?? [])
     .filter((photo) => !candidateIds.has(photo.id))
     .slice(0, 10 - candidates.length);
+  const currentMode = (previewEnabled ? result?.previewMode : result?.mode) ?? 'automatic';
+  const currentImage = result?.coverHidden || currentMode === 'fallback' ? null : result?.selected;
+  const currentSource =
+    result?.coverHidden ||
+    result?.mode === 'fallback' ||
+    (result?.mode === 'manual' && !currentImage)
+      ? undefined
+      : (currentImage?.thumbnailUrl ?? currentSrc);
+  const modeLabel =
+    currentMode === 'fallback'
+      ? 'Pictogramme'
+      : currentMode === 'published'
+        ? 'Couverture publiée'
+        : currentMode === 'manual'
+          ? 'Photo personnalisée'
+          : 'Choix automatique';
+  const detailedPhoto = inspectedPhoto ?? chosen ?? currentImage;
+  useEffect(() => {
+    if (inspector.current) inspector.current.scrollTop = 0;
+  }, [inspected?.id, detailedPhoto?.id]);
+  function focusInformation() {
+    requestAnimationFrame(() => {
+      inspector.current?.focus({ preventScroll: true });
+      if (window.matchMedia('(max-width: 760px)').matches)
+        inspector.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
+  }
+  function inspect(item: DiscoveryCandidate) {
+    setInspected(item);
+    // Only an explicit Information action moves focus; selecting a card never jumps.
+    focusInformation();
+  }
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -242,6 +288,7 @@ export function ImageGalleryPicker({
           type="button"
           variant="secondary"
           className={className}
+          ref={trigger}
           aria-label="Modifier la photo"
           disabled={disabled}
           onClick={() => {
@@ -256,195 +303,269 @@ export function ImageGalleryPicker({
       </div>
       <Dialog open={open} onOpenChange={close}>
         <DialogContent
-          className="flex max-h-[90dvh] max-w-5xl flex-col overflow-hidden p-0"
+          className="nagi-photo-dialog nagi-photo-picker"
           closeDisabled={saving}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            trigger.current?.focus();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (saving) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (saving) event.preventDefault();
+          }}
         >
-          <header className="shrink-0 space-y-2 border-b border-border px-5 pb-4 pt-6 sm:px-7">
-            <DialogTitle className="pr-8 font-display text-xl font-extrabold">
-              Choisir une photographie
-            </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
+          <header className="nagi-photo-header">
+            <DialogTitle>Choisir une photographie</DialogTitle>
+            <DialogDescription>
               {reference.visit
-                ? 'Ce choix concerne uniquement cette visite.'
-                : 'La couverture du catalogue reste indépendante des voyages.'}{' '}
-              {previewEnabled
-                ? 'Aperçu de développement, visible uniquement par vous. La couverture publiée reste inchangée.'
-                : 'Les images à vérifier restent dans la galerie sans être publiées.'}
+                ? 'Personnalisez la photo de cette visite uniquement.'
+                : 'Choisissez la couverture de ce lieu dans le catalogue.'}
             </DialogDescription>
-            <div className="relative pt-2">
-              <Search
-                aria-hidden="true"
-                className="absolute left-3 top-5 size-4 text-muted-foreground"
-              />
-              <Input
-                className="pl-9"
-                value={filter}
-                disabled={indexing}
-                onChange={(event) => {
-                  setFilter(event.target.value);
-                }}
-                placeholder="Rechercher parmi les résultats…"
-                aria-label="Rechercher parmi les photographies"
-              />
-            </div>
           </header>
-          <div className="min-h-0 space-y-5 overflow-y-auto p-5 sm:p-7">
-            {loading && !gallery && (
-              <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Chargement de la galerie…
-              </p>
+          <div className="nagi-photo-toolbar">
+            <Search aria-hidden="true" size={16} />
+            <Input
+              value={filter}
+              disabled={indexing}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Rechercher dans la galerie…"
+              aria-label="Rechercher parmi les photographies"
+            />
+            {(loading || indexing) && (
+              <Loader2 aria-label="Chargement" size={16} className="animate-spin" />
             )}
-            {!!gallery?.items.length && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {candidates.map((item) => {
-                  const selectable = previewEnabled ? (item.preview ?? item.photo) : item.photo;
-                  return (
-                    <div
-                      key={item.id}
-                      data-image-candidate={item.id}
-                      className={cn(
-                        'overflow-hidden rounded-2xl border bg-card',
-                        (chosen?.id === selectable?.id && selectable) || inspected?.id === item.id
-                          ? 'border-primary ring-2 ring-primary/25'
-                          : 'border-border',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="relative block w-full text-left"
-                        aria-label={`Sélectionner ${item.metadata.title ?? 'cette photographie'}`}
-                        aria-pressed={!!selectable && chosen?.id === selectable.id}
-                        onClick={() => {
-                          setInspected(item);
-                          setChosen(selectable);
-                        }}
-                      >
-                        <EntryImage
-                          src={
-                            item.metadata.thumbnailUrl ??
-                            (previewEnabled ? item.preview?.thumbnailUrl : undefined)
-                          }
-                          alt=""
-                          className="aspect-[4/3]"
-                          sizes="200px"
-                        />
-                        <span
-                          className={cn(
-                            'absolute bottom-2 left-2 rounded-full bg-background/95 px-2 py-0.5 text-[10px] font-semibold',
-                            item.photo ? 'text-primary-ink' : 'text-muted-foreground',
-                          )}
-                        >
-                          {item.excluded
-                            ? 'Exclue'
-                            : item.availability === 'unavailable'
-                              ? 'Indisponible'
-                              : rightsLabels[item.rightsStatus]}
-                        </span>
-                        {selectable && chosen?.id === selectable.id && (
-                          <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">
-                            <Check className="size-4" />
-                          </span>
-                        )}
-                      </button>
-                      <div className="space-y-1 p-2.5">
-                        <p className="line-clamp-2 text-xs font-semibold">
-                          {item.metadata.title ?? 'Photographie'}
-                        </p>
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          {item.metadata.source ?? item.metadata.domain ?? 'Source à consulter'}
-                        </p>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-[11px] text-primary-ink"
-                          onClick={() => setInspected(item)}
-                        >
-                          <Info className="size-3" />
-                          Informations
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+          </div>
+          <div className="nagi-photo-browser">
+            <div className="nagi-photo-results" aria-busy={loading || indexing}>
+              <section className="nagi-photo-current" aria-label="Photo actuelle">
+                <EntryImage
+                  src={currentSource}
+                  alt=""
+                  fit={
+                    currentImage && isTemporaryImage(currentImage) && !currentImage.cropAllowed
+                      ? 'contain'
+                      : 'cover'
+                  }
+                  fallback={<PlacePlaceholder category={category} />}
+                  sizes="64px"
+                  className="nagi-photo-current-image"
+                />
+                <div>
+                  <span className="nagi-photo-eyebrow">Photo actuelle</span>
+                  <h3>
+                    {currentImage?.title ??
+                      (currentSource
+                        ? 'Image importée'
+                        : currentMode === 'manual'
+                          ? 'Photographie indisponible'
+                          : 'Pictogramme du lieu')}
+                  </h3>
+                  <p>{modeLabel}</p>
+                </div>
+                <Check aria-hidden="true" size={16} />
+              </section>
+              <div className="nagi-photo-section-heading">
+                <h3>La galerie</h3>
+                <span role="status">
+                  {loading || indexing
+                    ? 'Chargement…'
+                    : `${candidates.length + fallbacks.length} / 10 photos`}
+                </span>
               </div>
-            )}
-            {gallery && !gallery.items.length && !loading && (
-              <div className="rounded-2xl bg-muted/50 p-7 text-center text-sm text-muted-foreground">
-                {filter
-                  ? 'Aucun résultat ne correspond à ce filtre.'
-                  : 'Aucune photographie découverte pour le moment.'}
-              </div>
-            )}
-            {gallery && (
-              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <p role="status" className="text-muted-foreground">
-                  {Math.min(10, gallery.total)}{' '}
-                  {gallery.total > 1 ? 'images trouvées' : 'image trouvée'}
-                  {indexing
-                    ? ' · Recherche en cours…'
-                    : gallery.state === 'complete'
-                      ? ' · Recherche terminée, résultats conservés.'
-                      : gallery.stopReason === 'budget'
-                        ? ' · Limite de recherche atteinte.'
-                        : ''}
+              {previewEnabled && (
+                <p className="nagi-photo-context">
+                  Aperçu privé : vos choix ne modifient pas la couverture publiée.
                 </p>
-              </div>
-            )}
-            {gallery && !indexing && (
-              <p className="text-xs text-muted-foreground">
-                Dix photos maximum par lieu. Elles sont conservées et réutilisées sans nouvelle
-                recherche.
-                {gallery.searchIssue && <> {gallery.searchIssue}</>}
-              </p>
-            )}
-            {indexing && (
-              <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
-                Les premières images restent consultables pendant la recherche.
-              </p>
-            )}
-            {!!fallbacks.length && (
-              <section>
-                <h3 className="mb-3 text-sm font-bold">Autres photographies autorisées</h3>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {fallbacks.map((photo) => (
-                    <button
-                      type="button"
-                      key={photo.id}
-                      aria-label={`Sélectionner ${photo.title}`}
-                      aria-pressed={chosen?.id === photo.id}
-                      className={cn(
-                        'overflow-hidden rounded-2xl border text-left',
-                        chosen?.id === photo.id
-                          ? 'border-primary ring-2 ring-primary/25'
-                          : 'border-border',
-                      )}
-                      onClick={() => {
-                        setChosen(photo);
-                        setInspected(undefined);
-                      }}
-                    >
-                      <EntryImage
-                        src={photo.thumbnailUrl}
-                        alt=""
-                        className="aspect-[4/3]"
-                        sizes="200px"
-                      />
-                      <span className="block p-2 text-xs font-semibold line-clamp-2">
-                        {photo.title}
-                      </span>
-                    </button>
+              )}
+              {((loading && !gallery) || (indexing && !candidates.length && !fallbacks.length)) && (
+                <div className="nagi-photo-grid" aria-label="Chargement de la galerie">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="nagi-photo-skeleton" />
                   ))}
                 </div>
-              </section>
-            )}
-            {inspected && (
-              <section
-                ref={inspector}
-                className="space-y-4 rounded-2xl border border-border bg-muted/25 p-4"
-                aria-label="Informations de la photographie"
-              >
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+              )}
+              {!!candidates.length && (
+                <div className="nagi-photo-grid">
+                  {candidates.map((item) => {
+                    const available = !item.excluded && item.availability !== 'unavailable';
+                    const selectable = available
+                      ? previewEnabled
+                        ? (item.preview ?? item.photo)
+                        : item.photo
+                      : undefined;
+                    const selected = !!selectable && chosen?.id === selectable.id;
+                    const current =
+                      !!currentImage &&
+                      [item.id, item.photo?.id, item.preview?.id].includes(currentImage.id);
+                    return (
+                      <article
+                        key={item.id}
+                        data-image-candidate={item.id}
+                        className={cn('nagi-photo-card', selected && 'is-selected')}
+                        data-current={current || undefined}
+                      >
+                        <button
+                          type="button"
+                          className="nagi-photo-card-select"
+                          disabled={!available || saving}
+                          aria-label={`Sélectionner ${item.metadata.title ?? 'cette photographie'}`}
+                          aria-pressed={selected}
+                          onClick={() => {
+                            setInspected(item);
+                            setChosen(selectable);
+                          }}
+                        >
+                          <EntryImage
+                            src={
+                              item.metadata.thumbnailUrl ??
+                              (previewEnabled ? item.preview?.thumbnailUrl : undefined)
+                            }
+                            alt=""
+                            className="nagi-photo-card-image"
+                            sizes="(max-width: 760px) 45vw, 200px"
+                          />
+                          {(selected || current) && (
+                            <span className="nagi-photo-card-check">
+                              <Check aria-hidden="true" size={13} />
+                              {selected ? 'Sélectionnée' : 'Actuelle'}
+                            </span>
+                          )}
+                          <span className="nagi-photo-card-title">
+                            {item.metadata.title ?? 'Photographie'}
+                          </span>
+                          <span className="nagi-photo-card-source">
+                            {item.metadata.source ?? item.metadata.domain ?? 'Source à consulter'}
+                          </span>
+                        </button>
+                        <div className="nagi-photo-card-meta">
+                          <PhotoStatus
+                            rights={item.rightsStatus}
+                            label={
+                              item.excluded
+                                ? 'Exclue'
+                                : item.availability === 'unavailable'
+                                  ? 'Indisponible'
+                                  : undefined
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="nagi-photo-info"
+                            title="Informations sur la photographie"
+                            aria-label={`Informations : ${item.metadata.title ?? 'photographie'}`}
+                            onClick={() => inspect(item)}
+                          >
+                            <Info aria-hidden="true" size={13} />
+                            <span>Informations</span>
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+              {gallery && !candidates.length && !fallbacks.length && !loading && !indexing && (
+                <div className="nagi-photo-empty" role="status">
+                  <ImageIcon aria-hidden="true" size={26} />
+                  <h3>
+                    {filter ? 'Aucune photo correspondante' : 'Pas de photographie disponible'}
+                  </h3>
+                  <p>
+                    {filter
+                      ? 'Essayez un autre mot ou effacez votre recherche.'
+                      : 'Le pictogramme du lieu reste disponible pour votre couverture.'}
+                  </p>
+                  {filter && (
+                    <Button size="sm" variant="ghost" onClick={() => setFilter('')}>
+                      Effacer la recherche
+                    </Button>
+                  )}
+                </div>
+              )}
+              {!!fallbacks.length && (
+                <section className="nagi-photo-fallbacks">
+                  <h3>Photographies autorisées</h3>
+                  <div className="nagi-photo-grid">
+                    {fallbacks.map((photo) => {
+                      const selected = chosen?.id === photo.id,
+                        current = currentImage?.id === photo.id;
+                      return (
+                        <article
+                          key={photo.id}
+                          className={cn('nagi-photo-card', selected && 'is-selected')}
+                          data-current={current || undefined}
+                        >
+                          <button
+                            type="button"
+                            className="nagi-photo-card-select"
+                            disabled={saving}
+                            aria-label={`Sélectionner ${photo.title}`}
+                            aria-pressed={selected}
+                            onClick={() => {
+                              setChosen(photo);
+                              setInspectedPhoto(photo);
+                              setInspected(undefined);
+                            }}
+                          >
+                            <EntryImage
+                              src={photo.thumbnailUrl}
+                              alt=""
+                              className="nagi-photo-card-image"
+                              sizes="200px"
+                            />
+                            {(selected || current) && (
+                              <span className="nagi-photo-card-check">
+                                <Check aria-hidden="true" size={13} />
+                                {selected ? 'Sélectionnée' : 'Actuelle'}
+                              </span>
+                            )}
+                            <span className="nagi-photo-card-title">{photo.title}</span>
+                            <span className="nagi-photo-card-source">
+                              {photo.creator || 'Source originale'}
+                            </span>
+                          </button>
+                          <div className="nagi-photo-card-meta">
+                            <PhotoStatus
+                              rights={isOpenImage(photo) ? 'open_license' : photo.rightsStatus}
+                            />
+                            <button
+                              className="nagi-photo-info"
+                              title="Informations sur la photographie"
+                              type="button"
+                              aria-label={`Informations : ${photo.title}`}
+                              onClick={() => {
+                                setInspectedPhoto(photo);
+                                setInspected(undefined);
+                                focusInformation();
+                              }}
+                            >
+                              <Info aria-hidden="true" size={13} />
+                              <span>Informations</span>
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              <p className="nagi-photo-cache-note">
+                {indexing
+                  ? 'Recherche des photos en cours. Les premiers résultats restent consultables.'
+                  : '10 photos maximum, conservées pour vos prochaines visites.'}
+                {gallery?.searchIssue && <> {gallery.searchIssue}</>}
+              </p>
+            </div>
+            <aside
+              ref={inspector}
+              tabIndex={-1}
+              className="nagi-photo-inspector"
+              aria-label="Informations de la photographie"
+            >
+              {inspected ? (
+                <>
                   <EntryImage
                     src={
                       (previewEnabled ? inspected.preview?.previewUrl : undefined) ??
@@ -454,129 +575,203 @@ export function ImageGalleryPicker({
                     fallbackSrc={inspected.metadata.thumbnailUrl}
                     alt=""
                     fit="contain"
-                    className="aspect-[4/3] rounded-xl"
-                    sizes="400px"
+                    className="nagi-photo-inspector-image"
+                    sizes="320px"
                   />
-                  <div className="space-y-2 text-sm">
-                    <h3 className="font-bold">{inspected.metadata.title ?? 'Photographie'}</h3>
-                    <p>{inspected.metadata.source ?? inspected.metadata.domain}</p>
-                    {inspected.metadata.imageWidth && inspected.metadata.imageHeight && (
-                      <p className="text-muted-foreground">
-                        {inspected.metadata.imageWidth} × {inspected.metadata.imageHeight} px
-                      </p>
-                    )}
-                    <p>{rightsLabels[inspected.rightsStatus]}</p>
+                  <div className="nagi-photo-inspector-body">
+                    <span className="nagi-photo-eyebrow">Informations</span>
+                    <h3>{inspected.metadata.title ?? 'Photographie'}</h3>
+                    <PhotoStatus
+                      rights={inspected.rightsStatus}
+                      label={
+                        inspected.excluded
+                          ? 'Exclue'
+                          : inspected.availability === 'unavailable'
+                            ? 'Indisponible'
+                            : undefined
+                      }
+                    />
+                    <dl className="nagi-photo-facts">
+                      <div>
+                        <dt>Source</dt>
+                        <dd>
+                          {inspected.metadata.source ??
+                            inspected.metadata.domain ??
+                            'Non renseignée'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Auteur</dt>
+                        <dd>{inspected.creator || 'Non renseigné par la source'}</dd>
+                      </div>
+                      <div>
+                        <dt>Licence</dt>
+                        <dd>{inspected.license || 'Non renseignée'}</dd>
+                      </div>
+                      {inspected.metadata.imageWidth && inspected.metadata.imageHeight && (
+                        <div>
+                          <dt>Dimensions</dt>
+                          <dd>
+                            {inspected.metadata.imageWidth} × {inspected.metadata.imageHeight} px
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
                     {inspected.metadata.link && (
                       <a
                         href={inspected.metadata.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-primary-ink underline"
+                        className="nagi-photo-link"
                       >
                         Ouvrir la page source
-                        <ExternalLink className="size-3" />
+                        <ExternalLink aria-hidden="true" size={12} />
                       </a>
                     )}
+                    {!inspected.photo && (
+                      <p className="nagi-photo-context">
+                        {previewEnabled
+                          ? 'Disponible pour votre aperçu privé. Les droits restent à vérifier avant publication.'
+                          : 'Cette photo doit être autorisée avant de pouvoir devenir une couverture.'}
+                      </p>
+                    )}
                     {!!inspected.sources.length && (
-                      <details className="text-xs text-muted-foreground">
+                      <details className="nagi-photo-references">
                         <summary>Autres références ({inspected.sources.length})</summary>
                         {inspected.sources.map((source) => (
-                          <a
-                            className="mt-1 block break-all underline"
-                            href={source}
-                            key={source}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a href={source} key={source} target="_blank" rel="noreferrer">
                             {source}
                           </a>
                         ))}
                       </details>
                     )}
                     {!gallery?.canReview && (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => void report()}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={saving}
+                        onClick={() => void report()}
+                      >
                         Signaler une image incorrecte
                       </Button>
                     )}
+                    {gallery?.canReview && !previewEnabled && (
+                      <RightsReview
+                        key={inspected.id + inspected.rightsStatus}
+                        candidate={inspected}
+                        busy={saving}
+                        onSave={review}
+                      />
+                    )}
                   </div>
-                </div>
-                {gallery?.canReview && !previewEnabled && (
-                  <RightsReview
-                    key={inspected.id + inspected.rightsStatus}
-                    candidate={inspected}
-                    busy={saving}
-                    onSave={review}
+                </>
+              ) : detailedPhoto ? (
+                <div className="nagi-photo-inspector-body">
+                  <EntryImage
+                    src={detailedPhoto.thumbnailUrl}
+                    alt=""
+                    className="nagi-photo-inspector-image"
+                    sizes="320px"
                   />
+                  <PhotoAttribution image={detailedPhoto} />
+                </div>
+              ) : (
+                <div className="nagi-photo-inspector-empty">
+                  <Info aria-hidden="true" size={24} />
+                  <h3>Un choix éclairé</h3>
+                  <p>
+                    Sélectionnez une photo pour l’agrandir et consulter son auteur, sa source et ses
+                    droits.
+                  </p>
+                  <PhotoStatus rights="unknown" />
+                  <p>
+                    Les photos à vérifier restent consultables. Leur publication nécessite une
+                    autorisation.
+                  </p>
+                </div>
+              )}
+            </aside>
+          </div>
+          <footer className="nagi-photo-footer">
+            <div className="nagi-photo-mode-row">
+              <span className="nagi-photo-eyebrow">Mode d’affichage</span>
+              <div
+                className="nagi-photo-modes"
+                role="group"
+                aria-label="Mode d’affichage de la couverture"
+              >
+                {previewEnabled && (
+                  <button
+                    type="button"
+                    aria-pressed={currentMode === 'published'}
+                    disabled={saving}
+                    onClick={() => void select('published')}
+                    title="Revenir à la couverture publiée du lieu"
+                  >
+                    <ImageIcon aria-hidden="true" size={14} />
+                    Couverture publiée
+                  </button>
                 )}
-              </section>
-            )}
-            {chosen && !inspected && (
-              <details className="rounded-xl border border-border p-3 text-sm">
-                <summary>Crédits de la sélection</summary>
-                <PhotoAttribution image={chosen} />
-              </details>
-            )}
+                <button
+                  type="button"
+                  aria-pressed={currentMode === 'fallback'}
+                  disabled={saving}
+                  onClick={() => void select('fallback')}
+                  title="Appliquer le pictogramme du lieu"
+                >
+                  <Shapes aria-hidden="true" size={14} />
+                  Utiliser le pictogramme
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={currentMode === 'automatic'}
+                  disabled={saving}
+                  onClick={() => void select('automatic')}
+                  title="Laisser Nagi choisir une photographie disponible"
+                >
+                  <Sparkles aria-hidden="true" size={14} />
+                  Choix automatique
+                </button>
+              </div>
+            </div>
             {error && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="nagi-photo-error">
                 {error}
               </p>
             )}
-          </div>
-          <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-background p-4 sm:px-7">
-            <div className="flex flex-wrap gap-2">
-              {previewEnabled && (
+            <div className="nagi-photo-decision">
+              <p aria-live="polite">
+                {chosen ? (
+                  <>
+                    <Check aria-hidden="true" size={14} />
+                    <span>{chosen.title}</span>
+                  </>
+                ) : (
+                  'Sélectionnez une photo pour continuer.'
+                )}
+              </p>
+              <div>
                 <Button
                   type="button"
-                  size="sm"
                   variant="ghost"
                   disabled={saving}
-                  onClick={() => void select('published')}
+                  onClick={() => close(false)}
                 >
-                  Couverture publiée
+                  Annuler
                 </Button>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={saving}
-                onClick={() => void select('fallback')}
-              >
-                Utiliser le pictogramme
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={saving}
-                onClick={() => void select('automatic')}
-              >
-                Choix automatique
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={saving}
-                onClick={() => close(false)}
-              >
-                Annuler
-              </Button>
-              <Button
-                type="button"
-                disabled={!chosen || saving}
-                onClick={() => void select('manual')}
-              >
-                {saving ? 'Enregistrement…' : 'Choisir'}
-              </Button>
+                <Button
+                  type="button"
+                  disabled={!chosen || saving}
+                  onClick={() => void select('manual')}
+                >
+                  {saving ? 'Enregistrement…' : 'Choisir'}
+                </Button>
+              </div>
             </div>
           </footer>
         </DialogContent>
       </Dialog>
-      {result?.selected && (
-        <p className="text-xs text-muted-foreground">{result.selected.attribution}</p>
-      )}
     </>
   );
 }
@@ -604,7 +799,7 @@ function RightsReview({
     [excluded, setExcluded] = useState(candidate.excluded);
   return (
     <form
-      className="space-y-3 border-t border-border pt-4"
+      className="nagi-photo-review"
       onSubmit={(event) => {
         event.preventDefault();
         void onSave({ rights, creator, license, licenseUrl, evidence, excluded });
@@ -615,7 +810,7 @@ function RightsReview({
         Le résultat de recherche ne constitue pas une autorisation. Conservez une preuve avant
         d’autoriser la publication.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <div>
           <Label htmlFor="photo-rights">Statut</Label>
           <select
@@ -659,7 +854,7 @@ function RightsReview({
             placeholder="https://…"
           />
         </div>
-        <div className="sm:col-span-2">
+        <div>
           <Label htmlFor="photo-evidence">Preuve de l’autorisation</Label>
           <Input
             id="photo-evidence"

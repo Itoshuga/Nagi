@@ -225,6 +225,8 @@ function galleryResponse(body) {
   return {
     items: filtered.map((item) => ({
       ...item,
+      ...(item.metadata.title === 'Vue du lieu 9' ? { availability: 'unavailable' } : {}),
+      ...(item.metadata.title === 'Vue du lieu 8' ? { excluded: true } : {}),
       ...(previewQA ? { preview: previewPhoto(item) } : {}),
       ...(['permission_granted', 'open_license'].includes(item.rightsStatus)
         ? { photo: discoveredPhoto(item) }
@@ -940,6 +942,16 @@ try {
     await ev('document.querySelector("[role=dialog]").textContent.includes("recadrée")'),
     'actual credits include cropping',
   );
+  assert(
+    await ev(
+      `['Titre de l’œuvre','Auteur','Source','Licence'].every(label=>[...document.querySelectorAll('.nagi-photo-facts dt')].some(node=>node.textContent===label))`,
+    ),
+    'credits keep a structured title, author, source and license',
+  );
+  assert(
+    await ev('!!document.querySelector(".nagi-photo-usage")'),
+    'photo usage notes remain available',
+  );
   await key('Escape');
   await click(`[data-activity-id="${first}"] .trip-step-main`);
   await textClick('Modifier la photo');
@@ -963,6 +975,13 @@ try {
   );
   await screenshot('place-pictogram');
   await textClick('Modifier la photo');
+  await wait('document.querySelector(".nagi-photo-current")?.textContent.includes("Pictogramme")');
+  assert(
+    await ev(
+      'document.querySelector(".nagi-photo-modes [aria-pressed=true]")?.textContent.includes("Utiliser le pictogramme")',
+    ),
+    'the active pictogram mode is identifiable before choosing a photograph',
+  );
   await click('[aria-label="Sélectionner Vue du lieu 1"]');
   await textClick('Choisir');
   await wait('!document.querySelector("[role=dialog]")');
@@ -978,6 +997,26 @@ try {
   await textClick('Modifier la photo');
   const beforeIndex = await ev('window.__imageRequests.filter(r=>r.operation==="index").length');
   await wait('document.querySelectorAll("[data-image-candidate]").length===10');
+  await wait(
+    'document.querySelector(".nagi-photo-current")?.textContent.includes("Vue du lieu 1")',
+  );
+  assert(
+    await ev(
+      'document.querySelector("[data-image-candidate][data-current=true]")?.textContent.includes("Vue du lieu 1") && !document.querySelector(".nagi-photo-card.is-selected")',
+    ),
+    'the saved cover is distinguished from an unsaved selection',
+  );
+  assert(
+    await ev('document.querySelector(".nagi-photo-decision button:last-child").disabled'),
+    'the primary action waits for a new selection',
+  );
+  await click('[aria-label="Informations : Vue du lieu 1"]');
+  assert(
+    await ev(
+      'document.activeElement===document.querySelector(".nagi-photo-inspector") && document.querySelector(".nagi-photo-decision button:last-child").disabled',
+    ),
+    'Information focuses the preview without silently selecting a cover',
+  );
   await screenshot('serper-gallery-desktop');
   await send('Emulation.setDeviceMetricsOverride', {
     width: 390,
@@ -992,7 +1031,24 @@ try {
     ),
     'the photo gallery fits a mobile viewport',
   );
+  assert(
+    await ev('document.querySelector(".nagi-photo-footer").getBoundingClientRect().bottom<=844'),
+    'the gallery decision buttons stay visible on mobile',
+  );
   await screenshot('serper-gallery-mobile');
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 320,
+    height: 650,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  assert(
+    await ev(
+      'document.documentElement.scrollWidth<=320 && document.querySelector(".nagi-photo-footer").getBoundingClientRect().bottom<=650 && document.querySelector(".nagi-photo-decision button:last-child").getBoundingClientRect().right<=320',
+    ),
+    'the photo picker fits small screens with reachable actions',
+  );
+  await screenshot('serper-gallery-small');
   await send('Emulation.setDeviceMetricsOverride', {
     width: 1280,
     height: 1000,
@@ -1001,8 +1057,20 @@ try {
   });
   await fill('[aria-label="Rechercher parmi les photographies"]', 'Vue du lieu 79');
   await wait('document.querySelectorAll("[data-image-candidate]").length===0');
+  assert(
+    await ev(
+      'document.querySelector(".nagi-photo-empty")?.textContent.includes("Aucune photo correspondante")',
+    ),
+    'a search with no matches offers a clear empty state',
+  );
   await fill('[aria-label="Rechercher parmi les photographies"]', 'Vue du lieu 9');
   await wait('document.querySelectorAll("[data-image-candidate]").length===1');
+  assert(
+    await ev(
+      'document.querySelector("[aria-label=\'Sélectionner Vue du lieu 9\']").disabled && !document.querySelector("[aria-label=\'Informations : Vue du lieu 9\']").disabled',
+    ),
+    'an unavailable image remains inspectable but cannot be selected',
+  );
   await fill('[aria-label="Rechercher parmi les photographies"]', '');
   await wait('document.querySelectorAll("[data-image-candidate]").length===10');
   assert(
