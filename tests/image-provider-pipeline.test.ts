@@ -6,10 +6,7 @@ import {
   type OpenImage,
   type SerperImage,
 } from '../apps/web/src/features/images/model';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({
-  photos: vi.fn(),
   open: vi.fn(),
   upsert: vi.fn(),
   update: vi.fn(),
@@ -27,10 +24,6 @@ vi.mock('@/features/images/proof', () => ({
 vi.mock('@/features/images/providers', () => ({
   resolveImages: mocks.open,
   commonsFiles: vi.fn(),
-}));
-vi.mock('@/features/images/provider-photos', () => ({
-  mapboxPhotosAllowed: () => true,
-  mapboxPhotoAdapter: { resolve: mocks.photos },
 }));
 vi.mock('@/features/images/discovery', () => ({
   approvedDiscoveryPhotos: mocks.approved,
@@ -203,12 +196,11 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
     ).toBe(preview);
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
-  it('uses an already reviewed Serper candidate before fallback and never queries Mapbox photos', async () => {
+  it('uses an already reviewed Serper candidate before the licensed fallback', async () => {
     mocks.approved.mockResolvedValue([reviewed]);
     expect((await readImages(scope, reference, true)).selected).toBe(reviewed);
     expect(mocks.open).not.toHaveBeenCalled();
     expect(mocks.index).not.toHaveBeenCalled();
-    expect(mocks.photos).not.toHaveBeenCalled();
   });
   it('indexes one page for a selected place, then falls back when no candidate has established rights', async () => {
     const result = await readImages(scope, reference, true);
@@ -216,7 +208,6 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
     expect(result.selected?.id).toBe(openPhoto.id);
     expect(result.candidates.map((photo) => photo.id)).toEqual([openPhoto.id]);
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
-    expect(mocks.photos).not.toHaveBeenCalled();
   });
   it('reuses existing selected open images before spending Serper credits', async () => {
     cache = {
@@ -227,7 +218,6 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
       selected: openPhoto.id,
     };
     expect((await readImages(scope, reference, true)).selected?.id).toBe(openPhoto.id);
-    expect(mocks.photos).not.toHaveBeenCalled();
     expect(mocks.open).not.toHaveBeenCalled();
   });
   it('starts primary discovery once even when the older fallback cache contains a miss', async () => {
@@ -251,7 +241,6 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
     const result = await readImages(scope, { ...reference, visit: 'visit' }, true);
     expect(result.mode).toBe(mode);
     expect(result.selected?.id ?? null).toBe(mode === 'manual' ? openPhoto.id : null);
-    expect(mocks.photos).not.toHaveBeenCalled();
     expect(mocks.open).not.toHaveBeenCalled();
   });
   it('does not replace an uploaded cover', async () => {
@@ -261,8 +250,8 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
       cover_image_url: 'uploaded-cover',
       category: null,
     };
-    await readImages(scope, { source: 'nagi', id: 'entry' }, true);
-    expect(mocks.photos).not.toHaveBeenCalled();
+    expect((await readImages(scope, { source: 'nagi', id: 'entry' }, true)).selected).toBeNull();
+    expect(mocks.index).not.toHaveBeenCalled();
     expect(mocks.open).not.toHaveBeenCalled();
   });
   it('can disable new resolution without losing a manually chosen image', async () => {
@@ -271,6 +260,7 @@ describe('Serper primary discovery with exclusively open-source fallback', () =>
     expect((await readImages(scope, { ...reference, visit: 'visit' }, true)).selected?.id).toBe(
       openPhoto.id,
     );
-    expect(mocks.photos).not.toHaveBeenCalled();
+    expect(mocks.open).not.toHaveBeenCalled();
+    expect(mocks.index).not.toHaveBeenCalled();
   });
 });

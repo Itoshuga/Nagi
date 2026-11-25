@@ -8,9 +8,9 @@ def encode(value):return base64.urlsafe_b64encode(json.dumps(value).encode()).de
 def auth(sub):
  now=int(time.time());token=encode({'alg':'HS256','typ':'JWT'})+'.'+encode({'sub':sub,'aud':'authenticated','role':'authenticated','iat':now,'exp':now+86400})+'.c2lnbmF0dXJl'
  return 'base64-'+encode({'access_token':token,'refresh_token':'fixture-refresh','expires_at':now+86400,'token_type':'bearer','expires_in':86400})
-def state():return json.loads((args.output/'state.json').read_text())
+def state():return json.loads((args.output/'state.json').read_text(encoding='utf-8'))
 def config(**value):
- tmp=args.output/'config.tmp';tmp.write_text(json.dumps(value));tmp.replace(args.output/'config.json')
+ tmp=args.output/'config.tmp';tmp.write_text(json.dumps(value), encoding='utf-8');tmp.replace(args.output/'config.json')
 
 
 with sync_playwright() as p:
@@ -25,5 +25,5 @@ with sync_playwright() as p:
   for w,h,dark in [(390,844,False),(320,568,True)]:
    if dark:page.evaluate("document.documentElement.classList.add('dark')")
    page.set_viewport_size({'width':w,'height':h});page.get_by_role('tab',name='Calendrier',exact=True).click();assert page.evaluate('document.documentElement.scrollWidth<=innerWidth');page.screenshot(path=str(args.output/f'final-{w}.png'))
-  assert not errors,errors;results['browserErrors']=errors;(args.output/'crud.json').write_text(json.dumps(results,indent=2));print(json.dumps(results,indent=2))
+  assert not errors,errors;results['browserErrors']=errors;(args.output/'crud.json').write_text(json.dumps(results,indent=2), encoding='utf-8');print(json.dumps(results,indent=2))
  finally:config();c.close();browser.close()

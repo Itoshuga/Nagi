@@ -1,11 +1,17 @@
 node_modules/
+.pnpm-store/
 .next/
+apps/web/next-env.d.ts
 dist/
 .turbo/
 .env
 .env.*
 !.env.example
 coverage/
+build/
+*.log
+__pycache__/
+*.py[cod]
 *.tsbuildinfo
 .DS_Store
 supabase/.temp/

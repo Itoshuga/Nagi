@@ -57,13 +57,15 @@ describe('Authorized semantic relation actions', () => {
     });
     expect(mocks.refresh).toHaveBeenCalledWith([a, b, c]);
   });
-  it('rejects missing directions, self links and stale editor metadata before writing', async () => {
+  it('rejects missing directions, self links and malformed editor metadata before writing', async () => {
     for (const data of [
       { target: b, type },
       { target: a, type, direction: 'forward' },
       { target: b, type, direction: 'forward', updated_at: 'not-a-date' },
     ])
-      expect((await saveEntryRelation(a, edge, form(data))).ok).toBe(false);
+      expect((await saveEntryRelation(a, edge, form({ updated_at: stamp, ...data }))).ok).toBe(
+        false,
+      );
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.refresh).not.toHaveBeenCalled();
   });

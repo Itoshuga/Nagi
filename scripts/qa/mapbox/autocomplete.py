@@ -71,7 +71,7 @@ with sync_playwright() as playwright:
         args.output.mkdir(parents=True, exist_ok=True)
         report = {'observations': observations, 'browserErrors': errors, 'passed': True,
                   'scope': 'Real Mapbox, production routes/UI, isolated SQL and synthetic identity; no remote travel writes'}
-        (args.output / 'autocomplete.json').write_text(json.dumps(report, indent=2))
+        (args.output / 'autocomplete.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     finally:
         context.close()
         browser.close()

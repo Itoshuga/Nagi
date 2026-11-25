@@ -20,7 +20,22 @@ const { PGlite } = require('@electric-sql/pglite'),
   { pg_trgm } = require('@electric-sql/pglite/contrib/pg_trgm');
 function writeAtomic(file, text) {
   writeFileSync(file + '.tmp', text);
-  renameSync(file + '.tmp', file);
+  // Windows can briefly deny replacement while a Python reader has the old
+  // report open. Keep the atomic snapshot contract instead of truncating JSON.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(file + '.tmp', file);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== 'win32' ||
+        !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) ||
+        attempt >= 4
+      )
+        throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
+    }
+  }
 }
 const db = new PGlite({ extensions: { pg_trgm } });
 await db.exec(readFileSync(new URL('./auth.sql', import.meta.url), 'utf8'));

@@ -19,29 +19,6 @@ export const categoryInputSchema = z
   })
   .strict();
 export type CategoryInput = z.input<typeof categoryInputSchema>;
-export const entryInputSchema = z
-  .object({
-    city_id: z.uuid(),
-    neighborhood_id: z.uuid().nullable().default(null),
-    category_id: z.uuid(),
-    title: z.string().trim().min(1).max(180),
-    slug: slugSchema,
-    description: z.string().max(20000).default(''),
-    published: z.boolean().default(false),
-  })
-  .strict();
-export const relationInputSchema = z
-  .object({
-    source_id: z.uuid(),
-    target_id: z.uuid(),
-    kind: slugSchema.default('related'),
-    bidirectional: z.boolean().default(true),
-  })
-  .strict()
-  .refine((value) => value.source_id !== value.target_id, {
-    message: 'Une fiche ne peut pas être liée à elle-même.',
-  });
-
 export function safeNext(value: string | null | undefined): string {
   if (!value || !/^\/(app|admin|select-server)(\/|\?|$)/.test(value) || /[\\\r\n]/.test(value))
     return '/app';

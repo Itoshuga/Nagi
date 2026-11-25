@@ -1,5 +1,4 @@
 'use client';
-import dynamic from 'next/dynamic';
 import {
   createContext,
   useCallback,
@@ -11,7 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@nagi/ui';
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle } from '@nagi/ui';
 import {
   isOpenImage,
   isTemporaryImage,
@@ -243,7 +242,38 @@ export function ImageCredits({
     </>
   );
 }
-export const ImagePicker = dynamic(
-  () => import('./gallery').then((module) => module.ImageGalleryPicker),
-  { ssr: false },
-);
+export function ImagePicker({
+  reference,
+  disabled = false,
+}: {
+  reference: ImageReference;
+  disabled?: boolean;
+}) {
+  const [Gallery, setGallery] = useState<typeof import('./gallery').ImageGalleryPicker>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  if (Gallery) return <Gallery reference={reference} disabled={disabled} initiallyOpen />;
+  async function open() {
+    setLoading(true);
+    setError('');
+    try {
+      const galleryModule = await import('./gallery');
+      setGallery(() => galleryModule.ImageGalleryPicker);
+    } catch {
+      // An optional chunk failure must never unmount the planner or its drafts.
+      setError('La galerie est indisponible. Vérifiez votre connexion puis réessayez.');
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" disabled={disabled || loading} onClick={open}>
+          {loading ? 'Chargement…' : 'Modifier la photo'}
+        </Button>
+      </div>
+      {error && <p role="alert">{error}</p>}
+    </>
+  );
+}

@@ -4,7 +4,9 @@ Un socle commun pour une application de voyage et son bot Discord. Le web et le 
 
 ## Démarrage
 
-Prérequis : **Node.js 24 ou supérieur**, **pnpm 11.12.0**, un projet Supabase et une application Discord. Docker est nécessaire uniquement si vous choisissez Supabase en local. Utiliser exclusivement pnpm ; le lockfile est versionné.
+Le [bilan de l’audit technique](docs/AUDIT_TECHNIQUE.md) décrit les corrections, les validations et les limites de vérification.
+
+Prérequis : **Node.js 24 ou supérieur**, **pnpm 12.21.0** (version verrouillée par `packageManager`), un projet Supabase et une application Discord. Docker est nécessaire uniquement si vous choisissez Supabase en local. Utiliser exclusivement pnpm ; le lockfile est versionné.
 
 ```sh
 pnpm install
@@ -31,6 +33,7 @@ apps/bot          Discord.js : modules de commandes, handler, worker
 packages/shared   validations Zod, types métier, environnement, heartbeat
 packages/permissions  règles de rôles communes aux deux backends
 packages/database client typé et services métier communs
+packages/discord  API Discord, chiffrement et renouvellement des tokens, appartenance aux serveurs
 packages/ui       composants shadcn/ui fondés sur Radix + tokens Tailwind
 packages/config   TypeScript strict commun
 supabase/migrations  schéma, contraintes, RLS, file et verrous
@@ -230,7 +233,7 @@ Découvrir réutilise les pays, villes et quartiers du catalogue mondial. Les ca
 
 ## Phase 2 — Espaces Discord et voyages
 
-Appliquer les migrations dans l’ordre, jusqu’à `202611170003_discord_spaces.sql`. Elles ajoutent les espaces, préférences, voyages, journées et références aux fiches ; aucune table du catalogue ni donnée existante n’est remplacée. Après mise à jour du `.env`, redémarrer `pnpm dev` et reconnecter Discord pour autoriser le scope `guilds`. Une ancienne session Supabase peut rester valide tout en nécessitant cette nouvelle autorisation Discord.
+Appliquer toutes les migrations versionnées dans l’ordre. La migration `202611170003_discord_spaces.sql` introduit les espaces, préférences, voyages, journées et références aux fiches ; les suivantes complètent le planificateur et ses contrôles. Après mise à jour du `.env`, redémarrer `pnpm dev` et reconnecter Discord pour autoriser le scope `guilds`. Une ancienne session Supabase peut rester valide tout en nécessitant cette nouvelle autorisation Discord.
 
 Générer `NAGI_TOKEN_ENCRYPTION_KEY` une seule fois avec `openssl rand -base64 32`. Conserver cette clé dans le gestionnaire de secrets et la réutiliser sur chaque instance web. Les grants Discord sont chiffrés en AES-256-GCM, liés au compte par des données authentifiées et stockés dans le schéma `private`, inaccessible à PostgREST. Changer ou perdre la clé impose de reconnecter les comptes concernés. Le callback retire les tokens fournisseur des cookies, y compris les sessions fragmentées ; seuls les tokens de session Supabase restent dans le cookie HttpOnly. Aucun client Supabase navigateur n’est nécessaire.
 
@@ -354,7 +357,7 @@ Les mutations courantes passent par un Route Handler JSON, avec vérification de
 
 Le flux SSE utilise les canaux Supabase privés existants comme signaux, puis lit les deltas confirmés en SQL. Un Broadcast client n’est jamais une preuve de sauvegarde. Les versions dédupliquent les événements et récupèrent les révisions manquantes ; un snapshot autorisé ne sert que si le journal, limité à environ 1 000 révisions, ne suffit plus. Les palettes personnelles restent privées.
 
-L’indicateur discret du voyage reflète les confirmations réelles, avec apparition différée de l’état d’enregistrement. Une interruption courte conserve la file en mémoire, réessaie au plus trois fois avec backoff et propose Réessayer. Une révocation d’accès nettoie les intentions locales et ferme la synchronisation. La fermeture/recharge complète de l’onglet reste protégée par l’avertissement natif lorsque des écritures sont en attente ; cette version n’enregistre pas de notes privées dans IndexedDB et ne constitue pas un mode hors ligne durable.
+L’indicateur discret du voyage reflète les confirmations réelles, avec apparition différée de l’état d’enregistrement. Une interruption courte conserve la file en mémoire, réessaie au plus trois fois avec backoff et propose Réessayer. Chaque requête de mutation ou de récupération expire après 30 secondes pour libérer la file en cas de connexion bloquée. Une révocation d’accès nettoie les intentions locales et ferme la synchronisation ; un passage en lecture seule annule aussi les intentions non confirmées, y compris après une récupération complète. La fermeture/recharge complète de l’onglet reste protégée par l’avertissement natif lorsque des écritures sont en attente ; cette version n’enregistre pas de notes privées dans IndexedDB et ne constitue pas un mode hors ligne durable.
 
 Le [rapport avant/après](docs/TRIP_PERFORMANCE.md) détaille les mesures, les limites et les plans SQL. Les [scénarios reproductibles](scripts/qa/trips/README.md) utilisent exclusivement des comptes et voyages de démonstration.
 

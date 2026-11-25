@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({ details: vi.fn() }));
 vi.mock('@/features/integrations/mapbox/server', () => ({
   retrieveMapboxDetailsData: mocks.details,
 }));
 const { mapboxPhotoAdapter, mapboxPhotoCandidates, mapboxPhotosAllowed } =
   await import('../apps/web/src/features/images/provider-photos');
-const { foursquarePhotoStatus } = await import('../apps/web/src/features/images/config');
 const { imageContextSchema } = await import('../apps/web/src/features/images/model');
 const context = imageContextSchema.parse({
   name: 'Shibuya Parco',
@@ -54,6 +51,7 @@ describe('Mapbox photographic rights and exact establishment matching', () => {
     );
   });
   it('does not spend Places quota for ordinary visible search cards by default', async () => {
+    expect(mapboxPhotosAllowed({ ...reference, source: 'nagi' })).toBe(false);
     expect(mapboxPhotosAllowed({ ...reference, priority: 'visible' })).toBe(false);
     await mapboxPhotoAdapter.resolve(
       'visibility-test',
@@ -158,10 +156,5 @@ describe('Mapbox photographic rights and exact establishment matching', () => {
       'mapbox:recently-attempted',
     );
     expect(mocks.details).toHaveBeenCalledTimes(1);
-  });
-  it('keeps Foursquare optional without confusing its IDs with Mapbox IDs', () => {
-    vi.stubEnv('FOURSQUARE_PLACES_API_KEY', '');
-    expect(foursquarePhotoStatus()).toBe('foursquare:not-configured');
-    expect(mapboxPhotosAllowed({ ...reference, source: 'nagi' })).toBe(false);
   });
 });

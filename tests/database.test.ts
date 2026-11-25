@@ -4,6 +4,24 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { tripSyncBatchSchema, type TripSyncBatch } from '../packages/shared/src/trip-sync';
 const db = new PGlite({ extensions: { pg_trgm } });
+
+describe('SQL security invariants across every migration', () => {
+  it('enables RLS on every public table', async () => {
+    const result = await db.query(`select c.relname from pg_class c
+      join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`);
+    expect(result.rows).toEqual([]);
+  });
+  it('pins the search path of every privileged function and denies default PUBLIC execution', async () => {
+    const result = await db.query(`select n.nspname,p.proname from pg_proc p
+      join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname in ('public','private') and p.prosecdef and (
+        not coalesce(p.proconfig @> array['search_path=""'],false)
+        or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+          where a.grantee=0 and a.privilege_type='EXECUTE'))`);
+    expect(result.rows).toEqual([]);
+  });
+});
 const userId = '11111111-1111-4111-8111-111111111111';
 const adminId = '22222222-2222-4222-8222-222222222222';
 const otherId = '33333333-3333-4333-8333-333333333333';

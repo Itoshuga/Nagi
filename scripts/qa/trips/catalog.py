@@ -19,11 +19,11 @@ def auth(sub):
     return 'base64-' + encode({'access_token': token, 'refresh_token': 'fixture-refresh', 'expires_at': now + 86400, 'token_type': 'bearer', 'expires_in': 86400})
 
 def state():
-    return json.loads((args.output / 'state.json').read_text())
+    return json.loads((args.output / 'state.json').read_text(encoding='utf-8'))
 
 def config(**value):
     temp = args.output / 'config.tmp'
-    temp.write_text(json.dumps(value))
+    temp.write_text(json.dumps(value), encoding='utf-8')
     temp.replace(args.output / 'config.json')
 with sync_playwright() as p:
     browser = p.chromium.launch()
@@ -240,7 +240,7 @@ with sync_playwright() as p:
         visits = [i for i in state()['items'] if i['entry_id'].startswith('0000000c')]
         assert len(set((i['id'] for i in visits))) == len(visits)
         assert len(state()['items']) == original + 9
-        (args.output / 'catalog-results.json').write_text(json.dumps({'passed': passed, 'browserErrors': errors, 'writes': len(writes), 'catalogueSearches': len(searches), 'newVisits': len(visits)}, indent=2, ensure_ascii=False))
+        (args.output / 'catalog-results.json').write_text(json.dumps({'passed': passed, 'browserErrors': errors, 'writes': len(writes), 'catalogueSearches': len(searches), 'newVisits': len(visits)}, indent=2, ensure_ascii=False), encoding='utf-8')
     finally:
         if errors:
             print('Browser errors:', errors)

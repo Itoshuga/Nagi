@@ -10,6 +10,7 @@ import {
 import { readMapboxProof } from '@/features/integrations/mapbox/proof';
 import { tripRequestFailure, tripRequestSession } from '@/features/trips/sync-server';
 import { serviceDatabase } from '@/lib/supabase/server';
+import { readJsonBody, RequestBodyError } from '@/lib/request-body';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
 async function context(params: Promise<{ guildId: string; tripId: string }>) {
@@ -62,12 +63,8 @@ export async function POST(
     !request.headers.get('content-type')?.startsWith('application/json')
   )
     return new Response(null, { status: 403, headers });
-  if (Number(request.headers.get('content-length') ?? 0) > 262144)
-    return new Response(null, { status: 413, headers });
   try {
-    const text = await request.text();
-    if (text.length > 262144) return new Response(null, { status: 413, headers });
-    const parsed = schema.safeParse(JSON.parse(text));
+    const parsed = schema.safeParse(await readJsonBody(request, 262144));
     if (!parsed.success) return new Response(null, { status: 400, headers });
     const ctx = await context(params),
       data = parsed.data;
@@ -104,8 +101,8 @@ export async function POST(
       { headers },
     );
   } catch (error) {
-    return error instanceof SyntaxError
-      ? new Response(null, { status: 400, headers })
+    return error instanceof RequestBodyError
+      ? new Response(null, { status: error.status, headers })
       : failure(error);
   }
 }

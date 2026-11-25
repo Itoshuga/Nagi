@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database, NagiDatabase } from '../packages/database/src/index';
 import type { PersistentImage } from '../apps/web/src/features/images/model';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({
   selected: vi.fn(),
   preview: vi.fn(),

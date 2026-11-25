@@ -48,6 +48,6 @@ with sync_playwright() as p:
         print(json.dumps({'passed': True, 'responses': responses}))
     finally:
         args.output.mkdir(parents=True, exist_ok=True)
-        (args.output / 'browser-report.json').write_text(json.dumps({'responses': responses, 'errors': errors}, indent=2))
+        (args.output / 'browser-report.json').write_text(json.dumps({'responses': responses, 'errors': errors}, indent=2), encoding='utf-8')
         print(json.dumps({'responses': responses, 'errors': errors}))
         browser.close()

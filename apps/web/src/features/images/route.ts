@@ -1,4 +1,5 @@
 import 'server-only';
+import { readJsonBody, RequestBodyError } from '@/lib/request-body';
 import { imageRequestSchema } from './model';
 import { readImages, reportBrokenImage, selectImage } from './server';
 import { tripRequestFailure } from '@/features/trips/sync-server';
@@ -22,29 +23,7 @@ export async function imageRoute(
   )
     return new Response(null, { status: 403, headers: imageHeaders });
   try {
-    if (Number(request.headers.get('content-length') ?? 0) > 32768)
-      return new Response(null, { status: 413, headers: imageHeaders });
-    const reader = request.body?.getReader();
-    if (!reader) return new Response(null, { status: 400, headers: imageHeaders });
-    let length = 0;
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      length += part.value.byteLength;
-      if (length > 32768) {
-        await reader.cancel();
-        return new Response(null, { status: 413, headers: imageHeaders });
-      }
-      chunks.push(part.value);
-    }
-    let json;
-    try {
-      json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    } catch {
-      return new Response(null, { status: 400, headers: imageHeaders });
-    }
-    const input = imageRequestSchema.safeParse(json);
+    const input = imageRequestSchema.safeParse(await readJsonBody(request, 32768));
     if (!input.success) return new Response(null, { status: 400, headers: imageHeaders });
     const ctx = await scope(),
       data = input.data;
@@ -105,6 +84,8 @@ export async function imageRoute(
       },
     });
   } catch (error) {
+    if (error instanceof RequestBodyError)
+      return new Response(null, { status: error.status, headers: imageHeaders });
     const failure = tripRequestFailure(error);
     return Response.json(
       {

@@ -4,6 +4,8 @@ Ce banc utilise le vrai build Next, les migrations PostgreSQL, les RPC et leurs 
 
 Prérequis : dépendances du dépôt, Python avec Playwright et son Chromium (`python3 -m pip install playwright`, puis `python3 -m playwright install chromium`).
 
+Sous Windows, remplacer `python3` par `python` si nécessaire et définir les variables avec `$env:NAGI_QA_OUTPUT = 'C:\chemin\vers\la\recette'` dans PowerShell. Les fichiers JSON utilisent explicitement UTF-8 ; chaque recette doit disposer d’une base fraîche et d’un répertoire distinct. Le serveur réessaie brièvement les remplacements de rapports retenus par un lecteur Windows.
+
 ```sh
 pnpm build
 NAGI_QA_OUTPUT=/tmp/nagi-trip-qa node scripts/qa/trips/server.mjs
@@ -35,6 +37,8 @@ python3 scripts/qa/trips/collaboration.py --output /tmp/nagi-trip-qa
 `python3 scripts/qa/trips/crud.py --output /tmp/nagi-trip-qa` vérifie les ajouts, journées et retraits optimistes avec 2 s de latence et les écrans mobiles. Redémarrer le serveur avant cette recette également.
 
 Cette recette utilise deux comptes distincts et le vrai flux HTTP/SSE. Elle vérifie la propagation de 20 couleurs, la fusion de propriétés différentes, le refus d’une écriture concurrente sur la même propriété, une coupure réseau suivie de sa reprise, un rollback ciblé et une navigation pendant la sauvegarde. Les tests unitaires couvrent en complément l’idempotence après perte de réponse, les événements désordonnés, les doublons, la confidentialité et la révocation.
+
+La coupure réseau vérifie aussi l’ouverture des notes avant tout chargement de la galerie photo. Un échec de son module JavaScript reste local au bouton et ne remplace pas le planificateur ; un nouvel essai après reconnexion doit ouvrir la galerie et conserver les notes synchronisées.
 
 Pour le scénario volumineux, lancer un autre serveur :
 

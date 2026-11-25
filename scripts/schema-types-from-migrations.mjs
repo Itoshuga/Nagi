@@ -95,7 +95,7 @@ try {
   output += '    };\n    CompositeTypes: { [_ in never]: never };\n  };\n};\n';
   const target = 'packages/database/src/database.types.ts';
   if (process.argv.includes('--check')) {
-    if ((await readFile(target, 'utf8')) !== output)
+    if ((await readFile(target, 'utf8')).replaceAll('\r\n', '\n') !== output)
       throw new Error('Types SQL obsolètes : lancez pnpm db:types.');
     console.log('Types PostgreSQL conformes aux migrations.');
   } else {

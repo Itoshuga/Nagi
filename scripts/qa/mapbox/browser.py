@@ -8,7 +8,7 @@ def encode(v):return base64.urlsafe_b64encode(json.dumps(v).encode()).decode().r
 def auth(sub):
  now=int(time.time());token=encode({'alg':'HS256','typ':'JWT'})+'.'+encode({'sub':sub,'aud':'authenticated','role':'authenticated','iat':now,'exp':now+86400})+'.c2lnbmF0dXJl'
  return 'base64-'+encode({'access_token':token,'refresh_token':'fixture-refresh','expires_at':now+86400,'token_type':'bearer','expires_in':86400})
-def state():return json.loads((args.output/'state.json').read_text())
+def state():return json.loads((args.output/'state.json').read_text(encoding='utf-8'))
 def log(value):passed.append(value);print(value,flush=True)
 def wait_row(page, existing):
  for _ in range(250):
@@ -37,8 +37,8 @@ with sync_playwright() as p:
   panel.get_by_role('button',name='Fermer les détails',exact=True).click();a.get_by_role('tab',name='Carte',exact=True).click();expect(a.locator('.trip-leaflet-map')).to_be_visible(timeout=15000);expect(a.locator('.nagi-trip-marker').last).to_be_visible(timeout=15000);expect(a.locator('.trip-map-place-list')).to_contain_text(re.compile('Pokémon Center Shibuya',re.I),timeout=15000);expect(a.locator('.trip-mapbox-logo')).to_be_visible();a.wait_for_timeout(1500)
   log('The real Mapbox point appeared on the preserved Leaflet map with its native label and attribution')
   assert not errors,errors
-  report={'passed':passed,'browserErrors':errors,'tileResponses':responses,'referenceId':row['external_place_id'],'providerCalls':sum(1 for r in json.loads((args.output/'requests.json').read_text()) if r['endpoint'].startswith(('/search/searchbox/','/places/v1/'))),'scope':'real Mapbox; synthetic Discord identities and isolated PostgreSQL; no remote travel writes'}
-  (args.output/'live-browser.json').write_text(json.dumps(report,indent=2))
+  report={'passed':passed,'browserErrors':errors,'tileResponses':responses,'referenceId':row['external_place_id'],'providerCalls':sum(1 for r in json.loads((args.output/'requests.json').read_text(encoding='utf-8')) if r['endpoint'].startswith(('/search/searchbox/','/places/v1/'))),'scope':'real Mapbox; synthetic Discord identities and isolated PostgreSQL; no remote travel writes'}
+  (args.output/'live-browser.json').write_text(json.dumps(report,indent=2), encoding='utf-8')
  finally:
   print(json.dumps({'tileResponses':len(responses),'browserErrors':errors}),flush=True)
   for c in contexts:c.close()

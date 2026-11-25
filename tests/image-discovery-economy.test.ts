@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NagiDatabase } from '../packages/database/src/client';
-vi.mock('server-only', () => ({}));
-vi.mock('../apps/web/node_modules/server-only/index.js', () => ({}));
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), page: vi.fn(), update: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({
   serviceDatabase: () => ({ from: builder, rpc: mocks.rpc }),

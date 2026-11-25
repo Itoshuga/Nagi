@@ -25,12 +25,14 @@ import { imageRightsLabels as rightsLabels } from './model';
 export function ImageGalleryPicker({
   reference,
   disabled = false,
+  initiallyOpen = false,
 }: {
   reference: ImageReference;
   disabled?: boolean;
+  initiallyOpen?: boolean;
 }) {
   const { result, session } = useResolvedImage(reference, true);
-  const [open, setOpen] = useState(false),
+  const [open, setOpen] = useState(initiallyOpen),
     [gallery, setGallery] = useState<ImageGallery>(),
     [error, setError] = useState('');
   const [filter, setFilter] = useState(''),

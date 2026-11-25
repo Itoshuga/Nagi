@@ -34,12 +34,12 @@ def auth():
 
 
 def state():
-    return json.loads((args.output / 'state.json').read_text())
+    return json.loads((args.output / 'state.json').read_text(encoding='utf-8'))
 
 
 def config(**value):
     temporary = args.output / 'config.tmp'
-    temporary.write_text(json.dumps(value))
+    temporary.write_text(json.dumps(value), encoding='utf-8')
     temporary.replace(args.output / 'config.json')
 
 
@@ -255,7 +255,7 @@ with sync_playwright() as playwright:
         assert len([s for s in state()['stops'] if s['trip_item_id'] == parent]) == 3
         assert not errors, errors
         log('Tablet, mobile, dark mode and reduced motion fit without horizontal page overflow')
-        (args.output / 'calendar.json').write_text(json.dumps({'passed': passed, 'browserErrors': errors}, indent=2))
+        (args.output / 'calendar.json').write_text(json.dumps({'passed': passed, 'browserErrors': errors}, indent=2), encoding='utf-8')
     finally:
         config()
         context.close()

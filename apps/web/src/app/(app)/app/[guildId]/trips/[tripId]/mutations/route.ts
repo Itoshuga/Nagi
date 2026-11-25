@@ -4,6 +4,7 @@ import { tripMutationSchema, uuidSchema } from '@nagi/shared';
 import { publicCatalogDatabase } from '@/lib/supabase/server';
 import { tripRequestFailure, tripRequestSession } from '@/features/trips/sync-server';
 import { MapboxError, verifyMapboxReference } from '@/features/integrations/mapbox/server';
+import { readJsonBody, RequestBodyError } from '@/lib/request-body';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -20,15 +21,14 @@ export async function POST(
     !request.headers.get('content-type')?.startsWith('application/json')
   )
     return new Response(null, { status: 403, headers });
-  if (Number(request.headers.get('content-length') ?? 0) > 262144)
-    return new Response(null, { status: 413, headers });
   let parsed: ReturnType<typeof tripMutationSchema.safeParse>;
   try {
-    const text = await request.text();
-    if (text.length > 262144) return new Response(null, { status: 413, headers });
-    parsed = tripMutationSchema.safeParse(JSON.parse(text));
-  } catch {
-    return new Response(null, { status: 400, headers });
+    parsed = tripMutationSchema.safeParse(await readJsonBody(request, 262144));
+  } catch (error) {
+    return new Response(null, {
+      status: error instanceof RequestBodyError ? error.status : 400,
+      headers,
+    });
   }
   if (!parsed.success)
     return Response.json(

@@ -72,6 +72,12 @@ beforeEach(() => {
   mocks.details.mockResolvedValue({ id, title: 'Details' });
 });
 describe('Trip-scoped Mapbox endpoint', () => {
+  it('bounds UTF-8 bytes before opening a session or spending provider credits', async () => {
+    const response = await POST(request('日'.repeat(100000)), params);
+    expect(response.status).toBe(413);
+    expect(mocks.session).not.toHaveBeenCalled();
+    expect(mocks.search).not.toHaveBeenCalled();
+  });
   it('checks trip access before bounded search, returning no-store native presentation', async () => {
     const body = {
       operation: 'search',

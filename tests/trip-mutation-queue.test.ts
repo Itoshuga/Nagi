@@ -275,6 +275,35 @@ function setup(count = 3) {
 }
 
 describe('Trip mutation journal and non-blocking queue', () => {
+  it('discards unsaved optimistic intent when a full snapshot removes editing permission', async () => {
+    const s = setup();
+    s.queue.setOnline(false);
+    await s.queue.enqueue(color(s.server.items[0]!.id, '#73A6DF'));
+    expect(s.queue.getSnapshot().pending).toBe(1);
+    s.queue.replace(s.server, false, false);
+    expect(s.queue.getSnapshot()).toMatchObject({
+      pending: 0,
+      canEdit: false,
+      canManage: false,
+      error: 'Ce voyage est désormais en lecture seule.',
+    });
+    expect(s.queue.getSnapshot().plan.items[0]!.calendar_color).toBeNull();
+    expect((await s.queue.enqueue(color(s.server.items[1]!.id, '#69AA91'))).ok).toBe(false);
+    s.queue.setOnline(true);
+    await flush();
+    expect(s.requests).toHaveLength(0);
+  });
+  it('does not retry an in-flight write rejected after a read-only snapshot', async () => {
+    const s = setup();
+    await s.queue.enqueue(color(s.server.items[0]!.id, '#73A6DF'));
+    await flush();
+    s.queue.replace({ ...s.server, version: 1 }, false, false);
+    s.requests[0]!.reject(new TripMutationError('temporary', 'Network error'));
+    await flush();
+    expect(s.queue.getSnapshot().pending).toBe(0);
+    expect(s.queue.getSnapshot().canEdit).toBe(false);
+    expect(s.requests).toHaveLength(1);
+  });
   it('exposes saving and rejected states for the affected entities without marking unrelated visits', async () => {
     const s = setup();
     const [first, second, untouched] = s.server.items;

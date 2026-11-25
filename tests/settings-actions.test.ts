@@ -99,8 +99,9 @@ describe('Account deletion', () => {
     expect(mocks.remove).not.toHaveBeenCalled();
   });
   it('requires both confirmations before accessing the destructive API', async () => {
-    for (const form of [new FormData(), confirmation()]) {
-      form.delete('understood');
+    for (const field of ['confirmation', 'understood']) {
+      const form = confirmation();
+      form.delete(field);
       expect((await deleteAccount(state, form)).error).toContain('confirmez');
     }
     expect(mocks.getUser).not.toHaveBeenCalled();
