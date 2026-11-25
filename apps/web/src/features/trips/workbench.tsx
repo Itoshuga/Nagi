@@ -332,6 +332,8 @@ export function TripWorkbench({
     }
     if (parent && !displayed.items.some((item) => item.id === parent))
       return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
+    if (targetDay && !queue.getSnapshot().plan.days.some((day) => day.id === targetDay))
+      return { ok: false, error: 'Cette journée n’existe plus. Choisissez une autre destination.' };
     // One intentional gesture creates one identity. The queue retains it through retries.
     const id = crypto.randomUUID();
     const result = await execute(
@@ -361,6 +363,13 @@ export function TripWorkbench({
       }
       return result;
     }
+    if (placement.day && !queue.getSnapshot().plan.days.some((day) => day.id === placement.day))
+      return { ok: false, error: 'Cette journée n’existe plus. Choisissez une autre destination.' };
+    if (
+      placement.parent &&
+      !queue.getSnapshot().plan.items.some((item) => item.id === placement.parent)
+    )
+      return { ok: false, error: 'Cette activité ne fait plus partie du voyage.' };
     const id = crypto.randomUUID();
     const parsed = sourceVisitChange(place, placement, id, metadata);
     if (!parsed.success)
@@ -957,6 +966,7 @@ export function TripWorkbench({
                     {panel === 'catalog' ? (
                       <TripPlacePicker
                         addSource={addSource}
+                        replacing={!!replacement}
                         guild={guild}
                         plan={displayed}
                         categories={categories}

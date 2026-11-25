@@ -26,9 +26,11 @@ export function TripDayEditor({
   day,
   mutate,
   children,
+  onSaved,
 }: {
   plan: TripPlan;
   day?: TripPlannerDay;
+  onSaved?: () => void;
   mutate: PlanMutation;
   children: React.ReactNode;
 }) {
@@ -62,6 +64,7 @@ export function TripDayEditor({
       if (result.ok) {
         setOpen(false);
         setError('');
+        onSaved?.();
       } else setError(result.error);
     });
   }

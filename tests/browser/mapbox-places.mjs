@@ -123,7 +123,7 @@ await build({
             a.path === 'colors'
               ? "export async function listCalendarColors(){return {ok:true,data:[]}}export async function addCalendarColor(){return {ok:false,error:'fixture'}}export async function removeCalendarColor(){return {ok:true}}"
               : a.path === 'queue'
-                ? "export function useTripMutations(g,plan,v,canEdit,canManage){return {state:{plan,canEdit,canManage,pending:0,failed:false,error:'',online:true,connected:true,revoked:false},queue:{enqueue:(c,v,e)=>window.__edit(v,c,e),retry(){},clearError(){}}}}"
+                ? "export function useTripMutations(g,plan,v,canEdit,canManage){return {state:{plan,canEdit,canManage,pending:0,failed:false,error:'',online:true,connected:true,revoked:false},queue:{getSnapshot:()=>({plan:window.__plan}),enqueue:(c,v,e)=>window.__edit(v,c,e),retry(){},clearError(){}}}}"
                 : a.path === 'live'
                   ? 'export function useTripLive(){}'
                   : actions,
@@ -774,6 +774,237 @@ try {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode });
   }
+  async function catalogActionChecks() {
+    await nav(1280, 'drag');
+    await click('.trip-primary-add');
+    await wait('document.querySelectorAll(".trip-source-nagi [data-catalog-entry]").length>1');
+    await fill('.trip-picker-target select', ids.day2);
+    await wait('!!document.querySelector(".trip-source-nagi [data-catalog-entry]:nth-child(2)")');
+    const nagiCard = '.trip-source-nagi [data-catalog-entry]:nth-child(2) .trip-picker-preview';
+    await drag(nagiCard, '.trip-timeline-end');
+    await wait('window.__changes.at(-1)?.operation==="add_item"');
+    assert(
+      await ev(
+        `window.__changes.at(-1).data.day===${JSON.stringify(ids.day1)} && !document.querySelector(".trip-catalog-destination")`,
+      ),
+      'Nagi drag uses the itinerary drop day instead of the catalogue default and never opens the picker',
+    );
+    await fill('.trip-picker-target select', '');
+    await wait('!!document.querySelector(".trip-source-nagi [data-catalog-entry]:nth-child(2)")');
+    await textClick('Calendrier');
+    await drag(nagiCard, '[data-slot-minute="870"]');
+    await wait('window.__changes.at(-1)?.data.start_time==="14:45"');
+    assert(
+      await ev('!document.querySelector(".trip-catalog-destination")'),
+      'Nagi calendar drag preserves its dropped time without asking for a destination',
+    );
+    await nav();
+    await click('.trip-primary-add');
+    await wait('document.querySelectorAll(".trip-source-nagi [data-catalog-entry]").length>1');
+    await fill('.trip-picker-target select', '');
+    const nativeAdd = '.trip-source-nagi [data-catalog-entry]:first-child .trip-picker-add';
+    assert(
+      await ev('!document.querySelector(".trip-catalog-action")'),
+      'Nagi recommendations have a single visible add button',
+    );
+    await click(nativeAdd);
+    await wait('!!document.querySelector(".trip-catalog-destination")');
+    await key('Escape');
+    await wait('!document.querySelector(".trip-catalog-destination")');
+    await wait('document.activeElement?.classList.contains("trip-picker-add")');
+    assert(
+      await ev(
+        '!!document.querySelector(".trip-picker-panel") && document.activeElement?.classList.contains("trip-picker-add")',
+      ),
+      'Escape dismisses only the day picker and restores its add button',
+    );
+    await click(nativeAdd);
+    await fill('[aria-label="Rechercher un lieu"]', 'Pokémon');
+    await wait('!document.querySelector(".trip-catalog-destination")');
+    await fill('[aria-label="Rechercher un lieu"]', '');
+    await wait('document.querySelectorAll(".trip-source-nagi [data-catalog-entry]").length>1');
+    assert(
+      await ev('!document.querySelector(".trip-catalog-destination")'),
+      'returning to a previous search never resurrects an old day picker',
+    );
+    await click(nativeAdd);
+    await click('.trip-source-nagi [data-catalog-entry]:nth-child(2) .trip-picker-add');
+    assert(
+      await ev('document.querySelectorAll(".trip-catalog-destination").length===1'),
+      'only one contextual picker can be open across cards',
+    );
+    await click('.trip-catalog-days button:nth-child(2)');
+    await wait(`window.__plan.items.at(-1).trip_day_id===${JSON.stringify(ids.day2)}`);
+    await click(nativeAdd);
+    await click('.trip-catalog-unplanned');
+    await wait('window.__plan.items.at(-1).trip_day_id===null');
+    const beforeDouble = await ev('window.__plan.items.length');
+    await fill('.trip-picker-target select', ids.day1);
+    await ev(
+      `(()=>{const button=document.querySelector(${JSON.stringify(nativeAdd)});button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:2}));})()`,
+    );
+    await wait(`window.__plan.items.length===${beforeDouble + 1}`);
+    assert(
+      await ev('new Set(window.__plan.items.map(i=>i.id)).size===window.__plan.items.length'),
+      'a double click creates one occurrence with one stable identity',
+    );
+    await fill('.trip-picker-target select', '');
+    await ev(
+      `window.__plan={...window.__plan,days:[...window.__plan.days,...Array.from({length:38},(_,i)=>({...window.__plan.days[0],id:'long-day-'+i,title:'Journée '+(i+3),date:null}))]};window.__updatePlan(window.__plan)`,
+    );
+    await click(nativeAdd);
+    await wait('document.querySelectorAll(".trip-catalog-days button").length===40');
+    assert(
+      await ev(
+        'document.querySelector(".trip-catalog-days").scrollHeight>document.querySelector(".trip-catalog-days").clientHeight && document.querySelector(".trip-catalog-destination").getBoundingClientRect().bottom<=innerHeight',
+      ),
+      'long trips use a bounded scrolling day list that stays on screen',
+    );
+    await key('Escape');
+    await ev('window.__plan={...window.__plan,days:[]};window.__updatePlan(window.__plan)');
+    await click(nativeAdd);
+    await wait('!!document.querySelector(".trip-catalog-no-days")');
+    assert(
+      await ev(
+        'document.querySelector(".trip-catalog-no-days").textContent.includes("Créer une journée")',
+      ),
+      'a trip without days explains its empty state and offers the existing day editor',
+    );
+    await textClick('Créer une journée', 'document.querySelector(".trip-catalog-no-days")');
+    await wait('!!document.querySelector("[role=dialog] input[name=date]")');
+    await key('Escape');
+    await wait('!document.querySelector("[role=dialog] input[name=date]")');
+    assert(
+      await ev('!!document.querySelector(".trip-picker-panel")'),
+      'opening the existing day editor never opens a step creation modal or loses the catalogue',
+    );
+    await key('Escape');
+    await click(nativeAdd);
+    await click('[aria-label="Fermer le catalogue"]');
+    await wait(
+      '!document.querySelector(".trip-picker-panel") && !document.querySelector(".trip-catalog-destination")',
+    );
+    await nav();
+    await click('.trip-primary-add');
+    await wait('document.querySelectorAll(".trip-source-nagi [data-catalog-entry]").length>0');
+    await fill('.trip-picker-target select', ids.day1);
+    await ev(
+      `window.__plan={...window.__plan,days:window.__plan.days.filter(day=>day.id!==${JSON.stringify(ids.day1)})};window.__updatePlan(window.__plan)`,
+    );
+    const staleCount = await ev('window.__plan.items.length');
+    await click(nativeAdd);
+    await wait(
+      'document.querySelector(".trip-catalog-destination")?.textContent.includes("n’existe plus")',
+    );
+    assert(
+      (await ev('window.__plan.items.length')) === staleCount,
+      'a deleted target day cannot create an invalid occurrence',
+    );
+    await click('.trip-catalog-days button');
+    await wait(`window.__plan.items.length===${staleCount + 1}`);
+    assert(
+      (await ev('window.__plan.items.at(-1).trip_day_id')) === ids.day2,
+      'the contextual picker recovers by choosing an existing day',
+    );
+    await nav();
+    await openSearch('Deferred catalogue add');
+    await fill('.trip-picker-target select', '');
+    await ev(
+      `(()=>{const original=window.fetch;window.fetch=async function(url,options){const body=String(url).endsWith('/external')&&options?.body?JSON.parse(options.body):null;if(body?.operation==='resolve'&&body.placeId==='mapbox-one'&&!window.__heldCatalogAdd){window.__heldCatalogAdd=true;await new Promise(resolve=>window.__releaseCatalogAdd=resolve)}return original.apply(this,[url,options])}})()`,
+    );
+    await click('.trip-external-result-list li:first-child .trip-picker-add');
+    await click('.trip-catalog-days button:first-child');
+    await wait('typeof window.__releaseCatalogAdd==="function"');
+    await click('[aria-label="Rechercher un lieu"]');
+    await wait('!document.querySelector(".trip-catalog-destination")');
+    await click('.trip-external-result-list li:nth-child(2) .trip-picker-add');
+    await wait(
+      'document.querySelector(".trip-catalog-destination-heading")?.textContent.includes("Tokyo Museum")',
+    );
+    await ev('window.__releaseCatalogAdd()');
+    await wait('window.__plan.items.length===2');
+    assert(
+      await ev(
+        'document.querySelector(".trip-catalog-destination-heading")?.textContent.includes("Tokyo Museum")',
+      ),
+      'an earlier pending addition cannot dismiss a newer card’s day picker',
+    );
+    await key('Escape');
+    for (const width of [834, 390, 320]) {
+      await nav(width);
+      await openSearch();
+      await screenshot('catalog-' + width);
+      assert(
+        await ev('document.documentElement.scrollWidth<=innerWidth'),
+        'responsive source picker ' + width,
+      );
+      assert(
+        await ev(
+          'getComputedStyle(document.querySelector(".trip-primary-add span")).display!=="none"',
+        ),
+        'the fused button keeps its visible label on mobile',
+      );
+      await fill('.trip-picker-target select', ids.day2);
+      const quickBefore = await ev('window.__plan.items.length');
+      await click('.trip-external-result-list li:first-child .trip-picker-add');
+      await wait(`window.__plan.items.length===${quickBefore + 1}`);
+      assert(
+        await ev(
+          'window.__plan.items.at(-1).trip_day_id===' +
+            JSON.stringify(ids.day2) +
+            ' && window.__plan.items.at(-1).estimated_duration_minutes===null && !document.querySelector(".trip-catalog-destination") && !!document.querySelector(".trip-picker-panel") && document.querySelector(".trip-picker-search input").value==="Sensō-ji"',
+        ),
+        'one quick click preserves the day and query, leaves the catalogue open and invents no duration',
+      );
+      await click('.trip-external-result-list li:first-child .trip-picker-add');
+      await wait(`window.__plan.items.length===${quickBefore + 2}`);
+      assert(
+        await ev('new Set(window.__plan.items.map(i=>i.id)).size===window.__plan.items.length'),
+        'quick repeats create independent occurrence IDs',
+      );
+      await click('.trip-external-result-list li:nth-child(2) .trip-picker-add');
+      await wait(`window.__plan.items.length===${quickBefore + 3}`);
+      assert(
+        await ev(
+          'window.__plan.items.at(-1).external_place_id==="mapbox-two" && !!document.querySelector(".trip-picker-panel")',
+        ),
+        'a different place can be added next without closing the catalogue',
+      );
+      assert(
+        await ev('!document.querySelector(".trip-catalog-action")'),
+        'catalogue cards expose one add action and no overflow menu',
+      );
+      await fill('.trip-picker-target select', '');
+      const contextualBefore = await ev('window.__plan.items.length');
+      await click('.trip-external-result-list li:first-child .trip-picker-add');
+      await wait('!!document.querySelector(".trip-catalog-destination")');
+      assert(
+        (await ev('window.__plan.items.length')) === contextualBefore,
+        'an unplanned default asks for a day before creating any occurrence',
+      );
+      assert(
+        await ev(
+          'document.querySelector(".trip-catalog-days").textContent.includes("12 juil.") && document.querySelector(".trip-catalog-days").textContent.includes("13 juil.")',
+        ),
+        'the day picker uses the real journey dates',
+      );
+      await screenshot('catalog-day-picker-' + width);
+      await click('.trip-catalog-days button:nth-child(2)');
+      await wait(
+        `window.__plan.items.length===${contextualBefore + 1} && !document.querySelector(".trip-catalog-destination")`,
+      );
+      assert(
+        await ev(
+          'document.querySelector(".trip-picker-target select").value==="" && !!document.querySelector(".trip-picker-panel") && document.querySelector(".trip-picker-search input").value==="Sensō-ji"',
+        ),
+        'a one-off day keeps the global default, current query and catalogue open',
+      );
+      assert(
+        (await ev('window.__plan.items.at(-1).trip_day_id')) === ids.day2,
+        'menu inserts in chosen day ' + width,
+      );
+    }
+  }
   await nav();
   assert(
     await ev(
@@ -1162,56 +1393,7 @@ try {
       'restoring the published cover remains a private preview action',
     );
   }
-  for (const width of [834, 390, 320]) {
-    await nav(width);
-    await openSearch();
-    await screenshot('catalog-' + width);
-    assert(
-      await ev('document.documentElement.scrollWidth<=innerWidth'),
-      'responsive source picker ' + width,
-    );
-    assert(
-      await ev(
-        'getComputedStyle(document.querySelector(".trip-primary-add span")).display!=="none"',
-      ),
-      'the fused button keeps its visible label on mobile',
-    );
-    await fill('.trip-picker-target select', ids.day2);
-    const quickBefore = await ev('window.__plan.items.length');
-    await click('.trip-external-result-list li:first-child .trip-picker-add');
-    await wait(`window.__plan.items.length===${quickBefore + 1}`);
-    assert(
-      await ev(
-        'window.__plan.items.at(-1).trip_day_id===' +
-          JSON.stringify(ids.day2) +
-          ' && window.__plan.items.at(-1).estimated_duration_minutes===null && !document.querySelector(".trip-catalog-destination") && !!document.querySelector(".trip-picker-panel") && document.querySelector(".trip-picker-search input").value==="Sensō-ji"',
-      ),
-      'one quick click preserves the day and query, leaves the catalogue open and invents no duration',
-    );
-    await click('.trip-external-result-list li:first-child .trip-picker-add');
-    await wait(`window.__plan.items.length===${quickBefore + 2}`);
-    assert(
-      await ev('new Set(window.__plan.items.map(i=>i.id)).size===window.__plan.items.length'),
-      'quick repeats create independent occurrence IDs',
-    );
-    await click('.trip-external-result-list li:nth-child(2) .trip-picker-add');
-    await wait(`window.__plan.items.length===${quickBefore + 3}`);
-    assert(
-      await ev(
-        'window.__plan.items.at(-1).external_place_id==="mapbox-two" && !!document.querySelector(".trip-picker-panel")',
-      ),
-      'a different place can be added next without closing the catalogue',
-    );
-    await click('.trip-external-result-list li:first-child .trip-catalog-action');
-    await wait('!!document.querySelector(".trip-catalog-destination")');
-    await fill('[aria-label="Destination de la visite"]', ids.day2);
-    await textClick('Ajouter au voyage', 'document.querySelector(".trip-catalog-destination")');
-    await wait('window.__plan.items.some(i=>i.source==="mapbox")');
-    assert(
-      (await ev('window.__plan.items.at(-1).trip_day_id')) === ids.day2,
-      'menu inserts in chosen day ' + width,
-    );
-  }
+  await catalogActionChecks();
   await nav();
   await click('.trip-primary-add');
   await fill('[aria-label="Rechercher un lieu"]', 'Tokyo');

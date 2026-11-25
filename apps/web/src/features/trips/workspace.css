@@ -2616,62 +2616,97 @@ html:has(.trip-workspace.is-sorting) * {
   font-size: 11px;
   line-height: 1.6;
 }
-.trip-catalog-action {
-  flex-shrink: 0;
-  margin-right: 4px;
-}
 .trip-catalog-destination {
-  width: min(304px, calc(100vw - 24px));
+  width: min(268px, calc(100vw - 24px));
   max-height: min(420px, var(--radix-popover-content-available-height));
-  overflow-y: auto;
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 6px;
+  border-radius: 13px;
+  box-shadow: 0 8px 28px #12223b12;
   color: var(--foreground);
   font-family: 'Manrope Variable', sans-serif;
 }
-.trip-catalog-destination form,
-.trip-catalog-destination label {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-  font-size: 12px;
-}
-.trip-catalog-destination form {
-  gap: 16px;
-}
 .trip-catalog-destination-heading {
   display: grid;
+  flex-shrink: 0;
   gap: 4px;
   min-width: 0;
+  padding: 9px 10px 12px;
 }
 .trip-catalog-destination-heading strong {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 750;
 }
 .trip-catalog-destination-heading span {
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.trip-catalog-destination label {
-  color: var(--muted-foreground);
-  font-weight: 600;
+.trip-catalog-days {
+  min-height: 0;
+  max-height: 270px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.trip-catalog-destination select,
-.trip-catalog-destination input {
-  min-width: 0;
+.trip-catalog-destination button[data-catalog-choice] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
-  height: 40px;
-  color: var(--foreground);
-  font: inherit;
-  font-weight: 500;
-}
-.trip-catalog-destination button {
+  min-height: 39px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  text-align: left;
+  font-size: 11px;
+  line-height: 1.5;
   font-family: inherit;
 }
-.trip-catalog-destination form > button {
-  width: 100%;
+.trip-catalog-destination button[data-catalog-choice] svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.trip-catalog-destination button[data-catalog-choice] span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trip-catalog-destination button[data-catalog-choice]:hover,
+.trip-catalog-destination button[data-catalog-choice]:focus-visible {
+  background: var(--muted);
+  color: var(--primary-ink);
+}
+.trip-catalog-destination button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.trip-catalog-destination button:disabled {
+  opacity: 0.5;
+}
+.trip-catalog-destination .trip-catalog-unplanned {
+  flex-shrink: 0;
+  margin-top: 5px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.trip-catalog-no-days {
+  padding: 4px 0;
+}
+.trip-catalog-no-days p {
+  padding: 5px 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.trip-catalog-add-error {
+  padding: 8px 10px;
+  color: var(--destructive);
+  font-size: 11px;
+  line-height: 1.6;
 }
 .trip-catalog-stop-target {
   margin: 4px 0 8px var(--trip-content-x);

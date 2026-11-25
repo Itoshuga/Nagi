@@ -14,7 +14,7 @@ import {
   defaultMapboxFilters,
   mapboxPlaceTypes,
 } from '@/features/integrations/mapbox/search-model';
-import { CatalogResult } from './catalog-result';
+import { CatalogAddProvider, CatalogResult } from './catalog-result';
 import {
   catalogDurationKey,
   catalogHintKey,
@@ -36,6 +36,7 @@ export function TripPlacePicker({
   onPreview,
   canAdd = true,
   addSource,
+  replacing = false,
 }: {
   guild: string;
   plan: TripPlan;
@@ -50,6 +51,7 @@ export function TripPlacePicker({
   onPreview: (entry: EntryCardRow) => void;
   canAdd?: boolean;
   addSource?: SourcePlaceAdder;
+  replacing?: boolean;
 }) {
   const { day, time: initialTime, parent: parentId } = placement;
   const [query, setQuery] = useState(initialEntry?.title.slice(0, 100) ?? '');
@@ -689,5 +691,13 @@ export function TripPlacePicker({
       )}
     </>
   );
-  return <div className="trip-picker-panel">{content}</div>;
+  return (
+    <CatalogAddProvider
+      scope={JSON.stringify([key, source, mapboxRequest.nonce])}
+      mutate={mutate}
+      replacing={replacing}
+    >
+      <div className="trip-picker-panel">{content}</div>
+    </CatalogAddProvider>
+  );
 }

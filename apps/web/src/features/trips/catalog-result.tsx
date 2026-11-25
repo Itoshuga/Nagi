@@ -1,14 +1,55 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { Check, LoaderCircle, MoreHorizontal, Plus } from 'lucide-react';
-import { Button, Input, Popover, PopoverContent, PopoverTrigger, cn } from '@nagi/ui';
+import { CalendarDays, Check, Inbox, LoaderCircle, Plus } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger, cn } from '@nagi/ui';
 import type { TripPlan } from '@nagi/database';
 import type { TripPlaceReference, TripResult } from '@nagi/shared';
-import { CatalogSelect } from '@/features/catalog/admin-form';
 import { dayLabel } from './add-place-dialog';
+import { TripDayEditor } from './plan-dialogs';
 import type { CatalogEntry, CatalogPlacement } from './catalog-drag';
-import { useExternalPlaces } from '@/features/integrations/mapbox/components';
+import type { PlanMutation } from './planner-model';
+
+const AddContext = createContext<{
+  open: string | null;
+  setOpen: (id: string) => void;
+  close: (id: string) => void;
+  mutate: PlanMutation;
+  replacing: boolean;
+} | null>(null);
+/** Both sources share one contextual picker, scoped to the current search. */
+export function CatalogAddProvider({
+  scope,
+  mutate,
+  replacing,
+  children,
+}: {
+  scope: string;
+  mutate: PlanMutation;
+  replacing: boolean;
+  children: ReactNode;
+}) {
+  const [opened, setOpened] = useState<{ scope: string; id: string | null }>({ scope, id: null });
+  // Discard the previous search’s picker, including when that search is revisited.
+  if (opened.scope !== scope) setOpened({ scope, id: null });
+  return (
+    <AddContext.Provider
+      value={{
+        open: opened.scope === scope ? opened.id : null,
+        setOpen: (id) =>
+          setOpened((current) => (current.scope === scope ? { scope, id } : current)),
+        close: (id) =>
+          setOpened((current) =>
+            current.scope === scope && current.id === id ? { scope, id: null } : current,
+          ),
+        mutate,
+        replacing,
+      }}
+    >
+      {children}
+    </AddContext.Provider>
+  );
+}
 
 export function CatalogResult({
   entry,
@@ -39,7 +80,8 @@ export function CatalogResult({
   reference?: TripPlaceReference;
   onCommit?: () => void | TripPlaceReference | Promise<void | TripPlaceReference>;
 }) {
-  const external = useExternalPlaces();
+  const context = useContext(AddContext);
+  if (!context) throw new Error('CatalogAddProvider requis.');
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: `catalog:${id}`,
     data: {
@@ -52,38 +94,57 @@ export function CatalogResult({
     },
     disabled: !draggable || !canAdd,
   });
-  const [open, setOpen] = useState(false);
-  const [destination, setDestination] = useState('');
-  const [time, setTime] = useState('');
   const [pending, setPending] = useState(false),
-    [added, setAdded] = useState(false);
+    [added, setAdded] = useState(false),
+    [error, setError] = useState('');
   const adding = useRef(false);
+  const open = context.open === id && canAdd;
+  const explicitTarget =
+    context.replacing ||
+    !!placement.parent ||
+    (!!placement.day && plan.days.some((day) => day.id === placement.day));
   useEffect(() => {
     if (!added) return;
     const timer = setTimeout(() => setAdded(false), 1400);
     return () => clearTimeout(timer);
   }, [added]);
   function changeOpen(value: boolean) {
-    if (value) {
-      setDestination(placement.parent ? `stop:${placement.parent}` : (placement.day ?? ''));
-      setTime(placement.time ?? '');
-    }
-    setOpen(value);
+    if (value)
+      setError(
+        placement.day && !plan.days.some((day) => day.id === placement.day)
+          ? 'Cette journée n’existe plus. Choisissez une autre destination.'
+          : '',
+      );
+    if (value) context!.setOpen(id);
+    else context!.close(id);
   }
   async function create(target: CatalogPlacement) {
     if (adding.current || !canAdd) return;
+    if (!context!.replacing && target.day && !plan.days.some((day) => day.id === target.day)) {
+      setError('Cette journée n’existe plus. Choisissez une autre destination.');
+      context!.setOpen(id);
+      return;
+    }
     adding.current = true;
     setPending(true);
+    setError('');
     try {
       const result = await insert(target);
       if (result.ok) {
         setAdded(true);
-        setOpen(false);
-      }
+        context!.close(id);
+      } else setError(result.error);
+    } catch {
+      setError('L’ajout a échoué. Réessayez.');
     } finally {
       adding.current = false;
       setPending(false);
     }
+  }
+  function choose(day: string | null) {
+    // A one-off choice does not change the catalogue default or carry a clock
+    // and insertion position from a different day.
+    void create(day === placement.day ? { ...placement, day } : { day, before: null });
   }
   const action = (event: React.MouseEvent | React.TouchEvent) =>
     event.nativeEvent
@@ -91,7 +152,7 @@ export function CatalogResult({
       .some(
         (node) =>
           node instanceof Element &&
-          node.matches('.trip-catalog-action,.trip-picker-add,[role="dialog"],input,select,a'),
+          node.matches('.trip-picker-add,[role="dialog"],input,select,a'),
       );
   return (
     <li
@@ -103,157 +164,167 @@ export function CatalogResult({
       data-catalog-entry={entry.id}
       className={cn(draggable && canAdd && 'trip-catalog-draggable', isDragging && 'is-copying')}
       onMouseMove={onActive}
-      onMouseDown={(e) => {
-        if (!action(e)) listeners?.onMouseDown?.(e);
+      onMouseDown={(event) => {
+        if (!action(event)) listeners?.onMouseDown?.(event);
       }}
-      onTouchStart={(e) => {
-        if (!action(e)) listeners?.onTouchStart?.(e);
+      onTouchStart={(event) => {
+        if (!action(event)) listeners?.onTouchStart?.(event);
       }}
-      onDragStartCapture={(e) => e.preventDefault()}
-      onContextMenu={(e) => {
-        if (canAdd && draggable) {
-          e.preventDefault();
-          changeOpen(true);
-        }
-      }}
-      onKeyDown={(e) => {
-        if (canAdd && draggable && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
-          e.preventDefault();
-          changeOpen(true);
-        }
-      }}
+      onDragStartCapture={(event) => event.preventDefault()}
     >
       {children}
       {canAdd && (
-        <button
-          type="button"
-          className="trip-picker-add"
-          aria-label={`Ajouter ${entry.title}`}
-          title={
-            added
-              ? 'Ajouté · Ajouter une autre occurrence'
-              : placement.parent
-                ? 'Ajouter un arrêt à cette activité'
-                : 'Ajouter à la journée choisie'
-          }
-          data-added={added || undefined}
-          aria-disabled={pending}
-          onClick={(event) => {
-            if (event.detail < 2) void create(placement);
-          }}
-          onKeyDown={(event) => {
-            if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
-          }}
-        >
-          {pending ? (
-            <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
-          ) : added ? (
-            <Check className="size-4" />
-          ) : (
-            <Plus className="size-4" />
-          )}
-        </button>
-      )}
-      <span className="sr-only" role="status">
-        {added ? `${entry.title} ajouté au voyage.` : ''}
-      </span>
-      {draggable && canAdd && (
         <Popover open={open} onOpenChange={changeOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="trip-icon-button trip-catalog-action"
-              aria-label={`Ajouter au voyage · ${entry.title}`}
-              disabled={pending}
+              className="trip-picker-add"
+              aria-label={`Ajouter ${entry.title}`}
+              title={
+                added
+                  ? 'Ajouté · Ajouter une autre occurrence'
+                  : placement.parent
+                    ? 'Ajouter un arrêt à cette activité'
+                    : explicitTarget
+                      ? 'Ajouter à la journée choisie'
+                      : 'Choisir une journée'
+              }
+              data-added={added || undefined}
+              aria-disabled={pending}
+              aria-busy={pending}
+              aria-haspopup={explicitTarget ? undefined : 'dialog'}
+              aria-expanded={explicitTarget ? undefined : open}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                if (event.detail >= 2 || pending) {
+                  event.preventDefault();
+                  return;
+                }
+                if (explicitTarget) {
+                  event.preventDefault();
+                  void create(placement);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
+              }}
             >
-              <MoreHorizontal className="size-4" />
+              {pending ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                />
+              ) : added ? (
+                <Check aria-hidden="true" className="size-4" />
+              ) : (
+                <Plus aria-hidden="true" className="size-4" />
+              )}
             </button>
           </PopoverTrigger>
           {open && (
             <PopoverContent
               className="trip-catalog-destination"
               align="end"
-              aria-label={`Ajouter ${entry.title} au voyage`}
+              sideOffset={6}
+              collisionPadding={12}
+              aria-label={`Ajouter ${entry.title} à une journée`}
+              onKeyDown={(event) => {
+                if (!event.currentTarget.contains(event.target as Node)) return;
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  changeOpen(false);
+                }
+                if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                  const choices = [
+                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                      '[data-catalog-choice]:not(:disabled)',
+                    ),
+                  ];
+                  if (!choices.length) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const index = choices.indexOf(document.activeElement as HTMLButtonElement);
+                  const next =
+                    event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? choices.length - 1
+                        : index < 0
+                          ? event.key === 'ArrowUp'
+                            ? choices.length - 1
+                            : 0
+                          : (index + (event.key === 'ArrowUp' ? -1 : 1) + choices.length) %
+                            choices.length;
+                  choices[next]?.focus();
+                }
+              }}
             >
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const parent = destination.startsWith('stop:')
-                    ? plan.items.find((i) => i.id === destination.slice(5))
-                    : undefined;
-                  if (destination.startsWith('stop:') && !parent) return;
-                  try {
-                    await create({
-                      day: parent ? parent.trip_day_id : destination || null,
-                      parent: parent?.id,
-                      time: parent || !time ? undefined : time,
-                      before:
-                        (parent?.id ?? null) === (placement.parent ?? null) &&
-                        (parent ? parent.trip_day_id : destination || null) === placement.day
-                          ? placement.before
-                          : null,
-                    });
-                  } catch {
-                    /* Resolution errors remain in the source panel. */
-                  }
+              <div className="trip-catalog-destination-heading">
+                <strong>Ajouter à une journée</strong>
+                <span>{entry.title}</span>
+              </div>
+              {plan.days.length ? (
+                <div className="trip-catalog-days" role="group" aria-label="Journées disponibles">
+                  {plan.days.map((day) => (
+                    <button
+                      key={day.id}
+                      type="button"
+                      data-catalog-choice
+                      data-day={day.id}
+                      disabled={pending}
+                      onClick={(event) => {
+                        if (event.detail < 2) choose(day.id);
+                      }}
+                    >
+                      <CalendarDays aria-hidden="true" className="size-4" />
+                      <span>{dayLabel(day, plan.days)}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="trip-catalog-no-days">
+                  <p>Ce voyage ne contient aucune journée.</p>
+                  <TripDayEditor
+                    plan={plan}
+                    mutate={context.mutate}
+                    onSaved={() => changeOpen(false)}
+                  >
+                    <button type="button" data-catalog-choice>
+                      <Plus aria-hidden="true" className="size-4" />
+                      Créer une journée
+                    </button>
+                  </TripDayEditor>
+                </div>
+              )}
+              <button
+                type="button"
+                className="trip-catalog-unplanned"
+                data-catalog-choice
+                disabled={pending}
+                onClick={(event) => {
+                  if (event.detail < 2) choose(null);
                 }}
               >
-                <div className="trip-catalog-destination-heading">
-                  <strong>Ajouter au voyage</strong>
-                  <span>{entry.title}</span>
-                </div>
-                <label>
-                  Destination
-                  <CatalogSelect
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    aria-label="Destination de la visite"
-                  >
-                    <option value="">À organiser</option>
-                    {plan.days.map((day) => (
-                      <option key={day.id} value={day.id}>
-                        {dayLabel(day, plan.days)}
-                      </option>
-                    ))}
-                    {plan.stopsAvailable !== false && plan.items.length > 0 && (
-                      <optgroup label="Arrêt dans une activité">
-                        {plan.items.map((item, index) => (
-                          <option key={item.id} value={`stop:${item.id}`}>
-                            {item.source === 'mapbox'
-                              ? (external?.get(item.external_place_id ?? '').place?.title ??
-                                `Étape ${index + 1}`)
-                              : (item.entry?.title ?? 'Activité')}{' '}
-                            · {item.start_time?.slice(0, 5) ?? 'Libre'} ·{' '}
-                            {item.trip_day_id
-                              ? dayLabel(
-                                  plan.days.find((d) => d.id === item.trip_day_id)!,
-                                  plan.days,
-                                )
-                              : 'À organiser'}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </CatalogSelect>
-                </label>
-                {!destination.startsWith('stop:') && (
-                  <label>
-                    Horaire facultatif
-                    <Input
-                      type="time"
-                      value={time}
-                      onChange={(e) => setTime(e.target.value)}
-                      aria-label="Horaire de la visite"
-                    />
-                  </label>
-                )}
-                <Button size="sm" type="submit" disabled={pending}>
-                  Ajouter au voyage
-                </Button>
-              </form>
+                <Inbox aria-hidden="true" className="size-4" />
+                <span>Garder dans « À organiser »</span>
+              </button>
+              {error && (
+                <p role="alert" className="trip-catalog-add-error">
+                  {error}
+                </p>
+              )}
             </PopoverContent>
           )}
         </Popover>
+      )}
+      <span className="sr-only" role="status">
+        {added ? `${entry.title} ajouté au voyage.` : ''}
+      </span>
+      {error && !open && (
+        <span role="alert" className="sr-only">
+          {error}
+        </span>
       )}
     </li>
   );

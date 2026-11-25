@@ -92,13 +92,14 @@ with sync_playwright() as p:
         assert page.evaluate("localStorage.getItem('nagi:catalog-default-duration')") == '45'
         duration.fill('30')
         duration.press('Escape')
-        panel.get_by_role('button', name='Ajouter au voyage · Nintendo TOKYO', exact=True).click()
+        panel.get_by_label('Ajouter à', exact=True).select_option('')
+        panel.get_by_role('button', name='Ajouter Nintendo TOKYO', exact=True).click()
         menu = page.locator('.trip-catalog-destination')
         expect(menu).to_be_visible()
-        assert menu.evaluate('(node)=>parseFloat(getComputedStyle(node).paddingLeft)') >= 16
+        assert 220 <= menu.bounding_box()['width'] <= 280
         assert 'Manrope' in menu.evaluate('(node)=>getComputedStyle(node).fontFamily')
         page.screenshot(path=str(args.output / 'catalog-menu-desktop.png'))
-        menu.get_by_label('Destination de la visite', exact=True).press('Escape')
+        menu.locator('.trip-catalog-days button').first.press('Escape')
         expect(menu).to_have_count(0)
         search_count = len(searches)
         original = len(state()['items'])
@@ -214,25 +215,40 @@ with sync_playwright() as p:
         saved()
         log('Overview without a grid accepts an unscheduled visit on the selected drop day')
         page.set_viewport_size({'width': 390, 'height': 844})
-        action = panel.get_by_role('button', name='Ajouter au voyage · Nintendo TOKYO', exact=True)
+        panel.get_by_label('Ajouter à', exact=True).select_option('')
+        action = panel.get_by_role('button', name='Ajouter Nintendo TOKYO', exact=True)
         action.focus()
-        action.press('Shift+F10')
-        destination = page.get_by_role('combobox', name='Destination de la visite', exact=True)
-        expect(destination).to_be_visible()
+        action.press('Enter')
         menu = page.locator('.trip-catalog-destination')
         expect(menu).to_be_in_viewport(ratio=1)
         bounds = menu.bounding_box()
         assert bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= 390
         assert bounds['y'] >= 0 and bounds['y'] + bounds['height'] <= 844
         page.screenshot(path=str(args.output / 'catalog-menu-mobile.png'))
-        destination.select_option(days[0]['id'])
-        page.get_by_label('Horaire de la visite', exact=True).fill('18:15')
-        page.get_by_role('button', name='Ajouter au voyage', exact=True).click()
+        prior_ids = {i['id'] for i in state()['items']}
+        menu.locator('.trip-catalog-days button').first.press('Enter')
         saved()
-        assert any((i['entry_id'].startswith('0000000c') and i['start_time'] == '18:15:00' for i in state()['items']))
+        created = next(i for i in state()['items'] if i['id'] not in prior_ids)
+        assert created['trip_day_id'] == days[0]['id'] and created['start_time'] is None
+        expect(panel.get_by_label('Ajouter à', exact=True)).to_have_value('')
+        # Clock editing remains in the existing quick editor, outside the compact day picker.
+        panel.get_by_role('button', name='Fermer le catalogue', exact=True).click()
+        page.get_by_role('tab', name='Itinéraire', exact=True).click()
+        nav.get_by_role('button', name='Jour 1', exact=False).first.click()
+        step = page.locator(f'[data-activity-id="{created["id"]}"]')
+        step.get_by_role('button', name='Définir l’horaire de Nintendo TOKYO', exact=True).click()
+        clock = page.locator('.trip-quick-editor')
+        clock.get_by_label('Début', exact=True).fill('18:15')
+        clock.get_by_label('Durée (min)', exact=True).fill('30')
+        clock.get_by_role('button', name='Enregistrer', exact=True).click()
+        saved()
+        assert next(i for i in state()['items'] if i['id'] == created['id'])['start_time'] == '18:15:00'
+        page.get_by_role('button', name='Ajouter une étape', exact=True).first.click()
+        panel.get_by_role('combobox', name='Rechercher un lieu', exact=True).fill('Nintendo')
+        expect(panel.locator('[data-catalog-entry]')).to_have_count(1)
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         page.screenshot(path=str(args.output / 'mobile-catalog.png'))
-        log('Mobile and keyboard destination/time alternative works without horizontal overflow')
+        log('Mobile day selection works by keyboard; scheduling remains available in the existing quick editor')
         assert len(state()['items']) == original + 9
 
         # Phase 4.9: direct additions use the same optimistic queue and SQL journal.
