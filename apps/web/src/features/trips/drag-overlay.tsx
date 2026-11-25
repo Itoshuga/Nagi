@@ -2,11 +2,13 @@
 
 import { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { DragOverlay, type Modifier } from '@dnd-kit/core';
+import { DragOverlay, useDndContext, type Modifier } from '@dnd-kit/core';
 import type { TripPlanItem, TripPlanStop } from '@nagi/database';
-import type { CatalogEntry } from './catalog-drag';
+import { isCatalogDrag, type CatalogEntry } from './catalog-drag';
 import { Copy } from 'lucide-react';
 import { PlaceImage } from '@/features/integrations/mapbox/place-image';
+import { useResolvedImage } from '@/features/images/components';
+import { isTemporaryImage, type ImageReference } from '@/features/images/model';
 import { usePlacePresentation } from '@/features/integrations/mapbox/components';
 
 // The preview is narrower than the source row. Keep its centre on the pointer,
@@ -55,7 +57,32 @@ export function TripDragOverlay({
   entry?: CatalogEntry;
   reduced: boolean | null;
 }) {
-  const { observe, title, imageUrl, category } = usePlacePresentation(item, entry ?? item?.entry);
+  const { title, imageUrl, category } = usePlacePresentation(item, entry ?? item?.entry);
+  const { active } = useDndContext();
+  const reference = isCatalogDrag(active?.data.current) ? active.data.current.reference : undefined;
+  const photoReference: ImageReference | undefined = item
+    ? {
+        source: item.source ?? 'nagi',
+        id:
+          item.source === 'mapbox'
+            ? item.external_place_id!
+            : item.source === 'custom'
+              ? item.id
+              : item.entry_id!,
+        visit: item.id,
+      }
+    : reference?.source === 'mapbox'
+      ? { source: 'mapbox', id: reference.placeId }
+      : entry
+        ? { source: 'nagi', id: entry.id }
+        : undefined;
+  // Subscribe to an already-resolved cover without observing or loading it.
+  const cached = useResolvedImage(photoReference).result;
+  const image = cached?.selected;
+  const src =
+    cached?.coverHidden || cached?.mode === 'fallback'
+      ? undefined
+      : (image?.smallThumbnailUrl ?? image?.thumbnailUrl ?? imageUrl);
   const container = useSyncExternalStore<HTMLElement | null>(
     subscribe,
     clientContainer,
@@ -71,13 +98,14 @@ export function TripDragOverlay({
       {(item || entry) && (
         <div className="trip-drag-preview">
           <PlaceImage
-            src={imageUrl}
+            src={src}
+            fit={image && isTemporaryImage(image) && !image.cropAllowed ? 'contain' : 'cover'}
             source={item?.source}
             category={category}
             className="size-10 shrink-0 rounded-lg"
             sizes="40px"
           />
-          <span ref={observe}>{title}</span>
+          <span>{title}</span>
           {entry && <Copy className="size-3 shrink-0" aria-label="Nouvelle visite" />}
         </div>
       )}

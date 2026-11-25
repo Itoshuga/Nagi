@@ -231,10 +231,134 @@
 .trip-step-shell {
   position: relative;
 }
-.trip-timeline-entry:has(> .trip-activity-stops.is-expanded) > .trip-step-shell::after {
+/* Stops keep the parent's time column; their branch begins under its photo. */
+.trip-itinerary .trip-activity-stops {
+  --trip-stop-indent: calc(var(--trip-content-x) + var(--trip-photo-size) / 2 - var(--trip-rail-x));
+  --trip-stop-rail: calc(var(--trip-content-x) + var(--trip-photo-size) / 2);
+  --trip-stop-content: calc(var(--trip-content-x) + var(--trip-stop-indent));
+  --trip-stop-photo: 40px;
+  margin: 0 0 8px;
+}
+.trip-itinerary .trip-activity-stops > .trip-stops-heading,
+.trip-itinerary .trip-activity-stops > .trip-stops-budget {
+  margin-left: var(--trip-stop-content);
+}
+.trip-itinerary .trip-stops-toggle {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  min-height: 30px;
+}
+.trip-itinerary .trip-stops-toggle:hover {
+  color: var(--foreground);
+}
+.trip-itinerary .trip-stops-info {
+  width: 28px;
+  height: 28px;
+}
+.trip-itinerary .trip-stops-add {
+  margin: 0 0 0 var(--trip-stop-content);
+  padding: 6px 8px;
+  min-height: 34px;
+  color: var(--muted-foreground);
+}
+.trip-itinerary .trip-stops-add:hover {
+  color: var(--primary-ink);
+}
+.trip-itinerary .trip-step.trip-stop {
+  grid-template-columns:
+    var(--trip-time-width) calc(var(--trip-rail-width) + var(--trip-stop-indent))
+    minmax(0, 1fr) 30px;
+  min-height: 60px;
+  padding: 8px 0;
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-main,
+.trip-itinerary .trip-step.trip-stop .trip-step-time,
+.trip-itinerary .trip-step.trip-stop .trip-time-button.trip-time-stack {
+  min-height: var(--trip-stop-photo);
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-main {
+  gap: 10px;
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-photo {
+  width: var(--trip-stop-photo);
+  height: var(--trip-stop-photo);
+  border-radius: 8px;
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-copy > strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-copy > small {
+  font-size: 10px;
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-time {
+  padding: 0;
+}
+.trip-itinerary .trip-step.trip-stop .trip-stop-timing-label {
+  background: transparent;
+  box-shadow: none;
+}
+.trip-itinerary .trip-step.trip-stop .trip-time-button:hover .trip-stop-timing-label {
+  background: transparent;
+}
+.trip-itinerary .trip-step.trip-stop .trip-timeline-dot {
+  left: calc(var(--trip-stop-rail) - 2.5px);
+  top: calc(8px + var(--trip-stop-photo) / 2 - 2.5px);
+  width: 5px;
+  height: 5px;
+  margin: 0;
+}
+.trip-itinerary .trip-step.trip-stop::before {
+  left: var(--trip-stop-rail);
+}
+.trip-itinerary .trip-step.trip-stop:last-child::before {
+  height: calc(8px + var(--trip-stop-photo) / 2);
+}
+.trip-itinerary .trip-step.trip-stop::after {
+  top: calc(8px + var(--trip-stop-photo) / 2);
+  left: calc(var(--trip-stop-rail) + 4px);
+  width: calc(var(--trip-stop-content) - var(--trip-stop-rail) - 10px);
+}
+.trip-itinerary .trip-step.trip-stop .trip-drag-handle {
+  left: calc(var(--trip-stop-rail) - 13px);
+  top: calc(8px + var(--trip-stop-photo) / 2 - 22px);
+}
+.trip-itinerary .trip-step.trip-stop .trip-step-menu {
+  margin-top: 2px;
+}
+.trip-itinerary .trip-step.trip-stop .trip-drop-label {
+  left: var(--trip-stop-content);
+  top: 0;
+  max-width: calc(100% - var(--trip-stop-content) - 8px);
+}
+.trip-itinerary .trip-step.trip-stop.is-drop-over::after {
+  left: calc(var(--trip-stop-content) - 6px);
+  right: 6px;
+  top: 0;
+  width: auto;
+  height: 2px;
+}
+.trip-itinerary .trip-activity-stops .trip-catalog-stop-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin: 4px 0 6px var(--trip-stop-content);
+  border-radius: 7px;
+  font-size: 10px;
+}
+.trip-itinerary .trip-catalog-stop-target.is-over {
+  outline: none;
+  border-style: solid;
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+}
+.trip-itinerary
+  .trip-timeline-entry:has(> .trip-activity-stops.is-expanded)
+  > .trip-step-shell::after {
   content: '';
   position: absolute;
-  top: calc(12px + var(--trip-photo-size));
+  top: calc(var(--trip-row-pad) + var(--trip-photo-size));
   bottom: 0;
   left: calc(var(--trip-content-x) + var(--trip-photo-size) / 2);
   width: 1px;
@@ -247,7 +371,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--trip-rail-x) - var(--trip-content-x));
+  left: calc(var(--trip-stop-rail) - var(--trip-stop-content));
   width: 1px;
   background: var(--border);
   pointer-events: none;
@@ -255,6 +379,29 @@
 .trip-itinerary .trip-activity-stops.is-expanded > .trip-stops-budget::before {
   top: -3px;
   bottom: -5px;
+}
+.trip-itinerary .trip-stops-budget {
+  font-size: 10px;
+}
+@media (max-width: 639.98px) {
+  .trip-itinerary .trip-activity-stops {
+    --trip-stop-photo: 32px;
+  }
+  .trip-itinerary .trip-step.trip-stop {
+    grid-template-columns:
+      var(--trip-time-width) calc(var(--trip-rail-width) + var(--trip-stop-indent))
+      minmax(0, 1fr) 26px;
+    min-height: 56px;
+  }
+  .trip-itinerary .trip-step.trip-stop .trip-step-copy > strong {
+    font-size: 11px;
+  }
+  .trip-itinerary .trip-step.trip-stop .trip-step-copy > small {
+    font-size: 9px;
+  }
+  .trip-itinerary .trip-stops-toggle {
+    font-size: 10px;
+  }
 }
 @media (max-width: 639.98px) {
   .trip-stops-toggle,

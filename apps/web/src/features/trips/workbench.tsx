@@ -73,13 +73,7 @@ import {
 } from './planner-model';
 import { tripDates, tripStatus } from './trip-list';
 import './workspace.css';
-import {
-  isActivityDrop,
-  isStopDrop,
-  tripCollision,
-  tripDragSource,
-  tripDropChange,
-} from './planner-dnd';
+import { tripCollision, tripDragSource, tripDropChange, tripDropFeedback } from './planner-dnd';
 
 import {
   catalogPlacement,
@@ -244,6 +238,7 @@ export function TripWorkbench({
     [localError, setLocalError] = useState('');
   const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
   const [draggedEntry, setDraggedEntry] = useState<CatalogEntry>();
+  const [dragSnapshot, setDragSnapshot] = useState<TripPlan>();
   const dragPointer = useDragPointer(!!draggedEntry);
   const { state: sync, queue } = useTripMutations(
     guild,
@@ -253,7 +248,7 @@ export function TripWorkbench({
     initialCanManage,
   );
   const plan = sync.plan,
-    displayed = plan,
+    displayed = dragSnapshot ?? plan,
     canEdit = sync.canEdit,
     canManage = sync.canManage,
     busy = false;
@@ -263,7 +258,7 @@ export function TripWorkbench({
     if (!value) queue.clearError();
   };
   const activeDay =
-    day === 'all' || day === 'pending' || plan.days.some((d) => d.id === day) ? day : 'all';
+    day === 'all' || day === 'pending' || displayed.days.some((d) => d.id === day) ? day : 'all';
   const editing = canEdit && organize,
     path = `/app/${guild}/trips/${plan.id}`;
   const currentItem = displayed.items.find((i) => i.id === selectedId);
@@ -513,6 +508,7 @@ export function TripWorkbench({
       autoScroll={{ threshold: { x: 0.12, y: 0.12 }, acceleration: 5 }}
       onDragStart={({ active }) => {
         dragVersion.current = displayed.version;
+        setDragSnapshot(displayed);
         setDragged(
           active.data.current?.type === 'calendar-item'
             ? undefined
@@ -521,11 +517,13 @@ export function TripWorkbench({
         setDraggedEntry(isCatalogDrag(active.data.current) ? active.data.current.entry : undefined);
       }}
       onDragCancel={() => {
+        setDragSnapshot(undefined);
         setDragged(undefined);
         setDraggedEntry(undefined);
       }}
       onDragEnd={(event) => {
         const { active, over } = event;
+        setDragSnapshot(undefined);
         setDragged(undefined);
         setDraggedEntry(undefined);
         if (!editing) return;
@@ -535,7 +533,7 @@ export function TripWorkbench({
           if (!hit?.closest('.trip-workspace-canvas,.trip-day-navigation')) return;
           if (isCalendarDrop(over?.data.current) && !hit.closest('.trip-calendar-scroll')) return;
           const placement = catalogPlacement(
-            displayed,
+            queue.getSnapshot().plan,
             active.data.current,
             event,
             dragPointer.current,
@@ -577,11 +575,33 @@ export function TripWorkbench({
         }
         if (isCalendarDrop(over?.data.current)) return;
         const target = over?.data.current as Parameters<typeof tripDropChange>[2] | undefined;
-        const source = tripDragSource(displayed.items, active.data.current, active.id);
-        if (!target || !source) return;
-        const result = tripDropChange(displayed.items, source, target);
+        const latest = queue.getSnapshot().plan;
+        const source = tripDragSource(latest.items, active.data.current, active.id);
+        const original = tripDragSource(displayed.items, active.data.current, active.id);
+        if (!target || !source || !original) return;
+        const feedback = tripDropFeedback(latest, active.data.current, active.id, target);
+        if (!feedback?.valid) {
+          if (feedback?.label) setError(feedback.label);
+          else if (
+            'day' in target &&
+            target.day &&
+            !latest.days.some((day) => day.id === target.day)
+          )
+            setError(
+              'Cette journée a été supprimée pendant le déplacement. Choisissez une autre destination.',
+            );
+          return;
+        }
+        const result = tripDropChange(latest.items, source, target);
         if (result.error) setError(result.error);
-        else if (result.change) void mutate(result.change, dragVersion.current);
+        else if (result.change)
+          void mutate(
+            result.change,
+            dragVersion.current,
+            original.parent
+              ? { stop: original.card as TripPlanStop }
+              : { item: original.card as TripPlanItem },
+          );
       }}
       accessibility={{
         screenReaderInstructions: {
@@ -593,16 +613,32 @@ export function TripWorkbench({
             isCatalogDrag(active.data.current)
               ? 'Lieu saisi. Déposez pour créer une visite.'
               : 'Étape saisie.',
-          onDragOver: ({ active, over }) =>
-            isActivityDrop(over?.data.current) || isStopDrop(over?.data.current)
-              ? `Déposer pour ajouter un arrêt dans ${over.data.current.title}.`
-              : over
-                ? active.data.current?.type === 'stop'
-                  ? 'Déposer pour remettre cet arrêt en activité.'
-                  : 'Destination disponible.'
-                : 'Aucune destination.',
-          onDragEnd: ({ over }) =>
-            over ? 'Enregistrement du déplacement.' : 'Déplacement annulé.',
+          onDragOver: ({ active, over }) => {
+            if (isCalendarDrop(over?.data.current))
+              return 'Créneau du calendrier sélectionné. Les horaires suivent la grille.';
+            if (!over?.data.current) return 'Aucune destination.';
+            const feedback = tripDropFeedback(
+              displayed,
+              active.data.current,
+              active.id,
+              over.data.current as Parameters<typeof tripDropFeedback>[3],
+            );
+            return feedback?.label ?? 'Position inchangée.';
+          },
+          onDragEnd: ({ active, over }) => {
+            if (isCalendarDrop(over?.data.current)) return 'Déplacement dans le calendrier.';
+            const feedback = over?.data.current
+              ? tripDropFeedback(
+                  displayed,
+                  active.data.current,
+                  active.id,
+                  over.data.current as Parameters<typeof tripDropFeedback>[3],
+                )
+              : undefined;
+            return feedback?.valid
+              ? 'Déplacement pris en compte dans le voyage.'
+              : 'Déplacement annulé ou position inchangée.';
+          },
           onDragCancel: () => 'Déplacement annulé.',
         },
       }}
@@ -870,7 +906,7 @@ export function TripWorkbench({
                   onClick={() => chooseDay('all')}
                 />
                 <div className="trip-day-links">
-                  {plan.days.map((d, i) => (
+                  {displayed.days.map((d, i) => (
                     <DayNav
                       key={d.id}
                       editable={editing}

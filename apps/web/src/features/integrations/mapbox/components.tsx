@@ -14,7 +14,12 @@ import type { EntryCardRow, PlaceSourceFields, TripPlan } from '@nagi/database';
 import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 import { ImageResolverProvider } from '@/features/images/components';
 import { mapboxClientRequest } from './client';
-import { mapboxAttribution, mapboxAttributionUrl, nagiCatalogPlace } from './model';
+import {
+  mapboxAttribution,
+  mapboxAttributionUrl,
+  nagiCatalogPlace,
+  mapboxCategoryLabel,
+} from './model';
 import { mapboxSearchContext } from './search-model';
 
 import { ExternalPlaceSession, emptyPlaceState as empty } from './session';
@@ -118,6 +123,7 @@ export function usePlacePresentation(
     record,
     place,
     title:
+      (row?.source === 'custom' ? (row.custom_title ?? 'Étape personnalisée') : undefined) ??
       place?.title ??
       (record.error
         ? 'Lieu indisponible'
@@ -127,7 +133,10 @@ export function usePlacePresentation(
             ? 'Chargement du lieu…'
             : (entry?.title ?? 'Fiche indisponible')),
     imageUrl: place?.imageUrl ?? entry?.cover_image_url ?? undefined,
-    category: place?.category ?? entry?.category?.name,
+    category:
+      row?.source === 'mapbox'
+        ? mapboxCategoryLabel(place?.category)
+        : (place?.category ?? entry?.category?.name),
     location:
       place?.locationLabel ??
       [entry?.neighborhood?.name, entry?.city?.name].filter(Boolean).join(' · '),

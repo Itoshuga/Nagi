@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { useDndContext, useDndMonitor, useDroppable } from '@dnd-kit/core';
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
   ChevronDown,
+  CornerDownRight,
   GripVertical,
   Info,
   MoreHorizontal,
@@ -45,12 +47,10 @@ import {
 import { PlaceImage } from '@/features/integrations/mapbox/place-image';
 import { ImagePicker } from '@/features/images/components';
 import { useTripCardDrag } from './card-drag';
-import { tripDragSource } from './planner-dnd';
-import { isCatalogDrag } from './catalog-drag';
+import { tripDropFeedback } from './planner-dnd';
 import {
   activityBudget,
   activityStops,
-  activityNestingIssue,
   minuteTime,
   timeMinutes,
   relevantTripConnection,
@@ -66,6 +66,7 @@ function StopCard({
   busy,
   children,
   selected,
+  acceptDrops,
 }: {
   stop: TripPlanStop;
   parent: TripPlanItem;
@@ -74,11 +75,12 @@ function StopCard({
   busy: boolean;
   children: React.ReactNode;
   selected?: boolean;
+  acceptDrops: boolean;
 }) {
   const instance = useId();
   const { active } = useDndContext();
-  const source = tripDragSource(plan.items, active?.data.current, active?.id)?.card;
-  const issue = source ? activityNestingIssue(source, parent) : null;
+  const reduced = useReducedMotion();
+  const { title } = usePlacePresentation(stop, stop.entry);
   const { setNodeRef, attributes, listeners, cardListeners, isDragging } = useTripCardDrag(
     `stop-drag:${stop.id}:${instance}`,
     { type: 'stop', id: stop.id },
@@ -92,17 +94,29 @@ function StopCard({
       before: stop.id,
       title: parent.entry?.title ?? 'cette activité',
     },
-    disabled: !canEdit || busy,
+    disabled: !acceptDrops || !canEdit || busy,
   });
+  const feedback =
+    active && isOver
+      ? tripDropFeedback(plan, active.data.current, active.id, {
+          type: 'stop',
+          parent: parent.id,
+          before: stop.id,
+          title: parent.entry?.title ?? 'cette activité',
+        })
+      : undefined;
   return (
-    <li
+    <motion.li
+      layout={active ? false : 'position'}
+      initial={false}
+      transition={{ duration: reduced ? 0 : 0.14 }}
       data-stop-id={stop.id}
       className={cn(
         'trip-step trip-stop',
         canEdit && !busy && 'trip-card-can-drag',
         isDragging && 'is-dragging',
         selected && 'is-selected',
-        isOver && !isDragging && (issue ? 'is-nesting-blocked' : 'is-drop-over'),
+        feedback && !isDragging && (feedback.valid ? 'is-drop-over' : 'is-nesting-blocked'),
       )}
       {...cardListeners}
       ref={(node) => {
@@ -117,13 +131,19 @@ function StopCard({
           {...attributes}
           {...listeners}
           disabled={busy}
-          aria-label={`Glisser l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+          aria-label={`Glisser l’arrêt ${title}`}
+          title="Déplacer cet arrêt"
         >
           <GripVertical className="size-3.5" />
         </button>
       )}
       {children}
-    </li>
+      {feedback && !isDragging && (
+        <span className="trip-drop-label" role="status">
+          {feedback.label}
+        </span>
+      )}
+    </motion.li>
   );
 }
 
@@ -494,6 +514,7 @@ export function ActivityStops({
   mutate,
   onAdd,
   always = false,
+  acceptDrops = false,
   expanded: controlledExpanded,
   onExpandedChange,
   onDetails,
@@ -506,6 +527,7 @@ export function ActivityStops({
   mutate: PlanMutation;
   onAdd?: () => void;
   always?: boolean;
+  acceptDrops?: boolean;
   expanded?: boolean;
   onExpandedChange?: () => void;
   onDetails?: (stop: TripPlanStop) => void;
@@ -513,7 +535,12 @@ export function ActivityStops({
 }) {
   const id = useId();
   const { active } = useDndContext();
-  const catalogDragging = isCatalogDrag(active?.data.current);
+  const { title: parentTitle } = usePlacePresentation(item, item.entry);
+  const stopTarget = { type: 'stop' as const, parent: item.id, before: null, title: parentTitle };
+  const insertion = active
+    ? tripDropFeedback(plan, active.data.current, active.id, stopTarget)
+    : undefined;
+  const dropEligible = !!insertion?.valid && canEdit && acceptDrops;
   const section = useRef<HTMLElement>(null);
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `stops-end:${id}`,
@@ -523,7 +550,7 @@ export function ActivityStops({
       before: null,
       title: item.entry?.title ?? 'cette activité',
     },
-    disabled: !canEdit || busy || plan.stopsAvailable === false,
+    disabled: !acceptDrops || !canEdit || busy || plan.stopsAvailable === false,
   });
   const { setNodeRef: setCatalogDropRef, isOver: isCatalogOver } = useDroppable({
     id: `catalog-stop:${id}`,
@@ -533,7 +560,7 @@ export function ActivityStops({
       before: null,
       title: item.entry?.title ?? 'cette activité',
     },
-    disabled: !catalogDragging || !canEdit || plan.stopsAvailable === false,
+    disabled: !dropEligible || busy,
   });
   const [localExpanded, setLocalExpanded] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
@@ -544,17 +571,17 @@ export function ActivityStops({
   });
   const expanded = hoverExpanded || (controlledExpanded ?? localExpanded);
   useEffect(() => {
-    if (!catalogDragging || !isCatalogOver) return;
+    if (!dropEligible || !isCatalogOver) return;
     const timer = setTimeout(() => setHoverExpanded(true), 550);
     return () => clearTimeout(timer);
-  }, [catalogDragging, isCatalogOver]);
+  }, [dropEligible, isCatalogOver]);
   const [editor, setEditor] = useState<{ id: string; removing: boolean }>();
   const [error, setError] = useState('');
   const stops = item.stops ?? [];
   const schedule = activityStops(item);
   const budget = activityBudget(item);
   const edited = stops.find((stop) => stop.id === editor?.id);
-  if (plan.stopsAvailable === false || (!stops.length && !catalogDragging && (!always || !canEdit)))
+  if (plan.stopsAvailable === false || (!stops.length && !dropEligible && (!always || !canEdit)))
     return null;
   async function move(stop: TripPlanStop, before: string | null) {
     const result = await mutate({ operation: 'move_stop', data: { id: stop.id, before } });
@@ -586,15 +613,15 @@ export function ActivityStops({
     <section
       ref={(node) => {
         section.current = node;
-        setDropRef(catalogDragging ? null : node);
+        setDropRef(active ? null : node);
       }}
       className={cn(
         'trip-activity-stops',
         expanded && stops.length > 0 && 'is-expanded',
-        isOver && 'is-stop-drop-over',
+        isOver && insertion?.valid && 'is-stop-drop-over',
       )}
       data-stops-parent={item.id}
-      aria-label={`Arrêts dans ${item.entry?.title ?? 'cette activité'}`}
+      aria-label={`Arrêts dans ${parentTitle}`}
     >
       {!!stops.length && (
         <div className="trip-stops-heading">
@@ -661,13 +688,14 @@ export function ActivityStops({
           )}
         </div>
       )}
-      {catalogDragging && canEdit && (
+      {dropEligible && (
         <div
           ref={setCatalogDropRef}
           className={cn('trip-catalog-stop-target', isCatalogOver && 'is-over')}
-          role="status"
+          role={isCatalogOver ? 'status' : undefined}
         >
-          Déposer ici pour ajouter un arrêt
+          <CornerDownRight className="size-3.5" aria-hidden="true" />
+          {isCatalogOver ? insertion?.label : 'Ajouter comme arrêt'}
         </div>
       )}
       <div
@@ -687,6 +715,7 @@ export function ActivityStops({
                 canEdit={canEdit && expanded}
                 busy={busy}
                 selected={selectedStop === stop.id}
+                acceptDrops={acceptDrops}
               >
                 <div className="trip-step-time">
                   <StopTiming
@@ -711,9 +740,17 @@ export function ActivityStops({
                   }
                   disabled={busy}
                   aria-pressed={selectedStop === stop.id}
-                  aria-label={`Détails de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+                  aria-labelledby={`${id}-details-${stop.id} ${id}-title-${stop.id}`}
                 >
-                  <ActivityCardCopy entry={stop.entry} notes={stop.notes} place={stop}>
+                  <span id={`${id}-details-${stop.id}`} className="sr-only">
+                    Détails de l’arrêt
+                  </span>
+                  <ActivityCardCopy
+                    entry={stop.entry}
+                    notes={stop.notes}
+                    place={stop}
+                    titleId={`${id}-title-${stop.id}`}
+                  >
                     {(() => {
                       const relation = relevantTripConnection(
                         plan,

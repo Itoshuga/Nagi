@@ -133,12 +133,15 @@ export function QuickStepEditor({
           <button
             type="button"
             className={`trip-time-button${showDuration ? ' trip-time-stack' : ''}`}
+            title={
+              item.start_time
+                ? 'Modifier l’horaire et la durée'
+                : 'Aucun horaire défini · cliquer pour planifier'
+            }
             aria-label={`Définir l’horaire de ${item.entry?.title ?? 'l’étape'}`}
           >
             <span>
-              {formatTripTime(item.start_time) ?? (
-                <span className="trip-time-unset">Définir un horaire</span>
-              )}
+              {formatTripTime(item.start_time) ?? <span className="trip-time-unset">Libre</span>}
             </span>
             {showDuration && itemDuration(item) != null && (
               <small>{formatTripDuration(itemDuration(item))}</small>

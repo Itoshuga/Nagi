@@ -101,6 +101,29 @@ with sync_playwright() as p:
         page.screenshot(path=str(args.output / 'catalog-menu-desktop.png'))
         menu.locator('.trip-catalog-days button').first.press('Escape')
         expect(menu).to_have_count(0)
+        # Keep the local canvas stable while the second account changes a note.
+        tower_copy = page.locator(f'[data-activity-id="{tower}"] .trip-step-copy')
+        original_copy = tower_copy.text_content()
+        original_note = next(i for i in state()['items'] if i['id'] == tower)['notes']
+        remote.locator(f'[data-activity-id="{tower}"] .trip-step-main').click()
+        remote_panel = remote.locator('.trip-context-panel')
+        begin()
+        remote_panel.get_by_label('Notes du voyage', exact=True).fill('Rendez-vous synchronisé pendant le déplacement')
+        remote_panel.get_by_role('button', name='Enregistrer les notes', exact=True).click()
+        expect(remote.locator('.trip-save-status')).to_have_attribute('data-save-state', 'saved', timeout=20000)
+        page.wait_for_timeout(500)
+        assert tower_copy.text_content() == original_copy
+        assert len(writes) == 0
+        page.keyboard.press('Escape')
+        page.mouse.up()
+        expect(tower_copy).to_contain_text('Rendez-vous synchronisé pendant le déplacement')
+        remote_panel.get_by_label('Notes du voyage', exact=True).fill(original_note)
+        remote_panel.get_by_role('button', name='Enregistrer les notes', exact=True).click()
+        expect(remote.locator('.trip-save-status')).to_have_attribute('data-save-state', 'saved', timeout=20000)
+        expect(tower_copy).to_have_text(original_copy)
+        remote_panel.get_by_role('button', name='Fermer les détails', exact=True).click()
+        assert len(writes) == 0
+        log('A second account can save during a drag; Escape applies its note without a local mutation')
         search_count = len(searches)
         original = len(state()['items'])
         begin()
@@ -109,7 +132,7 @@ with sync_playwright() as p:
         page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2, steps=12)
         page.wait_for_timeout(100)
         assert len(writes) == 0
-        expect(page.get_by_text('Déposer ici', exact=True)).to_be_visible()
+        expect(page.locator('.trip-drop-label')).to_contain_text(re.compile('Insérer avant|Ajouter en fin'))
         page.mouse.up()
         expect(page.locator('[data-activity-id]')).to_have_count(4)
         first = page.locator('[data-activity-id]').evaluate_all('(nodes)=>nodes.map(n=>({id:n.dataset.activityId,title:n.querySelector(".trip-step-main").textContent}))')
@@ -351,6 +374,40 @@ with sync_playwright() as p:
         expect(trigger).to_be_focused()
         expect(trigger).to_have_attribute('aria-expanded','false')
         log('A visible Compass label, keyboard focus and direct quick addition work at 320 px; Escape restores the trigger')
+
+        # Moving a whole activity retains its children and merges an independent remote note.
+        page.set_viewport_size({'width': 1440, 'height': 1000})
+        nav.get_by_role('button', name='Tout le voyage', exact=False).click()
+        parent = next(i for i in state()['items'] if i['trip_id'] == TRIP and i['entry_id'] == state()['entries'][0])
+        children = [s for s in state()['stops'] if s['trip_item_id'] == parent['id']]
+        root = page.locator(f'[data-activity-id="{parent["id"]}"] .trip-step-main')
+        root.scroll_into_view_if_needed()
+        remote.locator(f'[data-activity-id="{parent["id"]}"] .trip-step-main').click()
+        box = root.bounding_box()
+        x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + 10, y, steps=3)
+        expect(page.locator('.trip-drag-preview')).to_be_visible()
+        writes_before = len(writes)
+        remote_panel.get_by_label('Notes du voyage', exact=True).fill('Billets confirmés pendant le déplacement de cette étape')
+        remote_panel.get_by_role('button', name='Enregistrer les notes', exact=True).click()
+        expect(remote.locator('.trip-save-status')).to_have_attribute('data-save-state', 'saved', timeout=20000)
+        expect(root).not_to_contain_text('Billets confirmés')
+        target = nav.get_by_role('button', name='Jour 2', exact=False).bounding_box()
+        page.mouse.move(target['x'] + target['width'] / 2, target['y'] + target['height'] / 2, steps=12)
+        assert len(writes) == writes_before
+        page.mouse.up()
+        saved()
+        moved = next(i for i in state()['items'] if i['id'] == parent['id'])
+        assert moved['trip_day_id'] == days[1]['id']
+        assert moved['notes'] == 'Billets confirmés pendant le déplacement de cette étape'
+        assert all(moved[key] == parent[key] for key in ['start_time', 'end_time', 'estimated_duration_minutes', 'calendar_color', 'entry_id'])
+        assert [s for s in state()['stops'] if s['trip_item_id'] == parent['id']] == children
+        expect(remote.locator(f'[data-activity-id="{parent["id"]}"] .trip-step-main')).to_contain_text('Billets confirmés')
+        page.reload(wait_until='domcontentloaded')
+        expect(page.locator(f'[data-stops-parent="{parent["id"]}"] [data-stop-id]')).to_have_count(len(children))
+        log('Moving a parent across days preserves every child, clock, duration and color; its concurrent remote note survives the drop and reload')
 
         page.goto(ROOT + PATH + '?mode=read', wait_until='domcontentloaded')
         page.get_by_role('button', name='Explorer le catalogue', exact=True).click()

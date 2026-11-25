@@ -552,6 +552,11 @@ const browser = spawn(
   { windowsHide: true, stdio: 'ignore' },
 );
 let ws;
+function cleanup() {
+  ws?.close();
+  browser.kill();
+  server.close();
+}
 const pending = new Map();
 let seq = 0;
 const errors = [],
@@ -773,6 +778,145 @@ try {
     ];
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode });
+  }
+  async function itineraryRefinementChecks() {
+    await nav(1280, 'full');
+    await wait('document.querySelectorAll(".trip-itinerary [data-stop-id]").length===3');
+    assert(
+      await ev(`(()=>{
+      const row=document.querySelector('.trip-itinerary [data-activity-id]'),stop=document.querySelector('.trip-itinerary [data-stop-id]'),last=document.querySelector('.trip-itinerary [data-stop-id]:last-child');
+      const parentTime=row.querySelector('.trip-step-time').getBoundingClientRect(),childTime=stop.querySelector('.trip-step-time').getBoundingClientRect();
+      const photo=row.querySelector('.trip-step-photo').getBoundingClientRect(),childPhoto=stop.querySelector('.trip-step-photo').getBoundingClientRect();
+      const branch=stop.getBoundingClientRect().left+parseFloat(getComputedStyle(stop,'::before').left),end=last.getBoundingClientRect().top+parseFloat(getComputedStyle(last,'::before').height),dot=last.querySelector('.trip-timeline-dot').getBoundingClientRect();
+      return Math.abs(parentTime.left-childTime.left)<1&&childPhoto.left>photo.left+20&&Math.abs(branch-photo.left-photo.width/2)<1&&Math.abs(end-dot.top-dot.height/2)<1;
+    })()`),
+      'main and nested rows share a stable time column; the child branch starts below its parent photo and ends at the final stop',
+    );
+    assert(
+      await ev(
+        'document.querySelectorAll(".trip-stop-time[data-time-kind=indicative]").length===3 && document.querySelector(".trip-stops-toggle").textContent.includes("2 h incluses")',
+      ),
+      'estimated stop times and included durations keep their existing meaning',
+    );
+    await screenshot('itinerary-desktop');
+    await click('.trip-itinerary [data-stop-id] .trip-stop-main');
+    assert(
+      await ev(
+        'document.querySelector(".trip-itinerary [data-stop-id] .trip-stop-main[aria-pressed=true]") && !document.querySelector(".trip-itinerary [data-activity-id] .trip-step-main[aria-pressed=true]")',
+      ),
+      'the selected stop is distinguished from its parent and from hover',
+    );
+    await click('[aria-label="Fermer les détails"]');
+    await sleep(1000);
+    const original = await ev(
+      'document.querySelector(".trip-itinerary [data-activity-id] .trip-step-copy").textContent',
+    );
+    const writes = await ev('window.__changes.length'),
+      external = await ev('window.__externalRequests.length'),
+      images = await ev('window.__imageRequests.length');
+    await drag(
+      '.trip-itinerary [data-activity-id] .trip-step-main',
+      '.trip-timeline-end',
+      'centre',
+      false,
+    );
+    await ev(
+      `window.__plan={...window.__plan,items:window.__plan.items.map((item,index)=>index?item:{...item,notes:'Information distante reçue pendant le déplacement'})};window.__updatePlan(window.__plan)`,
+    );
+    assert(
+      (await ev(
+        'document.querySelector(".trip-itinerary [data-activity-id] .trip-step-copy").textContent',
+      )) === original,
+      'a remote note update does not alter the active drag geometry or contents',
+    );
+    await key('Escape');
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: 500,
+      y: 500,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    });
+    await wait(
+      'document.querySelector(".trip-itinerary [data-activity-id] .trip-step-copy").textContent.includes("Information distante")',
+    );
+    assert(
+      await ev(
+        `window.__changes.length===${writes}&&window.__externalRequests.length===${external}&&window.__imageRequests.length===${images}`,
+      ),
+      'cancelling applies the remote view update without a mutation or an image/provider reload during drag',
+    );
+    await nav(1280, 'group');
+    await drag(
+      `[data-activity-id="${ids.parent}"] .trip-step-main`,
+      '[data-activity-id="bbbbbbbb-bbbb-4bbb-8bbb-000000000001"] .trip-step-main',
+      'centre',
+      false,
+    );
+    assert(
+      await ev(
+        'document.querySelector(".is-nesting-blocked") && !document.querySelector(".is-nesting-over") && document.querySelector(".trip-nesting-hint").textContent.includes("contient déjà des arrêts")',
+      ),
+      'a group with children never advertises a valid nested destination',
+    );
+    await screenshot('itinerary-invalid-drop');
+    await key('Escape');
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: 500,
+      y: 500,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    });
+    for (const width of [834, 390, 320]) {
+      await nav(width, 'full');
+      await wait('document.querySelectorAll(".trip-itinerary [data-stop-id]").length===3');
+      assert(
+        await ev('document.documentElement.scrollWidth<=innerWidth'),
+        'the itinerary and its nested time column fit ' + width + 'px',
+      );
+      if (width === 320) await ev("document.documentElement.classList.add('dark')");
+      await screenshot('itinerary-' + width);
+      await ev(
+        `window.__plan={...window.__plan,items:window.__plan.items.map(item=>({...item,start_time:null,entry:{...item.entry,title:'Un lieu au nom très long, à explorer dans le quartier historique de Tokyo',neighborhood:{id:'long-area',name:'Un quartier dont le nom est particulièrement long'} }}))};window.__updatePlan(window.__plan)`,
+      );
+      await wait('document.querySelectorAll(".trip-stop-time[data-time-kind=unset]").length===3');
+      await sleep(250);
+      assert(
+        await ev(
+          'document.documentElement.scrollWidth<=innerWidth && document.querySelector(".trip-time-unset").textContent==="Libre" && document.querySelector(".trip-itinerary [data-stop-id]").getBoundingClientRect().top >= document.querySelector(".trip-stops-heading").getBoundingClientRect().bottom-1',
+        ),
+        'long place names and unplanned times remain readable at ' + width + 'px',
+      );
+      await screenshot('itinerary-long-' + width);
+    }
+    await nav();
+    for (const [category, kind] of [
+      ['Sanctuaire shinto', 'landmark'],
+      ['Boutique de souvenirs', 'shop'],
+    ]) {
+      await ev(
+        `window.__plan={...window.__plan,items:window.__plan.items.map(item=>({...item,entry:{...item.entry,category:{...item.entry.category,name:${JSON.stringify(category)}}}}))};window.__updatePlan(window.__plan)`,
+      );
+      await wait(
+        `!!document.querySelector('.trip-itinerary [data-activity-id] .trip-step-photo [data-place-placeholder="${kind}"]')`,
+      );
+    }
+    await ev(
+      `const source=window.__plan.items[0];window.__plan={...window.__plan,items:[{...source,source:'custom',entry:null,entry_id:null,custom_title:'Pause au bord de la rivière',custom_location:'Tokyo',start_time:null,stops:[]}]};window.__updatePlan(window.__plan)`,
+    );
+    await wait(
+      'document.querySelector(".trip-step-copy strong").textContent==="Pause au bord de la rivière"',
+    );
+    await ev('window.__plan={...window.__plan,items:[]};window.__updatePlan(window.__plan)');
+    await wait('document.querySelector(".trip-day-empty")?.textContent.includes("Aucune étape")');
+    assert(
+      await ev('!!document.querySelector(".trip-timeline-end .trip-add-step .lucide-compass")'),
+      'empty days retain a compact explanation, a drop surface and the Compass catalogue action',
+    );
+    await screenshot('itinerary-empty');
   }
   async function catalogActionChecks() {
     await nav(1280, 'drag');
@@ -1004,6 +1148,13 @@ try {
         'menu inserts in chosen day ' + width,
       );
     }
+  }
+  if (process.env.NAGI_ITINERARY_UI_QA === '1') {
+    await itineraryRefinementChecks();
+    assert(errors.length === 0, errors.join(';'));
+    console.log(JSON.stringify({ passed: true, itinerary: true, pages, runtimeErrors: errors }));
+    cleanup();
+    process.exit(0);
   }
   await nav();
   assert(
@@ -1560,6 +1711,7 @@ try {
   );
   await screenshot('detail-sparse-readonly');
   await key('Escape');
+  await itineraryRefinementChecks();
   const providerRequests = await ev('window.__externalRequests.length');
   for (const id of ['economy-cold', 'economy-busy']) {
     pages++;
@@ -1640,7 +1792,5 @@ try {
   console.log(JSON.stringify(report));
   fs.writeFileSync(path.join(temp, 'report.json'), JSON.stringify(report, null, 2));
 } finally {
-  ws?.close();
-  browser.kill();
-  server.close();
+  cleanup();
 }

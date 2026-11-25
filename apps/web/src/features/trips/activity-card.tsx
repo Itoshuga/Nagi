@@ -7,8 +7,10 @@ export function ActivityCardCopy({
   notes,
   children,
   place,
+  titleId,
 }: Pick<TripPlanItem, 'entry' | 'notes'> & {
   children?: React.ReactNode;
+  titleId?: string;
   place?: PlaceSourceFields & { id: string };
 }) {
   const {
@@ -48,7 +50,9 @@ export function ActivityCardCopy({
         sizes="56px"
       />
       <span ref={observe} className="trip-step-copy">
-        <strong title={record.error}>{title}</strong>
+        <strong id={titleId} title={record.error}>
+          {title}
+        </strong>
         <small>{[category, location].filter(Boolean).join(' · ')}</small>
         {place?.source === 'custom' && (
           <small>

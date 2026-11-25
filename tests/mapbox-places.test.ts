@@ -6,7 +6,7 @@ const { searchMapbox, resolveMapbox, verifyMapboxReference, retrieveMapboxDetail
   await import('../apps/web/src/features/integrations/mapbox/server');
 const { readMapboxProof, issueMapboxProof } =
   await import('../apps/web/src/features/integrations/mapbox/proof');
-const { mapboxSearchPlaces, mapboxPlaceDetails } =
+const { mapboxSearchPlaces, mapboxPlaceDetails, mapboxCategoryLabel } =
   await import('../apps/web/src/features/integrations/mapbox/model');
 const actor = '11111111-1111-4111-8111-111111111111',
   trip = '22222222-2222-4222-8222-222222222222',
@@ -287,4 +287,15 @@ describe('Provider presentation boundaries', () => {
     expect(place?.website).toBeUndefined();
     expect(place?.imageUrl).toBeUndefined();
   });
+});
+
+it('presents readable categories without changing cached provider identifiers', () => {
+  const category = 'buddhist_temple';
+  expect(mapboxCategoryLabel(category)).toBe('Temple bouddhiste');
+  expect(mapboxCategoryLabel('shinto_shrine')).toBe('Sanctuaire shinto');
+  expect(mapboxCategoryLabel('local_art_space')).toBe('Local art space');
+  expect(mapboxCategoryLabel('Musée d’art')).toBe('Musée d’art');
+  expect(
+    mapboxPlaceDetails({ mapbox_id: id, name: 'Temple', primary_category: category }, false),
+  ).toMatchObject({ categoryId: 'buddhist_temple', category: 'Temple bouddhiste' });
 });

@@ -12,6 +12,17 @@ const featureLabels: Record<string, string> = {
   country: 'Pays',
 };
 const categoryLabels: Record<string, string> = {
+  buddhist_temple: 'Temple bouddhiste',
+  shinto_shrine: 'Sanctuaire shinto',
+  shrine: 'Sanctuaire',
+  temple: 'Temple',
+  place_of_worship: 'Lieu de culte',
+  religious_site: 'Site religieux',
+  historic_site: 'Site historique',
+  convenience_store: 'Supérette',
+  gift_shop: 'Boutique de souvenirs',
+  train_station: 'Gare',
+  bus_stop: 'Arrêt de bus',
   restaurant: 'Restaurant',
   cafe: 'Café',
   hotel: 'Hôtel',
@@ -22,6 +33,16 @@ const categoryLabels: Record<string, string> = {
   railway_station: 'Gare',
   airport: 'Aéroport',
 };
+/** Presentation only: preserve provider categories in their original data. */
+export function mapboxCategoryLabel(value?: string) {
+  if (!value) return;
+  return (
+    categoryLabels[value.toLowerCase()] ??
+    (value.includes('_')
+      ? value.replaceAll('_', ' ').replace(/^./, (character) => character.toLocaleUpperCase('fr'))
+      : value)
+  );
+}
 const text = (value: unknown, length = 1000) =>
   typeof value === 'string' && value.trim() ? value.trim().slice(0, length) : undefined;
 const object = (value: unknown): Record<string, unknown> =>

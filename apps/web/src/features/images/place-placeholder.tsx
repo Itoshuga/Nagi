@@ -61,7 +61,8 @@ const categories = [
   {
     kind: 'shop',
     label: 'Boutique',
-    match: /shop|store|retail|mall|magasin|commercial|produit|grocery|supermarket|supermarche/,
+    match:
+      /shop|store|retail|mall|magasin|boutique|superette|commercial|produit|grocery|supermarket|supermarche/,
     Icon: ShoppingBag,
   },
   { kind: 'airport', label: 'Aéroport', match: /airport|aeroport|plane/, Icon: Plane },
@@ -76,7 +77,7 @@ const categories = [
     kind: 'landmark',
     label: 'Site à visiter',
     match:
-      /temple|shrine|religious|church|eglise|monument|landmark|historic|castle|palace|chateau|attraction|touris/,
+      /temple|shrine|sanctuaire|religious|religieu|church|eglise|monument|landmark|historic|historique|castle|palace|chateau|attraction|touris/,
     Icon: Landmark,
   },
 ];

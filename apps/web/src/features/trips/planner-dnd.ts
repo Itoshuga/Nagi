@@ -1,5 +1,5 @@
 import { pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-kit/core';
-import type { TripPlanItem, TripPlanStop } from '@nagi/database';
+import type { TripPlan, TripPlanItem, TripPlanStop } from '@nagi/database';
 import type { TripEdit } from '@nagi/shared';
 import { activityNestingIssue, type LanePosition } from './planner-model';
 
@@ -61,6 +61,69 @@ export function tripDropChange(
           operation: 'move_item',
           data: { id: source.card.id, day: target.day, before: target.before },
         },
+  };
+}
+
+/** Describes the existing mutation rather than implying a different operation. */
+export function tripDropFeedback(
+  plan: Pick<TripPlan, 'items' | 'days' | 'stopsAvailable'>,
+  data: Record<string, unknown> | undefined,
+  activeId: string | number,
+  target: (LanePosition | ActivityDrop | StopDrop) & { title?: string },
+): { valid: boolean; label: string } | undefined {
+  const catalog = data?.type === 'catalog-entry';
+  const nested = isActivityDrop(target) || isStopDrop(target);
+  if (nested) {
+    const parent = plan.items.find((item) => item.id === target.parent);
+    if (
+      !parent ||
+      plan.stopsAvailable === false ||
+      (isStopDrop(target) &&
+        target.before &&
+        !parent.stops.some((stop) => stop.id === target.before))
+    )
+      return;
+    if (catalog && isActivityDrop(target) && !data?.reference) return;
+  } else if (
+    (target.day && !plan.days.some((day) => day.id === target.day)) ||
+    (target.before &&
+      !plan.items.some((item) => item.id === target.before && item.trip_day_id === target.day))
+  )
+    return;
+  const source = catalog ? undefined : tripDragSource(plan.items, data, activeId);
+  if (!catalog) {
+    if (!source) return;
+    const result = tripDropChange(plan.items, source, target);
+    if (result.error) return { valid: false, label: result.error };
+    if (!result.change) return;
+  }
+  if (nested) {
+    const parent = plan.items.find((item) => item.id === target.parent)!;
+    const sameParent = source?.parent?.id === parent.id;
+    return { valid: true, label: sameParent ? 'Réordonner les arrêts' : 'Ajouter comme arrêt' };
+  }
+  const following = plan.items.find((item) => item.id === target.before);
+  // Timed activities keep their clocks and their chronological order.
+  if (
+    source &&
+    'start_time' in source.card &&
+    source.card.start_time &&
+    following?.start_time &&
+    source.card.start_time.slice(0, 5) !== following.start_time.slice(0, 5)
+  )
+    return { valid: true, label: 'Déplacer ici · ordre chronologique conservé' };
+  if (source?.parent) return { valid: true, label: 'Remettre cet arrêt en étape' };
+  if (following)
+    return {
+      valid: true,
+      label: `${catalog ? 'Insérer' : 'Déplacer'} avant ${target.title ?? following.entry?.title ?? following.custom_title ?? 'cette étape'}`,
+    };
+  const index = plan.days.findIndex((day) => day.id === target.day);
+  return {
+    valid: true,
+    label: target.day
+      ? `${catalog ? 'Ajouter' : 'Déplacer'} en fin du jour ${index + 1}`
+      : 'Garder dans « À organiser »',
   };
 }
 

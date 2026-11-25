@@ -4,6 +4,7 @@ import {
   tripCollision,
   tripDragSource,
   tripDropChange,
+  tripDropFeedback,
 } from '../apps/web/src/features/trips/planner-dnd';
 
 const rect = (top: number, height: number) => ({
@@ -136,5 +137,126 @@ describe('Itinerary drop intentions', () => {
   });
   it('cancels when the pointer leaves the itinerary', () => {
     expect(collisions(500)).toEqual([]);
+  });
+});
+
+describe('itinerary drop feedback', () => {
+  const step = {
+    id: 'visit',
+    trip_day_id: 'day',
+    entry_id: 'place',
+    entry: { title: 'Shibuya Parco' },
+    start_time: '09:00:00',
+    stops: [],
+  } as unknown as TripPlanItem;
+  const parent = {
+    ...step,
+    id: 'parent',
+    entry: { title: 'Nintendo' },
+    stops: [{ id: 'child', entry_id: 'place' }],
+  } as TripPlanItem;
+  const plan = { items: [step, parent], days: [{ id: 'day' }, { id: 'next' }] } as Parameters<
+    typeof tripDropFeedback
+  >[0];
+  it('describes a real insertion without adding a clock', () => {
+    const original = JSON.stringify(plan);
+    expect(
+      tripDropFeedback(plan, { type: 'catalog-entry', entry: { id: 'place' } }, 'catalog:place', {
+        day: 'day',
+        before: 'visit',
+      }),
+    ).toEqual({ valid: true, label: 'Insérer avant Shibuya Parco' });
+    expect(JSON.stringify(plan)).toBe(original);
+  });
+  it('rejects stale day and occurrence targets and a drop onto the dragged occurrence', () => {
+    expect(
+      tripDropFeedback(plan, { type: 'catalog-entry' }, 'catalog', {
+        day: 'deleted',
+        before: null,
+      }),
+    ).toBeUndefined();
+    expect(
+      tripDropFeedback(plan, { type: 'catalog-entry' }, 'catalog', {
+        day: 'day',
+        before: 'deleted',
+      }),
+    ).toBeUndefined();
+    expect(
+      tripDropFeedback(plan, { type: 'item', id: 'visit' }, 'visit', {
+        day: 'day',
+        before: 'visit',
+      }),
+    ).toBeUndefined();
+  });
+  it('distinguishes explicit catalogue stop zones from a main row and allows another occurrence of the same place', () => {
+    const data = { type: 'catalog-entry', entry: { id: 'place' } };
+    expect(
+      tripDropFeedback(plan, data, 'catalog', {
+        type: 'activity',
+        parent: 'parent',
+        title: 'Nintendo',
+      }),
+    ).toBeUndefined();
+    expect(
+      tripDropFeedback(plan, data, 'catalog', {
+        type: 'stop',
+        parent: 'parent',
+        before: null,
+        title: 'Nintendo',
+      }),
+    ).toEqual({ valid: true, label: 'Ajouter comme arrêt' });
+    expect(
+      tripDropFeedback({ ...plan, stopsAvailable: false }, data, 'catalog', {
+        type: 'stop',
+        parent: 'parent',
+        before: null,
+        title: 'Nintendo',
+      }),
+    ).toBeUndefined();
+  });
+  it('does not advertise a valid nesting destination for an activity containing stops', () => {
+    expect(
+      tripDropFeedback(plan, { type: 'item', id: 'parent' }, 'parent', {
+        type: 'activity',
+        parent: 'visit',
+        title: 'Parco',
+      }),
+    ).toMatchObject({ valid: false, label: expect.stringContaining('contient déjà des arrêts') });
+  });
+  it('labels extracting and reordering an existing stop as distinct operations', () => {
+    expect(
+      tripDropFeedback(plan, { type: 'stop', id: 'child' }, 'stop-drag:child:instance', {
+        day: 'next',
+        before: null,
+      }),
+    ).toEqual({ valid: true, label: 'Remettre cet arrêt en étape' });
+    expect(
+      tripDropFeedback(plan, { type: 'stop', id: 'child' }, 'stop-drag:child:instance', {
+        type: 'stop',
+        parent: 'parent',
+        before: null,
+        title: 'Nintendo',
+      }),
+    ).toEqual({ valid: true, label: 'Réordonner les arrêts' });
+  });
+  it('explains that moving timed activities preserves chronological order', () => {
+    const another = { ...step, id: 'later', start_time: '14:30' };
+    expect(
+      tripDropFeedback(
+        { ...plan, items: [step, parent, another] },
+        { type: 'item', id: 'later' },
+        'later',
+        { day: 'day', before: 'visit' },
+      ),
+    ).toMatchObject({
+      valid: true,
+      label: expect.stringContaining('ordre chronologique conservé'),
+    });
+    expect(
+      tripDropFeedback(plan, { type: 'item', id: 'parent' }, 'parent', {
+        day: 'day',
+        before: 'visit',
+      })?.label,
+    ).toContain('avant Shibuya Parco');
   });
 });

@@ -23,7 +23,7 @@ import {
   Input,
   cn,
 } from '@nagi/ui';
-import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
+import type { TripPlan, TripPlanItem, TripPlannerDay } from '@nagi/database';
 import {
   formatTripDuration,
   formatTripTime,
@@ -39,11 +39,10 @@ import { QuickStepEditor } from './step-editor';
 import { RemoveTripStepDialog } from './remove-step-dialog';
 import { ActivityStops } from './activity-stops';
 import { useTripCardDrag } from './card-drag';
-import { tripDragSource } from './planner-dnd';
-import { isCatalogDrag } from './catalog-drag';
+import { tripDropFeedback } from './planner-dnd';
+import { usePlacePresentation } from '@/features/integrations/mapbox/components';
 import {
   itemDuration,
-  activityNestingIssue,
   stepLocation,
   visibleTripItems,
   relevantTripConnection,
@@ -56,19 +55,36 @@ export function TripDropTarget({
   before,
   children,
   className,
-}: LanePosition & { children?: React.ReactNode; className?: string }) {
+  plan,
+  enabled,
+  title,
+}: LanePosition & {
+  children?: React.ReactNode;
+  className?: string;
+  plan: TripPlan;
+  enabled: boolean;
+  title?: string;
+}) {
   const { active } = useDndContext();
   const { setNodeRef, isOver } = useDroppable({
     id: before ? `before:${before}` : `lane:${day ?? 'pending'}`,
-    data: { day, before },
+    data: { day, before, title },
+    disabled: !enabled,
   });
+  const feedback =
+    active && isOver
+      ? tripDropFeedback(plan, active.data.current, active.id, { day, before, title })
+      : undefined;
   return (
-    <div ref={setNodeRef} className={cn('trip-drop-target', className, isOver && 'is-over')}>
-      {isOver && active?.data.current?.type === 'stop' && (
-        <span className="trip-drop-label">Remettre en activité</span>
-      )}
-      {isOver && isCatalogDrag(active?.data.current) && (
-        <span className="trip-drop-label">Déposer ici</span>
+    <div
+      ref={setNodeRef}
+      className={cn('trip-drop-target', className, feedback?.valid && 'is-over')}
+      data-drop-intent={feedback?.valid ? 'insert' : undefined}
+    >
+      {feedback?.valid && (
+        <span className="trip-drop-label" role="status">
+          {feedback.label}
+        </span>
       )}
       {children}
     </div>
@@ -87,13 +103,12 @@ export function TripStep({
 }) {
   const { canEdit, busy, mutate, plan, onDetails, selectedItem } = props;
   const reducedMotion = useReducedMotion();
+  const selected = selectedItem === item.id && !props.selectedStop;
   const [nesting, setNesting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const { active } = useDndContext();
-  const source = tripDragSource(plan.items, active?.data.current, active?.id)?.card;
-  const nestingIssue = source ? activityNestingIssue(source, item) : null;
-  const title = item.entry?.title ?? 'Fiche indisponible';
+  const { title } = usePlacePresentation(item, item.entry);
   const connection = relevantTripConnection(plan, item.entry_id, item.trip_day_id);
   const { setNodeRef, attributes, listeners, cardListeners, isDragging } = useTripCardDrag(
     item.id,
@@ -102,7 +117,7 @@ export function TripStep({
   );
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `step:${item.id}`,
-    data: { day: item.trip_day_id, before: item.id },
+    data: { day: item.trip_day_id, before: item.id, title },
     disabled: !canEdit || busy,
   });
   const { setNodeRef: setNestRef, isOver: isNestOver } = useDroppable({
@@ -110,6 +125,22 @@ export function TripStep({
     data: { type: 'activity', parent: item.id, title },
     disabled: !canEdit || busy || plan.stopsAvailable === false,
   });
+  const feedback =
+    active && isOver
+      ? tripDropFeedback(plan, active.data.current, active.id, {
+          day: item.trip_day_id,
+          before: item.id,
+          title,
+        })
+      : undefined;
+  const nestingFeedback =
+    active && isNestOver
+      ? tripDropFeedback(plan, active.data.current, active.id, {
+          type: 'activity',
+          parent: item.id,
+          title,
+        })
+      : undefined;
   const index = items.findIndex((i) => i.id === item.id);
   const sameTime = (other?: TripPlanItem) =>
     !!other && other.start_time?.slice(0, 5) === item.start_time?.slice(0, 5);
@@ -131,8 +162,8 @@ export function TripStep({
     <motion.li
       {...cardListeners}
       data-activity-id={item.id}
-      layout="position"
-      initial={reducedMotion ? false : { opacity: 0 }}
+      layout={active ? false : 'position'}
+      initial={false}
       animate={{ opacity: isDragging ? 0.3 : 1 }}
       transition={{ duration: reducedMotion ? 0 : 0.15 }}
       ref={(node) => {
@@ -143,9 +174,11 @@ export function TripStep({
         'trip-step',
         canEdit && !busy && 'trip-card-can-drag',
         isDragging && 'is-dragging',
-        isOver && !isDragging && !isNestOver && 'is-drop-over',
-        isNestOver && !isDragging && (nestingIssue ? 'is-nesting-blocked' : 'is-nesting-over'),
-        selectedItem === item.id && 'is-selected',
+        feedback?.valid && !isDragging && !isNestOver && 'is-drop-over',
+        nestingFeedback &&
+          !isDragging &&
+          (nestingFeedback.valid ? 'is-nesting-over' : 'is-nesting-blocked'),
+        selected && 'is-selected',
         props.recentItem === item.id && !active && 'is-added',
       )}
     >
@@ -173,7 +206,7 @@ export function TripStep({
           disabled={busy}
           aria-label={`Glisser ${title}`}
         >
-          <GripVertical className="size-3.5" />
+          <GripVertical aria-hidden="true" className="size-3.5" />
         </button>
       )}
       <button
@@ -182,6 +215,7 @@ export function TripStep({
         className="trip-step-main"
         onClick={() => onDetails(item)}
         aria-label={`Détails de ${title}`}
+        aria-pressed={selected}
       >
         <ActivityCardCopy entry={item.entry} notes={item.notes} place={item}>
           {connection && (
@@ -192,10 +226,15 @@ export function TripStep({
           {conflict && <span className="trip-time-conflict">Chevauchement d’horaire</span>}
         </ActivityCardCopy>
       </button>
-      {isNestOver && !isDragging && (
+      {feedback?.valid && !isNestOver && !isDragging && (
+        <span className="trip-drop-label" role="status">
+          {feedback.label}
+        </span>
+      )}
+      {nestingFeedback && !isDragging && (
         <span className="trip-nesting-hint" role="status">
           <CornerDownRight className="size-3.5" aria-hidden="true" />
-          {nestingIssue ?? `Ajouter un arrêt dans ${title}`}
+          {nestingFeedback.label}
         </span>
       )}
       {canEdit && (
@@ -294,7 +333,9 @@ function DayHeading({
   return (
     <header className="trip-day-heading">
       <div>
-        <p>{day.date ? tripDayLabel(day.date) : `Jour ${index + 1}`}</p>
+        <h2 className="trip-day-title">
+          {day.date ? tripDayLabel(day.date) : `Jour ${index + 1}`}
+        </h2>
         {editing ? (
           <form
             className="trip-day-title-form"
@@ -340,7 +381,7 @@ function DayHeading({
                   base.current = plan.version;
                 }}
               >
-                <Pencil className="size-3" />
+                <Pencil aria-hidden="true" className="size-3" />
               </button>
             )}
           </div>
@@ -395,13 +436,20 @@ function DayTimeline({
       )
     : items;
   const conflicts = overlappingTripItems(items);
+  const feedback =
+    active && isOver
+      ? tripDropFeedback(props.plan, active.data.current, active.id, {
+          day: day?.id ?? null,
+          before: null,
+        })
+      : undefined;
   return (
     <section
       ref={setNodeRef}
       className={cn(
         'trip-day-timeline',
         !items.length && 'is-empty',
-        isOver && isCatalogDrag(active?.data.current) && 'is-catalog-day-over',
+        feedback?.valid && 'is-day-drop-over',
       )}
     >
       {day ? (
@@ -409,17 +457,28 @@ function DayTimeline({
       ) : (
         <header className="trip-day-heading">
           <div>
-            <p>À organiser</p>
+            <h2 className="trip-day-title">À organiser</h2>
             <small>
               {items.length} idée{items.length > 1 ? 's' : ''} à garder pour la suite
             </small>
           </div>
         </header>
       )}
+      {feedback?.valid && (
+        <span className="trip-day-drop-hint" role="status">
+          {feedback.label}
+        </span>
+      )}
       <ol className="trip-timeline">
         {visible.map((item) => (
           <li key={item.id} className="trip-timeline-entry">
-            <TripDropTarget day={day?.id ?? null} before={item.id} />
+            <TripDropTarget
+              day={day?.id ?? null}
+              before={item.id}
+              plan={props.plan}
+              enabled={props.canEdit && !props.busy}
+              title={item.entry?.title ?? undefined}
+            />
             <ol className="trip-step-shell">
               <TripStep item={item} items={items} props={props} conflict={conflicts.has(item.id)} />
             </ol>
@@ -430,6 +489,7 @@ function DayTimeline({
               busy={props.busy}
               mutate={props.mutate}
               onAdd={() => props.onAddStop(item.id)}
+              acceptDrops
               onDetails={props.onStopDetails}
               selectedStop={props.selectedStop}
               expanded={props.expandedStops?.[item.id]}
@@ -440,11 +500,30 @@ function DayTimeline({
           </li>
         ))}
       </ol>
-      <TripDropTarget day={day?.id ?? null} before={null} className="trip-timeline-end">
-        {!items.length && !day && props.selectedDay !== 'all' && (
-          <p className="trip-empty-inline">
-            {search ? 'Aucun lieu trouvé.' : 'Gardez ici les idées pour la suite.'}
-          </p>
+      <TripDropTarget
+        day={day?.id ?? null}
+        before={null}
+        plan={props.plan}
+        enabled={props.canEdit && !props.busy}
+        className="trip-timeline-end"
+      >
+        {!visible.length && (
+          <div className="trip-day-empty">
+            <strong>
+              {search
+                ? 'Aucun lieu trouvé'
+                : day
+                  ? 'Aucune étape pour cette journée'
+                  : 'Vos idées, à votre rythme'}
+            </strong>
+            <p>
+              {search
+                ? 'Essayez un autre nom.'
+                : props.canEdit
+                  ? 'Explorez le catalogue ou déposez un lieu ici.'
+                  : 'Les étapes de cette journée apparaîtront ici.'}
+            </p>
+          </div>
         )}
         {props.canEdit && (
           <button
@@ -487,16 +566,16 @@ function DayTimeline({
 export function TripItinerary(props: WorkspaceViewProps) {
   const content = useRef<HTMLDivElement>(null);
   const { active, measureDroppableContainers } = useDndContext();
-  const catalogDragging = isCatalogDrag(active?.data.current);
+  const dragging = !!active;
   useEffect(() => {
-    if (!catalogDragging || !content.current) return;
+    if (!dragging || !content.current) return;
     let frame = 0;
     const refresh = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => measureDroppableContainers([]));
     };
-    // The stop targets are intentionally absent at rest. Re-measure positions
-    // after their layout and after a folded activity opens, without polling.
+    // Re-measure contextual targets and folded stops after layout changes,
+    // without polling or provider requests during pointer movement.
     const observer = new ResizeObserver(refresh);
     observer.observe(content.current);
     refresh();
@@ -504,7 +583,7 @@ export function TripItinerary(props: WorkspaceViewProps) {
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [catalogDragging, measureDroppableContainers]);
+  }, [dragging, measureDroppableContainers]);
   const [search, setSearch] = useState('');
   const { selectedDay, plan } = props;
   if (selectedDay === 'pending')
