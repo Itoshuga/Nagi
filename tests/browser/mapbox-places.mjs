@@ -184,7 +184,7 @@ const discovered = Array.from({ length: 80 }, (_, index) => ({
     imageWidth: 1200,
     imageHeight: 800,
   },
-  rightsStatus: index === 1 ? 'permission_granted' : 'unknown',
+  rightsStatus: index === 1 ? 'permission_granted' : index === 2 ? 'auto_approved' : 'unknown',
   availability: 'unknown',
   excluded: false,
   sources: [],
@@ -201,7 +201,7 @@ function discoveredPhoto(item) {
     title: item.metadata.title,
     attribution: 'Venue owner · Permission verified',
     rightsStatus: item.rightsStatus,
-    usageRights: 'permission-granted',
+    usageRights: item.rightsStatus === 'auto_approved' ? 'project-approved' : 'permission-granted',
     verifiedAt: new Date().toISOString(),
   };
 }
@@ -228,7 +228,7 @@ function galleryResponse(body) {
       ...(item.metadata.title === 'Vue du lieu 9' ? { availability: 'unavailable' } : {}),
       ...(item.metadata.title === 'Vue du lieu 8' ? { excluded: true } : {}),
       ...(previewQA ? { preview: previewPhoto(item) } : {}),
-      ...(['permission_granted', 'open_license'].includes(item.rightsStatus)
+      ...(['auto_approved', 'permission_granted', 'open_license'].includes(item.rightsStatus)
         ? { photo: discoveredPhoto(item) }
         : {}),
     })),
@@ -1078,6 +1078,13 @@ try {
       '![...document.querySelectorAll("button")].some(b=>["Suivant","Précédent"].includes(b.textContent.trim()))',
     ),
     'a legacy collection exposes only the same ten choices',
+  );
+  await click('[aria-label="Sélectionner Vue du lieu 2"]');
+  assert(
+    await ev(
+      '!document.querySelector(".nagi-photo-decision button:last-child").disabled && !document.querySelector("#photo-rights") && document.querySelector(".nagi-photo-inspector").textContent.includes("Validée automatiquement")',
+    ),
+    'an automatically approved Serper photo can be chosen immediately without a review',
   );
   await click('[aria-label="Sélectionner Vue du lieu 0"]');
   if (previewQA) {

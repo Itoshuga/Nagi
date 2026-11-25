@@ -117,6 +117,28 @@ describe('a permanent library of at most ten photos', () => {
     expect(next.offset).toBe(0);
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
+  it('returns automatically approved cached photos as selectable covers without a review or discovery call', async () => {
+    rows = rows.slice(0, 10).map((row) => ({ ...row, rights_status: 'auto_approved' }));
+    fallbacks = rows.map(
+      (row) =>
+        ({
+          id: row.id,
+          provider: 'serper',
+          title: row.title,
+          usageRights: 'project-approved',
+          rightsStatus: 'auto_approved',
+        }) as PersistentImage,
+    );
+    const gallery = await readImageGallery(scope, ref);
+    expect(gallery.items).toHaveLength(10);
+    expect(gallery.items.every((item) => item.photo?.usageRights === 'project-approved')).toBe(
+      true,
+    );
+    expect(gallery.items.every((item) => item.rightsStatus === 'auto_approved')).toBe(true);
+    expect(gallery.fallbacks).toEqual([]);
+    expect(gallery.searchEnabled).toBe(false);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
   it('filters only the same ten retained choices rather than finding a hidden eleventh photo', async () => {
     expect((await readImageGallery(scope, ref, 0, 'Photo 79')).items).toEqual([]);
     expect((await readImageGallery(scope, ref, 0, 'Photo 9')).items).toHaveLength(1);

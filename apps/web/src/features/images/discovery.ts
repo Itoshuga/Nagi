@@ -12,10 +12,8 @@ import {
 } from './server';
 import { serperImagesConfig } from './config';
 import { imageDigest, serperQueries, serperCandidates, serperImagePage } from './serper';
-import { ImageHttp, ImageProviderError } from './http';
-import { commonsFiles } from './providers';
+import { ImageProviderError } from './http';
 import { canPreviewImages, candidatePreview, developmentPreviewChoice } from './preview';
-import { matchesPhoto } from './matching';
 import { httpsUrl, openLicense } from './metadata';
 import {
   isOpenImage,
@@ -25,7 +23,6 @@ import {
   type ImageGallery,
   type DiscoveryCandidate,
   type ImageRights,
-  type ImageContext,
 } from './model';
 
 function checked(error: unknown) {
@@ -73,7 +70,7 @@ export async function approvedDiscoveryPhotos(ref: ImageReference) {
     .from('image_candidates')
     .select('id,photo_id')
     .eq('gallery_key', imageCacheKey(ref))
-    .in('rights_status', ['open_license', 'permission_granted'])
+    .in('rights_status', ['auto_approved', 'open_license', 'permission_granted'])
     .neq('availability_status', 'unavailable')
     .eq('is_excluded', false)
     .gte('relevance', 200)
@@ -82,78 +79,6 @@ export async function approvedDiscoveryPhotos(ref: ImageReference) {
     .limit(6);
   checked(result.error);
   return imageRows((result.data ?? []).map((row) => row.photo_id ?? row.id));
-}
-function commonsFilename(value: string) {
-  try {
-    const url = new URL(value);
-    if (!['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(url.hostname)) return;
-    const segments = url.pathname.split('/');
-    const index = segments.indexOf('commons');
-    if (index < 0) return;
-    const offset = segments[index + 1] === 'thumb' ? 4 : 3;
-    const name = decodeURIComponent(segments[index + offset] ?? '')
-      .replaceAll('_', ' ')
-      .normalize('NFC');
-    return /\.(jpe?g|png|webp)$/i.test(name) && !name.includes('|') ? name : undefined;
-  } catch {
-    return;
-  }
-}
-async function verifyCommonsCandidates(key: string, context: ImageContext) {
-  const db = serviceDatabase();
-  const query = await db
-    .from('image_candidates')
-    .select('id,metadata')
-    .eq('gallery_key', key)
-    .eq('rights_status', 'unknown')
-    .eq('is_excluded', false)
-    .order('relevance', { ascending: false })
-    .limit(100);
-  checked(query.error);
-  const selected = (query.data ?? [])
-    .map((row) => ({
-      row,
-      filename: commonsFilename((row.metadata as unknown as DiscoveryMetadata).imageUrl),
-    }))
-    .filter((item) => item.filename)
-    .slice(0, 5);
-  if (!selected.length) return;
-  try {
-    const photos = await commonsFiles(
-      new ImageHttp(AbortSignal.timeout(10000)),
-      selected.map((item) => item.filename!),
-    );
-    for (const photo of photos) {
-      if (!matchesPhoto(context, photo)) continue;
-      const candidate = selected.find((item) => item.filename === photo.sourceId);
-      if (!candidate) continue;
-      const saved = await db.from('external_images').upsert({
-        id: photo.id,
-        provider: photo.provider,
-        source_id: photo.sourceId,
-        metadata: photo as unknown as Json,
-        available: true,
-        verified_at: photo.verifiedAt,
-      });
-      checked(saved.error);
-      const update = await db
-        .from('image_candidates')
-        .update({
-          photo_id: photo.id,
-          rights_status: 'open_license',
-          creator: photo.creator,
-          license: photo.license,
-          license_url: photo.licenseUrl,
-          rights_evidence: photo.sourceUrl,
-          verified_at: photo.verifiedAt,
-        })
-        .eq('id', candidate.row.id)
-        .eq('rights_status', 'unknown');
-      checked(update.error);
-    }
-  } catch {
-    /* Verification failure leaves discovery references private and unapproved. */
-  }
 }
 type IndexOptions = {
   automatic?: boolean;
@@ -248,7 +173,6 @@ export async function indexImageGallery(
         p_variant_count: 1,
       });
       checked(finished.error);
-      if (!canPreviewImages(scope)) await verifyCommonsCandidates(key, target.context!);
     } catch (error) {
       const code = error instanceof ImageProviderError ? error.code : 'network';
       const finished = await serviceDatabase().rpc('finish_image_discovery', {
@@ -348,7 +272,8 @@ export async function readImageGallery(
     rows
       .filter(
         (row) =>
-          ['open_license', 'permission_granted'].includes(row.rights_status) && !row.is_excluded,
+          ['auto_approved', 'open_license', 'permission_granted'].includes(row.rights_status) &&
+          !row.is_excluded,
       )
       .map((row) => row.photo_id ?? row.id),
   );

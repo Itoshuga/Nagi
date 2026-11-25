@@ -98,7 +98,9 @@ export function useResolvedImage(reference?: ImageReference, eager = false) {
 }
 /** Shared, quiet status language for gallery cards and photo details. */
 export function PhotoStatus({ rights, label }: { rights?: ImageRights; label?: string }) {
-  const approved = !label && (rights === 'open_license' || rights === 'permission_granted');
+  const approved =
+    !label &&
+    (rights === 'auto_approved' || rights === 'open_license' || rights === 'permission_granted');
   const Icon = approved ? ShieldCheck : Info;
   return (
     <span className="nagi-photo-status" data-approved={approved || undefined}>
@@ -136,8 +138,8 @@ export function PhotoAttribution({
   const license = temporary
     ? 'Conditions du fournisseur'
     : (image.license ??
-      (preview
-        ? 'Non renseignée'
+      (preview || image.rightsStatus === 'auto_approved'
+        ? 'Non renseignée par la source'
         : image.rightsStatus === 'permission_granted'
           ? 'Autorisation de publication vérifiée'
           : 'Licence ouverte vérifiée'));
@@ -191,6 +193,12 @@ export function PhotoAttribution({
       <div className="nagi-photo-usage">
         <h3>Notes d’utilisation</h3>
         <p>{image.attribution}</p>
+        {!temporary && !open && image.rightsStatus === 'auto_approved' && (
+          <p>
+            Validée automatiquement pour Nagi. Les informations de licence sont celles renseignées
+            par la source.
+          </p>
+        )}
         {temporary && (
           <p>
             Affichage temporaire sous les conditions du fournisseur. Cette photographie n’est pas

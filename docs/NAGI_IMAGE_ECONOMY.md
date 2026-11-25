@@ -12,7 +12,7 @@ Politique du 24 novembre 2026. Elle remplace les anciennes galeries paginées et
 - **Dix choix maximum au total**, y compris les photographies autorisées issues du cache. Les galeries anciennes de plusieurs centaines de références affichent dix choix. Le filtre porte uniquement sur ces dix photos et les offsets ne donnent pas accès aux suivantes.
 - Une couverture déjà choisie reste conservée et figure dans les dix choix lorsqu’elle est disponible, même si elle appartenait à une ancienne page. Les autres références historiques restent stockées ; aucune photo, sélection ou donnée de voyage n’est supprimée.
 
-La découverte de photos ne change pas les droits de publication. Les aperçus privés de développement et les couvertures publiques gardent leurs règles existantes.
+Depuis le 25 novembre 2026, les photos Serper sont validées automatiquement pour Nagi, sans changer les plafonds ni la politique de cache décrits ici. Voir [la validation automatique](NAGI_AUTOMATIC_PHOTO_APPROVAL.md).
 
 ## Configuration
 

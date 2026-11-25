@@ -77,6 +77,7 @@ export type ProviderImage = {
 };
 export const imageRightsSchema = z.enum([
   'unknown',
+  'auto_approved',
   'open_license',
   'permission_granted',
   'restricted',
@@ -85,6 +86,7 @@ export const imageRightsSchema = z.enum([
 export type ImageRights = z.infer<typeof imageRightsSchema>;
 export const imageRightsLabels: Record<ImageRights, string> = {
   unknown: 'À vérifier',
+  auto_approved: 'Validée automatiquement',
   open_license: 'Licence ouverte',
   permission_granted: 'Autorisation vérifiée',
   restricted: 'Usage restreint',
@@ -107,8 +109,8 @@ export type SerperImage = {
   height?: number;
   attribution: string;
   verifiedAt: string;
-  usageRights: 'open' | 'permission-granted';
-  rightsStatus: 'open_license' | 'permission_granted';
+  usageRights: 'open' | 'permission-granted' | 'project-approved';
+  rightsStatus: 'open_license' | 'permission_granted' | 'auto_approved';
 };
 export type PersistentImage = OpenImage | SerperImage;
 export type PreviewImage = Omit<SerperImage, 'usageRights' | 'rightsStatus' | 'verifiedAt'> & {
@@ -266,7 +268,7 @@ export const imageRequestSchema = z.discriminatedUnion('operation', [
     operation: z.literal('review'),
     reference: imageReferenceSchema,
     image: z.uuid(),
-    rights: imageRightsSchema,
+    rights: imageRightsSchema.exclude(['auto_approved']),
     creator: z.string().trim().max(500).default(''),
     license: z.string().trim().max(150).default(''),
     licenseUrl: z.string().max(4096).default(''),

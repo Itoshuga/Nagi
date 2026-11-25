@@ -224,8 +224,9 @@ export function EntryForm({
                 <Card className="space-y-4">
                   <h2 className="text-lg font-bold">Photographie de couverture</h2>
                   <p className="text-sm text-muted-foreground">
-                    Parcourez les photographies découvertes ou vos images importées. Seules les
-                    photographies dont les droits sont établis peuvent être publiées.
+                    Parcourez les photographies découvertes ou vos images importées. Les photos
+                    Serper sont validées automatiquement ; leurs sources et crédits restent
+                    consultables.
                   </p>
                   <PlaceImage
                     category={entry.category?.name}

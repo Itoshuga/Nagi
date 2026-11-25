@@ -630,9 +630,11 @@ export function ImageGalleryPicker({
                     )}
                     {!inspected.photo && (
                       <p className="nagi-photo-context">
-                        {previewEnabled
-                          ? 'Disponible pour votre aperçu privé. Les droits restent à vérifier avant publication.'
-                          : 'Cette photo doit être autorisée avant de pouvoir devenir une couverture.'}
+                        {inspected.rightsStatus === 'auto_approved'
+                          ? 'Cette photographie n’est pas disponible pour la sélection.'
+                          : previewEnabled
+                            ? 'Disponible pour votre aperçu privé. Les droits restent à vérifier avant publication.'
+                            : 'Cette photo doit être autorisée avant de pouvoir devenir une couverture.'}
                       </p>
                     )}
                     {!!inspected.sources.length && (
@@ -656,14 +658,16 @@ export function ImageGalleryPicker({
                         Signaler une image incorrecte
                       </Button>
                     )}
-                    {gallery?.canReview && !previewEnabled && (
-                      <RightsReview
-                        key={inspected.id + inspected.rightsStatus}
-                        candidate={inspected}
-                        busy={saving}
-                        onSave={review}
-                      />
-                    )}
+                    {gallery?.canReview &&
+                      !previewEnabled &&
+                      inspected.rightsStatus !== 'auto_approved' && (
+                        <RightsReview
+                          key={inspected.id + inspected.rightsStatus}
+                          candidate={inspected}
+                          busy={saving}
+                          onSave={review}
+                        />
+                      )}
                   </div>
                 </>
               ) : detailedPhoto ? (
@@ -684,10 +688,10 @@ export function ImageGalleryPicker({
                     Sélectionnez une photo pour l’agrandir et consulter son auteur, sa source et ses
                     droits.
                   </p>
-                  <PhotoStatus rights="unknown" />
+                  <PhotoStatus rights="auto_approved" />
                   <p>
-                    Les photos à vérifier restent consultables. Leur publication nécessite une
-                    autorisation.
+                    Les photos Serper sont validées automatiquement. Leur source et leurs crédits
+                    restent accessibles.
                   </p>
                 </div>
               )}
@@ -819,11 +823,13 @@ function RightsReview({
             value={rights}
             onChange={(event) => setRights(event.target.value as ImageRights)}
           >
-            {Object.entries(rightsLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(rightsLabels)
+              .filter(([value]) => value !== 'auto_approved')
+              .map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
           </select>
         </div>
         <div>

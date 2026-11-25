@@ -12,6 +12,32 @@ describe('SQL security invariants across every migration', () => {
       where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`);
     expect(result.rows).toEqual([]);
   });
+  it('backfills stored Serper photos without inventing licences or losing exclusions and documented metadata', () => {
+    expect(autoApprovalMigration.candidates.map((row) => row.rights_status)).toEqual([
+      'auto_approved',
+      'auto_approved',
+      'auto_approved',
+      'open_license',
+      'auto_approved',
+      'auto_approved',
+    ]);
+    expect(autoApprovalMigration.candidates[3]).toMatchObject({
+      creator: 'Known photographer',
+      license: 'CC BY 4.0',
+    });
+    expect(autoApprovalMigration.candidates[1]?.is_excluded).toBe(true);
+    expect(autoApprovalMigration.photos).toHaveLength(5);
+    expect(autoApprovalMigration.photos.filter((photo) => photo.available)).toHaveLength(3);
+    for (const photo of autoApprovalMigration.photos) {
+      expect(photo.metadata).toMatchObject({
+        rightsStatus: 'auto_approved',
+        usageRights: 'project-approved',
+        creator: 'Known photographer',
+      });
+      expect(photo.metadata).not.toHaveProperty('license');
+      expect(photo.metadata).not.toHaveProperty('rights_evidence');
+    }
+  });
   it('pins the search path of every privileged function and denies default PUBLIC execution', async () => {
     const result = await db.query(`select n.nspname,p.proname from pg_proc p
       join pg_namespace n on n.oid=p.pronamespace
@@ -33,6 +59,15 @@ let providerMigrationBefore: unknown,
   migratedJournal: unknown,
   providerArchive: unknown;
 let legacyTypeBefore: unknown, legacyTypeAfter: unknown;
+let autoApprovalMigration: {
+  candidates: {
+    rights_status: string;
+    creator: string | null;
+    license: string | null;
+    is_excluded: boolean;
+  }[];
+  photos: { metadata: Record<string, unknown>; available: boolean }[];
+};
 async function scalar<T>(sql: string): Promise<T> {
   const result = await db.query<{ value: T }>(sql);
   return result.rows[0]!.value;
@@ -100,6 +135,7 @@ beforeAll(async () => {
   const directory = new URL('../supabase/migrations/', import.meta.url);
   for (const file of (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort()) {
     const graphMigration = file.endsWith('_semantic_relations.sql');
+    const autoApproval = file.endsWith('_automatic_serper_approval.sql');
     const providerMigration = file.endsWith('_mapbox_provider.sql');
     if (providerMigration) {
       await db.exec(`insert into auth.users(id,last_sign_in_at) values('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',now());
@@ -131,7 +167,25 @@ beforeAll(async () => {
         "select to_jsonb(t) as value from public.relation_types t where slug='archive-link'",
       );
     }
+    if (autoApproval) {
+      await db.exec(`insert into public.image_galleries(cache_key,place_source,place_id) values(repeat('f',64),'mapbox','legacy-auto-approval');
+        insert into public.image_candidates(id,gallery_key,url_key,title,metadata,rights_status,creator,license,is_excluded,availability_status)
+        select ('abc11111-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,repeat('f',64),lpad(n::text,64,'0'),'Legacy photo '||n,
+          '{"imageUrl":"https://example.org/photo.jpg","link":"https://example.org/source"}'::jsonb,
+          case when n=4 then 'open_license' when n=5 then 'rejected' when n=6 then 'restricted' else 'unknown' end,
+          'Known photographer',case when n=4 then 'CC BY 4.0' else null end,n=2,case when n=3 then 'unavailable' else 'unknown' end
+        from generate_series(1,6) n;`);
+    }
     await db.exec((await readFile(new URL(file, directory), 'utf8')).replaceAll('\r\n', '\n'));
+    if (autoApproval) {
+      autoApprovalMigration = await scalar(`select jsonb_build_object(
+        'candidates',(select jsonb_agg(jsonb_build_object('rights_status',rights_status,'creator',creator,'license',license,'is_excluded',is_excluded) order by id) from public.image_candidates where gallery_key=repeat('f',64)),
+        'photos',(select jsonb_agg(jsonb_build_object('metadata',metadata,'available',available) order by id) from public.external_images where id::text like 'abc11111-%')) as value`);
+      await db.exec(
+        "delete from public.image_galleries where cache_key=repeat('f',64); delete from public.external_images where id::text like 'abc11111-%'",
+      );
+    }
+
     if (providerMigration) {
       providerMigrationAfter = await migrationPlanningSnapshot();
       migratedJournal = await scalar(
@@ -1211,14 +1265,26 @@ describe('Collaborative planner transactions', () => {
       const lease = await scalar<{ lease: string }>(reserve());
       await scalar(finish(lease.lease));
     }
-    it('stores unknown references without publishing them, and rejects direct reads by members and administrators', async () => {
+    it('automatically approves Serper photos while keeping gallery data private and enforcing editor permissions', async () => {
       await discovered();
       expect(
         await scalar<number>('select count(*)::int as value from public.image_candidates'),
       ).toBe(1);
       expect(
         await scalar<number>('select count(*)::int as value from public.external_images'),
-      ).toBe(0);
+      ).toBe(1);
+      expect(
+        await scalar(`select metadata as value from public.external_images where id='${photo}'`),
+      ).toMatchObject({
+        rightsStatus: 'auto_approved',
+        usageRights: 'project-approved',
+        sourceUrl: item.metadata.link,
+      });
+      expect(
+        await scalar(
+          `select metadata ? 'license' or metadata ? 'rights_evidence' as value from public.external_images where id='${photo}'`,
+        ),
+      ).toBe(false);
       await asUser();
       await fails('select * from public.image_candidates', /permission denied/);
       await fails('select * from public.image_galleries', /permission denied/);
@@ -1229,6 +1295,71 @@ describe('Collaborative planner transactions', () => {
       );
       await asUser(adminId);
       await fails('select * from public.image_candidates', /permission denied/);
+    });
+    it('uses automatically approved photos as real covers without a manual rights review', async () => {
+      await discovered();
+      await asUser(adminId);
+      expect(
+        await scalar(`select public.set_catalog_image('${key}','manual','${photo}',0) as value`),
+      ).toBe(1);
+      await asService();
+      await db.exec(
+        `update public.image_candidates set title='Updated source title',is_excluded=true where id='${photo}'`,
+      );
+      expect(
+        await scalar(`select available as value from public.external_images where id='${photo}'`),
+      ).toBe(false);
+      expect(
+        await scalar(
+          `select image_id::text as value from public.place_image_assignments where city_id is not null`,
+        ),
+      ).toBe(photo);
+      await db.exec(`update public.image_candidates set is_excluded=false where id='${photo}'`);
+      expect(
+        await scalar(`select available as value from public.external_images where id='${photo}'`),
+      ).toBe(true);
+      expect(
+        await scalar(
+          `select metadata->>'title' as value from public.external_images where id='${photo}'`,
+        ),
+      ).toBe('Updated source title');
+    });
+    it('approves the same source URL in separate galleries without an identity collision', async () => {
+      await discovered();
+      const secondPhoto = 'abc00000-0000-4000-8000-000000000012';
+      const metadata = JSON.stringify(item.metadata).replaceAll("'", "''");
+      await db.exec(`insert into public.image_galleries(cache_key,place_source,place_id) values(repeat('e',64),'mapbox','another-place');
+        insert into public.image_candidates(id,gallery_key,url_key,title,metadata) values('${secondPhoto}',repeat('e',64),'${item.urlKey}','Shared source','${metadata}')`);
+      expect(
+        await scalar(`select count(*)::int as value from public.external_images where available`),
+      ).toBe(2);
+      expect(
+        await scalar(
+          `select photo_id::text as value from public.image_candidates where id='${secondPhoto}'`,
+        ),
+      ).toBe(secondPhoto);
+      expect(
+        await scalar(
+          `select metadata->>'rightsStatus' as value from public.external_images where id='${photo}'`,
+        ),
+      ).toBe('auto_approved');
+    });
+    it('keeps documented permissions intact when a previously reviewed reference is merged', async () => {
+      await discovered();
+      await asUser(adminId);
+      await db.exec(
+        `select public.review_image_candidate('${photo}','permission_granted','Owner','','','Owner authorization')`,
+      );
+      await asService();
+      const metadata = JSON.stringify(item.metadata).replaceAll("'", "''");
+      await db.exec(
+        `insert into public.image_candidates(id,gallery_key,url_key,title,metadata) values('${photo}','${key}','${item.urlKey}','Updated','${metadata}') on conflict(gallery_key,url_key) do update set title=excluded.title,metadata=excluded.metadata`,
+      );
+      expect(
+        await scalar(
+          `select metadata->>'rightsStatus' as value from public.external_images where id='${photo}'`,
+        ),
+      ).toBe('permission_granted');
     });
     it('deduplicates concurrent page reservations and refuses a stale completion', async () => {
       const first = await scalar<{ lease: string }>(reserve());
@@ -1495,6 +1626,10 @@ describe('Collaborative planner transactions', () => {
     });
     it('persists an unknown development choice without creating a public image or cover assignment', async () => {
       await discovered();
+      // A deliberately revoked approval can still use the legacy private preview.
+      await asUser(adminId);
+      await db.exec(`select public.review_image_candidate('${photo}','unknown')`);
+      await asService();
       expect(
         await scalar(
           `select public.set_image_preview('${adminId}','${key}','manual','${photo}',0) as value`,
@@ -1517,7 +1652,9 @@ describe('Collaborative planner transactions', () => {
         ),
       ).toBe('unknown');
       expect(
-        await scalar<number>('select count(*)::int as value from public.external_images'),
+        await scalar<number>(
+          'select count(*)::int as value from public.external_images where available',
+        ),
       ).toBe(0);
       expect(
         await scalar<number>('select count(*)::int as value from public.place_image_assignments'),
