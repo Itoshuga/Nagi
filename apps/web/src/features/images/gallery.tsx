@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ExternalLink, Info, Loader2, Search } from 'lucide-react';
 import {
   Button,
@@ -26,10 +26,14 @@ export function ImageGalleryPicker({
   reference,
   disabled = false,
   initiallyOpen = false,
+  className,
+  children,
 }: {
   reference: ImageReference;
   disabled?: boolean;
   initiallyOpen?: boolean;
+  className?: string;
+  children?: ReactNode;
 }) {
   const { result, session } = useResolvedImage(reference, true);
   const [open, setOpen] = useState(initiallyOpen),
@@ -237,6 +241,8 @@ export function ImageGalleryPicker({
         <Button
           type="button"
           variant="secondary"
+          className={className}
+          aria-label="Modifier la photo"
           disabled={disabled}
           onClick={() => {
             setError('');
@@ -245,7 +251,7 @@ export function ImageGalleryPicker({
             close(true);
           }}
         >
-          Modifier la photo
+          {children ?? 'Modifier la photo'}
         </Button>
       </div>
       <Dialog open={open} onOpenChange={close}>

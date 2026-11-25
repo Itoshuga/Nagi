@@ -245,14 +245,23 @@ export function ImageCredits({
 export function ImagePicker({
   reference,
   disabled = false,
+  className,
+  children,
 }: {
   reference: ImageReference;
   disabled?: boolean;
+  className?: string;
+  children?: ReactNode;
 }) {
   const [Gallery, setGallery] = useState<typeof import('./gallery').ImageGalleryPicker>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  if (Gallery) return <Gallery reference={reference} disabled={disabled} initiallyOpen />;
+  if (Gallery)
+    return (
+      <Gallery reference={reference} disabled={disabled} initiallyOpen className={className}>
+        {children}
+      </Gallery>
+    );
   async function open() {
     setLoading(true);
     setError('');
@@ -269,8 +278,16 @@ export function ImagePicker({
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" disabled={disabled || loading} onClick={open}>
-          {loading ? 'Chargement…' : 'Modifier la photo'}
+        <Button
+          type="button"
+          variant="secondary"
+          className={className}
+          aria-label="Modifier la photo"
+          aria-busy={loading}
+          disabled={disabled || loading}
+          onClick={open}
+        >
+          {loading ? 'Chargement…' : (children ?? 'Modifier la photo')}
         </Button>
       </div>
       {error && <p role="alert">{error}</p>}

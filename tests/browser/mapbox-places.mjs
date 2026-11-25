@@ -40,7 +40,7 @@ const catalog = ['PARCO', 'Nintendo', 'Pokémon Center', 'SEGA'].map((title, i) 
   id: `99999999-9999-4999-8999-${String(i + 1).padStart(12, '0')}`,
   title,
   slug: 'entry-' + i,
-  summary: 'Une étape de votre visite.',
+  summary: i === 3 ? '' : 'Une étape de votre visite.',
   published: true,
   updated_at: '2026-11-19T12:00:00Z',
   cover_image_url: null,
@@ -448,9 +448,36 @@ const server = http.createServer(async (req, res) => {
       const entry = catalog.find((e) => e.id === u.searchParams.get('entry'));
       res.end(
         JSON.stringify({
-          entry: { ...entry, description: '', custom_values: {}, category_id: category.id },
-          fields: [],
-          relations: [],
+          entry: {
+            ...entry,
+            description:
+              entry.id === catalog[0].id
+                ? 'Une étape à explorer à votre rythme. Retrouvez les lieux liés et gardez vos idées pour le voyage.'
+                : '',
+            custom_values:
+              entry.id === catalog[0].id
+                ? {
+                    access: 'Entrée au niveau principal',
+                    price: 0,
+                    accessible: false,
+                    sources: [{ label: 'Site officiel', url: 'https://example.test/venue' }],
+                  }
+                : {},
+            category_id: category.id,
+          },
+          fields:
+            entry.id === catalog[0].id
+              ? [
+                  { id: 'access', label: 'Accès', type: 'text' },
+                  { id: 'price', label: 'Tarif', type: 'number' },
+                  { id: 'accessible', label: 'Accessible', type: 'boolean' },
+                  { id: 'sources', label: 'Liens utiles', type: 'buttons' },
+                ]
+              : [],
+          relations:
+            entry.id === catalog[0].id
+              ? [{ id: 'link-1', label: 'Abrite', entry: catalog[1] }]
+              : [],
         }),
       );
     } else {
@@ -621,10 +648,10 @@ try {
   }
   async function textClick(text, scope = 'document') {
     await wait(
-      `!![...${scope}.querySelectorAll('button,[role=menuitem]')].find(e=>e.textContent.trim()===${JSON.stringify(text)}&&e.getClientRects().length)`,
+      `!![...${scope}.querySelectorAll('button,[role=menuitem]')].find(e=>(e.textContent.trim()===${JSON.stringify(text)}||e.getAttribute('aria-label')===${JSON.stringify(text)})&&e.getClientRects().length)`,
     );
     const selector = await ev(
-      `(()=>{const e=[...${scope}.querySelectorAll('button,[role=menuitem]')].find(e=>e.textContent.trim()===${JSON.stringify(text)}&&e.getClientRects().length);if(!e)return null;e.setAttribute('data-qa-click','target');return '[data-qa-click="target"]'})()`,
+      `(()=>{const e=[...${scope}.querySelectorAll('button,[role=menuitem]')].find(e=>(e.textContent.trim()===${JSON.stringify(text)}||e.getAttribute('aria-label')===${JSON.stringify(text)})&&e.getClientRects().length);if(!e)return null;e.setAttribute('data-qa-click','target');return '[data-qa-click="target"]'})()`,
     );
     if (!selector) throw Error('Missing button ' + text);
     await click(selector);
@@ -835,6 +862,25 @@ try {
     ),
     'a Mapbox stop opens the same place details panel, without the stop editing modal',
   );
+  assert(
+    await ev(
+      'document.querySelector(".trip-detail-identity").compareDocumentPosition(document.querySelector(".trip-detail-config")) & Node.DOCUMENT_POSITION_FOLLOWING',
+    ),
+    'identity comes before configuration',
+  );
+  assert(
+    await ev(
+      'document.querySelector(".trip-detail-notes").compareDocumentPosition(document.querySelector(".trip-detail-information")) & Node.DOCUMENT_POSITION_FOLLOWING',
+    ),
+    'notes are grouped ahead of place metadata',
+  );
+  assert(
+    await ev(
+      '[...document.querySelectorAll(".trip-detail-action")].every(e=>e.getBoundingClientRect().height>=58)',
+    ),
+    'quick actions have coherent comfortable heights',
+  );
+  await screenshot('detail-mapbox-stop');
   assert(
     await ev('window.__changes.length===3'),
     'opening a stop details panel does not mutate the itinerary',
@@ -1165,6 +1211,98 @@ try {
       'closing stop details restores focus to the stop, including on mobile',
     );
   }
+  await nav(1280, 'full');
+  await click('[data-activity-id] .trip-step-main');
+  await wait(
+    'document.querySelector(".trip-detail-information").textContent.includes("Entrée au niveau principal")',
+  );
+  assert(
+    await ev(
+      'document.querySelectorAll(".trip-detail-identity h3").length===1 && document.querySelectorAll(".trip-detail-stops [data-stop-id]").length===3',
+    ),
+    'a single place identity and a compact stops section retain all stops',
+  );
+  assert(
+    await ev(
+      'document.querySelector(".trip-context-panel").scrollWidth<=document.querySelector(".trip-context-panel").clientWidth+1',
+    ),
+    'detail content including nested stops fits the panel',
+  );
+  assert(
+    await ev(
+      '[...document.querySelectorAll(".trip-detail-action-icon")].every(e=>Math.abs(e.getBoundingClientRect().width-e.getBoundingClientRect().height)<1)',
+    ),
+    'action icons keep equal width and height, including the time control',
+  );
+  assert(
+    await ev(
+      '[...document.querySelectorAll(".trip-detail-facts > div")].some(e=>e.querySelector("dt").textContent==="Tarif"&&e.querySelector("dd").textContent==="0") && document.querySelector(".trip-detail-facts").textContent.includes("Non") && !![...document.querySelectorAll(".trip-detail-information a")].find(a=>a.href==="https://example.test/venue")',
+    ),
+    'zero values, false values and useful links remain visible after regrouping',
+  );
+  await screenshot('detail-nagi-desktop');
+  await ev('document.querySelector(".trip-context-panel").scrollTop=300');
+  assert(
+    await ev(
+      'Math.abs(document.querySelector(".trip-panel-heading").getBoundingClientRect().top-document.querySelector(".trip-context-panel").getBoundingClientRect().top)<2',
+    ),
+    'the detail header stays reachable while the body scrolls',
+  );
+  await fill('.trip-detail-notes textarea', 'Mon brouillon reste ici.');
+  await click('[aria-label="Modifier la photo"]');
+  await wait('!!document.querySelector("[role=dialog]")');
+  await key('Escape');
+  await wait('!document.querySelector("[role=dialog]")');
+  assert(
+    await ev(
+      'document.querySelector(".trip-detail-notes textarea").value==="Mon brouillon reste ici." && window.__changes.length===0',
+    ),
+    'the optional photo gallery keeps the notes draft and does not save the itinerary',
+  );
+  await click('[aria-label="Couleur du calendrier"]');
+  await wait('!!document.querySelector("[role=menu]")');
+  await click('[role=menuitemradio][data-state=unchecked]');
+  await wait('window.__changes.some(c=>c.operation==="color_item")');
+  assert(
+    await ev(
+      'document.querySelector(".trip-detail-notes textarea").value==="Mon brouillon reste ici."',
+    ),
+    'calendar color edits preserve a notes draft',
+  );
+  await click('[aria-label="Modifier l’horaire"]');
+  await wait('!!document.querySelector(".trip-quick-editor")');
+  await fill('.trip-quick-editor input[name=start]', '10:30');
+  await textClick('Enregistrer', 'document.querySelector(".trip-quick-editor")');
+  await wait('window.__changes.some(c=>c.operation==="schedule_item")');
+  await click('[aria-label="Fermer les détails"]');
+  await wait('!document.querySelector(".trip-context-panel")');
+  await nav(390);
+  await click('[data-activity-id] .trip-step-main');
+  await wait('!!document.querySelector(".trip-detail-empty")');
+  assert(
+    await ev('!!document.querySelector(".trip-detail-stops .trip-stops-add")'),
+    'a step without stops has a clear empty state and its existing add action',
+  );
+  await screenshot('detail-nagi-mobile');
+  await ev('document.querySelector(".trip-context-panel").scrollTop=400');
+  assert(
+    await ev(
+      'Math.abs(document.querySelector(".trip-panel-heading").getBoundingClientRect().top-document.querySelector(".trip-context-panel").getBoundingClientRect().top)<2',
+    ),
+    'the sticky detail header also works on mobile',
+  );
+  await key('Escape');
+  await nav(320, 'full-readonly');
+  await click('[data-stop-id]:last-child .trip-stop-main');
+  await wait('document.querySelector(".trip-detail-identity h3")?.textContent==="SEGA"');
+  assert(
+    await ev(
+      'document.querySelector(".trip-detail-information").textContent.includes("Aucune information complémentaire") && !document.querySelector(".trip-detail-actions")',
+    ),
+    'sparse read-only places have an explicit information state without edit controls',
+  );
+  await screenshot('detail-sparse-readonly');
+  await key('Escape');
   const providerRequests = await ev('window.__externalRequests.length');
   for (const id of ['economy-cold', 'economy-busy']) {
     pages++;

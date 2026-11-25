@@ -141,6 +141,7 @@ export function ExternalPlaceView({
   full = false,
   appearance = 'label',
   eager = false,
+  showIdentity = true,
 }: {
   placeId: string;
   query: string;
@@ -148,6 +149,7 @@ export function ExternalPlaceView({
   full?: boolean;
   appearance?: 'card' | 'label' | 'thumbnail';
   eager?: boolean;
+  showIdentity?: boolean;
 }) {
   const session = useExternalPlaces();
   const presentation = usePlacePresentation(
@@ -168,26 +170,30 @@ export function ExternalPlaceView({
   if (full)
     return (
       <div ref={observe} className="trip-external-details">
-        <PlaceImage
-          photoReference={{
-            source: 'mapbox',
-            id: placeId,
-            ...(occurrence && !occurrence.startsWith('preview:') ? { visit: occurrence } : {}),
-            proof: place?.imageProof,
-            located: !!place?.coordinates,
-          }}
-          credits="dialog"
-          src={place?.imageUrl}
-          source="mapbox"
-          category={place?.categoryId ?? place?.category}
-          className="trip-detail-photo"
-          sizes="(max-width:639px) 100vw,380px"
-        />
-        <div>
-          <p className="trip-detail-category">{place?.category}</p>
-          <h3>{title}</h3>
-          <p className="trip-detail-location">{place?.locationLabel}</p>
-        </div>
+        {showIdentity && (
+          <>
+            <PlaceImage
+              photoReference={{
+                source: 'mapbox',
+                id: placeId,
+                ...(occurrence && !occurrence.startsWith('preview:') ? { visit: occurrence } : {}),
+                proof: place?.imageProof,
+                located: !!place?.coordinates,
+              }}
+              credits="dialog"
+              src={place?.imageUrl}
+              source="mapbox"
+              category={place?.categoryId ?? place?.category}
+              className="trip-detail-photo"
+              sizes="(max-width:639px) 100vw,380px"
+            />
+            <div>
+              <p className="trip-detail-category">{place?.category}</p>
+              <h3>{title}</h3>
+              <p className="trip-detail-location">{place?.locationLabel}</p>
+            </div>
+          </>
+        )}
         {record.error && (
           <p role="status" className="trip-external-error">
             {record.error}{' '}
@@ -239,6 +245,19 @@ export function ExternalPlaceView({
             Chargement des informations complémentaires…
           </p>
         )}
+        {place &&
+          !record.detailsLoading &&
+          !record.detailsError &&
+          !place.address &&
+          !place.openingHours &&
+          !place.website &&
+          !place.phone &&
+          !place.permanentlyClosed &&
+          place.status !== 'inactive' && (
+            <p className="trip-detail-empty-copy">
+              Aucune information complémentaire pour ce lieu.
+            </p>
+          )}
         {record.detailsError && (
           <p role="status" className="trip-external-status">
             Les informations complémentaires sont indisponibles.{' '}

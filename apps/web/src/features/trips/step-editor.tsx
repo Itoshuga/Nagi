@@ -7,7 +7,23 @@ import {
 } from '@/features/integrations/mapbox/components';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowUpRight, Clock3, Trash2, X } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronRight,
+  Clock3,
+  CornerDownRight,
+  FileText,
+  ImagePlus,
+  LocateFixed,
+  MapPin,
+  NotebookPen,
+  Palette,
+  Route,
+  Save,
+  Trash2,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { Alert, Button, Input, Label, Popover, PopoverContent, PopoverTrigger } from '@nagi/ui';
 import type {
   CatalogEntryDetail,
@@ -36,6 +52,7 @@ import { ActivityStops, StopTiming } from './activity-stops';
 import { RemoveTripStepDialog } from './remove-step-dialog';
 import { CalendarColorAction } from './calendar-colors';
 import { CustomPlaceEditor } from './source-places';
+import './detail-panel.css';
 import {
   itemDuration,
   activityStops,
@@ -198,6 +215,31 @@ export type PlaceDetailData = {
   fields: CategoryField[];
   relations: CatalogRelation[];
 };
+function DetailActionContent({
+  icon: Icon,
+  label,
+  value,
+  arrow = true,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value?: string;
+  arrow?: boolean;
+}) {
+  return (
+    <>
+      <span className="trip-detail-action-icon">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <span className="trip-detail-action-copy">
+        <strong>{label}</strong>
+        {value && <small>{value}</small>}
+      </span>
+      {arrow && <ChevronRight className="trip-detail-action-chevron size-3.5" aria-hidden="true" />}
+    </>
+  );
+}
+
 export function TripPlaceDetails({
   guild,
   plan,
@@ -248,7 +290,20 @@ export function TripPlaceDetails({
     externalPlaceId ?? (occurrence?.source === 'mapbox' ? occurrence.external_place_id : null);
   const query = externalQuery ?? occurrence?.external_query ?? '';
   const external = useExternalPlaces();
-  const imagePresentation = usePlacePresentation(occurrence, occurrence?.entry, true);
+  const imagePresentation = usePlacePresentation(
+    occurrence ??
+      (mapboxId
+        ? {
+            id: mapboxId,
+            source: 'mapbox',
+            entry_id: null,
+            external_place_id: mapboxId,
+            external_query: query,
+          }
+        : undefined),
+    occurrence?.entry,
+    true,
+  );
   const [detail, setDetail] = useState<PlaceDetailData>(),
     [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -326,6 +381,36 @@ export function TripPlaceDetails({
   }, [guild, plan.id, entry.id, retry, occurrence?.source, externalPlaceId]);
   const person = plan.people.find((p) => p.id === occurrence?.added_by);
   const custom = detail?.entry.custom_values;
+  const detailFields = (detail?.fields ?? []).filter((field) => {
+    const value =
+      custom && typeof custom === 'object' && !Array.isArray(custom) ? custom[field.id] : undefined;
+    if (field.type === 'buttons') {
+      const parsed = catalogButtonsValue.safeParse(value);
+      return parsed.success && parsed.data.length > 0;
+    }
+    return (
+      value != null &&
+      !(typeof value === 'object' && !Array.isArray(value)) &&
+      (typeof value !== 'string' || !!value.trim()) &&
+      (!Array.isArray(value) || value.length > 0)
+    );
+  });
+  const title = mapboxId ? imagePresentation.title : entry.title;
+  const category = mapboxId ? imagePresentation.category : entry.category?.name;
+  const location = mapboxId
+    ? imagePresentation.location
+    : [entry.neighborhood?.name, entry.city?.name, entry.country?.name]
+        .filter(Boolean)
+        .join(' · ') || occurrence?.custom_location;
+  const coordinates = mapboxId
+    ? imagePresentation.place?.coordinates
+    : entry.latitude != null && entry.longitude != null
+      ? { latitude: entry.latitude, longitude: entry.longitude }
+      : undefined;
+  const day = plan.days.find((candidate) => candidate.id === targetDay);
+  const dayCaption = day
+    ? `Jour ${plan.days.indexOf(day) + 1}${day.title ? ` · ${day.title}` : ''}`
+    : 'À organiser';
   const photoReference = occurrence
     ? {
         source: occurrence.source ?? ('nagi' as const),
@@ -342,7 +427,13 @@ export function TripPlaceDetails({
     : undefined;
   return (
     <>
-      <div className="trip-panel-heading">
+      <header className="trip-panel-heading">
+        <div>
+          <p className="trip-detail-eyebrow">
+            {stop ? 'Arrêt du voyage' : item ? 'Étape du voyage' : 'Aperçu du lieu'}
+          </p>
+          <h2>Détails du lieu</h2>
+        </div>
         <button
           type="button"
           className="trip-icon-button"
@@ -351,127 +442,241 @@ export function TripPlaceDetails({
         >
           <X className="size-4" />
         </button>
-        <h2>Détails du lieu</h2>
-      </div>
+      </header>
       <div className="trip-detail-content">
-        {mapboxId ? (
-          <ExternalPlaceView
-            occurrence={occurrence?.id ?? `preview:${mapboxId}`}
-            placeId={mapboxId}
-            query={query}
-            full
-          />
-        ) : (
-          <PlaceImage
-            category={entry.category?.name}
-            photoReference={photoReference ?? { source: 'nagi', id: entry.id }}
-            credits="dialog"
-            src={entry.cover_image_url}
-            className="trip-detail-photo"
-            sizes="(max-width: 639px) 100vw, 380px"
-          />
-        )}
-        {canEdit && photoReference && <ImagePicker reference={photoReference} />}
-        {!mapboxId && (
-          <div>
-            <p className="trip-detail-category">{entry.category?.name}</p>
-            <h3>{entry.title}</h3>
-            <p className="trip-detail-location">
-              {[entry.neighborhood?.name, entry.city?.name, entry.country?.name]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
+        <section className="trip-detail-identity" aria-label="Présentation du lieu">
+          <div className="trip-detail-hero">
+            <PlaceImage
+              source={mapboxId ? 'mapbox' : occurrence?.source}
+              category={imagePresentation.place?.categoryId ?? category ?? undefined}
+              photoReference={
+                photoReference ??
+                (mapboxId
+                  ? {
+                      source: 'mapbox',
+                      id: mapboxId,
+                      proof: imagePresentation.place?.imageProof,
+                      located: !!imagePresentation.place?.coordinates,
+                    }
+                  : { source: 'nagi', id: entry.id })
+              }
+              credits="dialog"
+              src={mapboxId ? imagePresentation.imageUrl : entry.cover_image_url}
+              className="trip-detail-photo"
+              sizes="(max-width: 639px) 100vw, 380px"
+            />
           </div>
-        )}
-        {canEdit && item && (
-          <QuickStepEditor item={item} plan={plan} busy={busy} mutate={mutate}>
-            <button type="button" className="trip-detail-schedule">
-              <Clock3 className="size-4" />
-              <span>
-                {formatTripTime(item.start_time) ?? 'Définir un horaire'}
-                {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
-              </span>
-              <ArrowLeft className="size-3 rotate-180" />
-            </button>
-          </QuickStepEditor>
-        )}
-        {canEdit && stop && (
-          <StopTiming
-            stop={stop}
-            time={stopTime}
-            plan={plan}
-            canEdit={canEdit}
-            busy={busy}
-            mutate={mutate}
-          >
-            <button
-              type="button"
-              className="trip-detail-schedule"
-              disabled={busy}
-              aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+          <div className="trip-detail-identity-copy">
+            {category && <span className="trip-detail-category">{category}</span>}
+            <h3>{title}</h3>
+            {location && (
+              <p className="trip-detail-location">
+                <MapPin className="size-3.5" aria-hidden="true" />
+                <span>{location}</span>
+              </p>
+            )}
+            {parentId && (
+              <p className="trip-detail-parent">
+                <CornerDownRight className="size-3.5" aria-hidden="true" />
+                <span>
+                  {stop ? 'Arrêt de' : 'Ajout dans'}{' '}
+                  <strong>{parent?.entry?.title ?? 'cette activité'}</strong>
+                </span>
+              </p>
+            )}
+          </div>
+        </section>
+        <div className="trip-detail-primary">
+          {!occurrence && canEdit && fullEntry && (
+            <Button disabled={busy} onClick={() => void addEntry(fullEntry)}>
+              {present(entry.id)
+                ? 'Ajouter une autre visite'
+                : parentId
+                  ? 'Ajouter un arrêt'
+                  : 'Ajouter une étape'}
+            </Button>
+          )}
+          {!occurrence && canEdit && externalPlaceId && addSource && (
+            <Button
+              onClick={async () => {
+                const result = await addSource(await external!.reference(externalPlaceId, query), {
+                  day: targetDay,
+                  parent: parentId,
+                });
+                if (result.ok) {
+                  setAdded(true);
+                  setError('');
+                } else setError(result.error);
+              }}
             >
-              <Clock3 className="size-4" aria-hidden="true" />
-              <span>
-                {stopTime ? `≈ ${stopTime}` : 'Horaire libre'} ·{' '}
-                {formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}
-              </span>
-              <ArrowLeft className="size-3 rotate-180" aria-hidden="true" />
-            </button>
-          </StopTiming>
+              {added ? 'Ajouter une autre visite' : 'Ajouter une étape'}
+            </Button>
+          )}
+          {added && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {parentId ? 'Arrêt ajouté à cette activité.' : 'Lieu ajouté au voyage.'}
+            </p>
+          )}
+        </div>
+        {occurrence && (
+          <section
+            className="trip-detail-section trip-detail-config"
+            aria-label="Configuration de la visite"
+          >
+            <div className="trip-detail-section-heading">
+              <h4>{stop ? 'Votre arrêt' : 'Votre étape'}</h4>
+              <span>{dayCaption}</span>
+            </div>
+            {canEdit ? (
+              <div className="trip-detail-actions">
+                {item && (
+                  <QuickStepEditor item={item} plan={plan} busy={busy} mutate={mutate}>
+                    <button
+                      type="button"
+                      className="trip-detail-action trip-detail-schedule"
+                      aria-label={item.start_time ? 'Modifier l’horaire' : 'Définir un horaire'}
+                      disabled={busy}
+                    >
+                      <DetailActionContent
+                        icon={Clock3}
+                        label={item.start_time ? 'Modifier l’horaire' : 'Définir un horaire'}
+                        value={
+                          item.start_time
+                            ? `${formatTripTime(item.start_time)}${itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}`
+                            : itemDuration(item)
+                              ? formatTripDuration(itemDuration(item))!
+                              : 'À votre rythme'
+                        }
+                      />
+                    </button>
+                  </QuickStepEditor>
+                )}
+                {stop && (
+                  <StopTiming
+                    stop={stop}
+                    time={stopTime}
+                    plan={plan}
+                    canEdit={canEdit}
+                    busy={busy}
+                    mutate={mutate}
+                  >
+                    <button
+                      type="button"
+                      className="trip-detail-action trip-detail-schedule"
+                      disabled={busy}
+                      aria-label={`Modifier la durée de l’arrêt ${stop.entry?.title ?? 'indisponible'}`}
+                    >
+                      <DetailActionContent
+                        icon={Clock3}
+                        label="Durée de l’arrêt"
+                        value={`${stopTime ? `≈ ${stopTime} · ` : ''}${formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}`}
+                      />
+                    </button>
+                  </StopTiming>
+                )}
+                {item && (
+                  <CalendarColorAction item={item} className="trip-detail-action">
+                    <DetailActionContent
+                      icon={Palette}
+                      label="Couleur du calendrier"
+                      value={
+                        item.calendar_color ? 'Couleur personnalisée' : 'Couleur de la catégorie'
+                      }
+                      arrow={false}
+                    />
+                  </CalendarColorAction>
+                )}
+                {photoReference && (
+                  <ImagePicker reference={photoReference} className="trip-detail-action">
+                    <DetailActionContent
+                      icon={ImagePlus}
+                      label="Modifier la photo"
+                      value="Personnaliser la couverture"
+                    />
+                  </ImagePicker>
+                )}
+              </div>
+            ) : (
+              <p className="trip-detail-read-schedule">
+                <Clock3 className="size-4" aria-hidden="true" />
+                {stop
+                  ? `${stopTime ? `≈ ${stopTime}` : 'Horaire libre'} · ${formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}`
+                  : item
+                    ? `${formatTripTime(item.start_time) ?? 'Horaire libre'}${itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}`
+                    : null}
+              </p>
+            )}
+            {canEdit && (occurrence.source ?? 'nagi') !== 'nagi' && (
+              <div className="trip-detail-secondary-actions">
+                <ReplaceExternalPlace id={occurrence.id} />
+                {occurrence.source === 'custom' && (
+                  <CustomPlaceEditor place={occurrence} mutate={mutate} />
+                )}
+              </div>
+            )}
+            {occurrence.needs_place_relink && (
+              <Alert>
+                Associez un nouveau lieu à cette étape. Vos horaires, notes, couleurs et arrêts ont
+                été conservés.
+              </Alert>
+            )}
+          </section>
         )}
-        {!canEdit && stop && (
-          <p className="text-sm">
-            {stopTime ? `≈ ${stopTime}` : 'Horaire libre'} ·{' '}
-            {formatTripDuration(stop.duration_minutes) ?? 'Durée libre'}
-          </p>
-        )}
-        {!canEdit && item && (
-          <p className="text-sm">
-            {formatTripTime(item.start_time) ?? 'Horaire libre'}
-            {itemDuration(item) ? ` · ${formatTripDuration(itemDuration(item))}` : ''}
-          </p>
-        )}
-        {canEdit && item && <CalendarColorAction item={item} />}
-        {occurrence?.source === 'custom' && occurrence.custom_location && (
-          <p className="trip-detail-location">{occurrence.custom_location}</p>
-        )}
-        {occurrence?.needs_place_relink && (
-          <Alert>
-            Associez un nouveau lieu à cette étape. Vos horaires, notes, couleurs et arrêts ont été
-            conservés.
+        {(error || loadError) && (
+          <Alert role="alert">
+            {error || loadError}
+            {loadError && !detail && (
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() => setRetry((v) => v + 1)}
+              >
+                Réessayer
+              </button>
+            )}
           </Alert>
         )}
-        {canEdit && occurrence && (occurrence.source ?? 'nagi') !== 'nagi' && (
-          <ReplaceExternalPlace id={occurrence.id} />
-        )}
-        {canEdit && occurrence?.source === 'custom' && (
-          <CustomPlaceEditor place={occurrence} mutate={mutate} />
-        )}
-        {parentId && (
-          <p className="trip-stop-help">
-            {stop ? 'Arrêt de' : 'Ajout dans'} {parent?.entry?.title ?? 'cette activité'}.
-          </p>
-        )}
-        {item && (
-          <ActivityStops
-            item={item}
-            plan={plan}
-            canEdit={canEdit}
-            busy={busy}
-            mutate={mutate}
-            onAdd={onAddStop ? () => onAddStop(item.id) : undefined}
-            onDetails={onStopDetails}
-            selectedStop={selectedStop}
-            always
-            expanded={expandedStops?.[item.id]}
-            onExpandedChange={onToggleStops ? () => onToggleStops(item.id) : undefined}
-          />
+
+        {item && plan.stopsAvailable !== false && (canEdit || item.stops.length > 0) && (
+          <section className="trip-detail-section trip-detail-stops" aria-label="Arrêts de l’étape">
+            <div className="trip-detail-section-heading">
+              <Route className="size-4" aria-hidden="true" />
+              <h4>Dans cette étape</h4>
+            </div>
+            {!item.stops.length && (
+              <div className="trip-detail-empty">
+                <MapPin className="size-5" aria-hidden="true" />
+                <p>Aucun arrêt pour le moment.</p>
+                <small>Ajoutez les lieux à découvrir pendant cette étape.</small>
+              </div>
+            )}
+            <ActivityStops
+              item={item}
+              plan={plan}
+              canEdit={canEdit}
+              busy={busy}
+              mutate={mutate}
+              onAdd={onAddStop ? () => onAddStop(item.id) : undefined}
+              onDetails={onStopDetails}
+              selectedStop={selectedStop}
+              always
+              expanded={expandedStops?.[item.id]}
+              onExpandedChange={onToggleStops ? () => onToggleStops(item.id) : undefined}
+            />
+          </section>
         )}
         {occurrence && (
-          <section className="trip-detail-section">
-            <h4>{stop ? 'Notes de l’arrêt' : 'Notes du voyage'}</h4>
+          <section className="trip-detail-section trip-detail-notes">
+            <div className="trip-detail-section-heading">
+              <NotebookPen className="size-4" aria-hidden="true" />
+              <h4>{stop ? 'Notes de l’arrêt' : 'Notes du voyage'}</h4>
+            </div>
+            <p className="trip-detail-section-hint">
+              Réservations, accès et idées à garder sous la main.
+            </p>
             {canEdit ? (
               <form
+                className="trip-detail-notes-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const expectedItemVersion = base.current.item!;
@@ -529,95 +734,136 @@ export function TripPlaceDetails({
                     dirtyNotes.current = true;
                   }}
                 />
-                <div className="mt-2 flex items-center gap-2">
+                <div className="trip-detail-notes-footer">
                   <Button type="submit" size="sm" variant="secondary" disabled={busy}>
-                    Enregistrer les notes
+                    <Save className="size-3.5" aria-hidden="true" /> Enregistrer les notes
                   </Button>
                 </div>
               </form>
             ) : (
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                 {occurrence.notes ||
-                  (stop ? 'Aucune note pour cet arrêt.' : 'Aucune note pour cette étape.')}
+                  (stop
+                    ? 'Aucune note pour cet arrêt pour le moment.'
+                    : 'Aucune note pour cette étape pour le moment.')}
               </p>
             )}
           </section>
         )}
-        {entry.summary && (
-          <p className="text-sm leading-relaxed text-muted-foreground">{entry.summary}</p>
-        )}
-        {detail?.entry.description && (
-          <section className="trip-detail-section">
-            <h4>À propos</h4>
-            <EntryRichText text={detail.entry.description} />
-          </section>
-        )}
-        {detail && (
-          <dl className="trip-detail-facts">
-            {detail.fields.map((field) => {
-              const value =
-                custom && typeof custom === 'object' && !Array.isArray(custom)
-                  ? custom[field.id]
-                  : undefined;
-              if (field.type === 'buttons') {
-                const parsed = catalogButtonsValue.safeParse(value);
-                return parsed.success && parsed.data.length ? (
-                  <div key={field.id}>
-                    <dt>{field.label}</dt>
-                    <dd className="flex flex-wrap gap-2">
-                      {parsed.data.map((button, i) => (
-                        <a
-                          className="trip-full-entry"
-                          key={i}
-                          href={button.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {button.label}
-                          <ArrowUpRight className="size-3" />
-                        </a>
-                      ))}
-                    </dd>
-                  </div>
-                ) : null;
-              }
-              if (value == null || (typeof value === 'object' && !Array.isArray(value)))
-                return null;
-              const url =
-                field.type === 'url' && typeof value === 'string' ? safeCatalogUrl(value) : null;
-              return (
-                <div key={field.id}>
-                  <dt>{field.label}</dt>
-                  <dd>
-                    {url ? (
-                      <a href={url} target="_blank" rel="noreferrer">
-                        {String(value)}
-                      </a>
-                    ) : typeof value === 'boolean' ? (
-                      value ? (
-                        'Oui'
-                      ) : (
-                        'Non'
-                      )
-                    ) : Array.isArray(value) ? (
-                      value.join(' · ')
-                    ) : (
-                      String(value)
-                    )}
-                  </dd>
+
+        <section
+          className="trip-detail-section trip-detail-information"
+          aria-label="Informations sur le lieu"
+        >
+          <div className="trip-detail-section-heading">
+            <FileText className="size-4" aria-hidden="true" />
+            <h4>Informations sur le lieu</h4>
+          </div>
+          {mapboxId ? (
+            <ExternalPlaceView
+              occurrence={occurrence?.id ?? `preview:${mapboxId}`}
+              placeId={mapboxId}
+              query={query}
+              full
+              showIdentity={false}
+            />
+          ) : (
+            <>
+              {entry.summary && <p className="trip-detail-summary">{entry.summary}</p>}
+              {detail?.entry.description && (
+                <div className="trip-detail-description">
+                  <EntryRichText text={detail.entry.description} />
                 </div>
-              );
-            })}
-          </dl>
-        )}
-        {entry.latitude != null && entry.longitude != null && (
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {entry.latitude.toFixed(5)} · {entry.longitude.toFixed(5)}
-          </p>
-        )}
+              )}
+              {detailFields.length > 0 && (
+                <dl className="trip-detail-facts">
+                  {detailFields.map((field) => {
+                    const value =
+                      custom && typeof custom === 'object' && !Array.isArray(custom)
+                        ? custom[field.id]
+                        : undefined;
+                    if (field.type === 'buttons') {
+                      const parsed = catalogButtonsValue.safeParse(value);
+                      return parsed.success && parsed.data.length ? (
+                        <div key={field.id}>
+                          <dt>{field.label}</dt>
+                          <dd className="flex flex-wrap gap-2">
+                            {parsed.data.map((button, i) => (
+                              <a
+                                className="trip-full-entry"
+                                key={i}
+                                href={button.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {button.label}
+                                <ArrowUpRight className="size-3" />
+                              </a>
+                            ))}
+                          </dd>
+                        </div>
+                      ) : null;
+                    }
+                    if (value == null || (typeof value === 'object' && !Array.isArray(value)))
+                      return null;
+                    const url =
+                      field.type === 'url' && typeof value === 'string'
+                        ? safeCatalogUrl(value)
+                        : null;
+                    return (
+                      <div key={field.id}>
+                        <dt>{field.label}</dt>
+                        <dd>
+                          {url ? (
+                            <a href={url} target="_blank" rel="noreferrer">
+                              {String(value)}
+                            </a>
+                          ) : typeof value === 'boolean' ? (
+                            value ? (
+                              'Oui'
+                            ) : (
+                              'Non'
+                            )
+                          ) : Array.isArray(value) ? (
+                            value.join(' · ')
+                          ) : (
+                            String(value)
+                          )}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              )}
+              {!entry.summary &&
+                !detail?.entry.description &&
+                !detailFields.length &&
+                (detail || occurrence?.source === 'custom') &&
+                !loadError && (
+                  <p className="trip-detail-empty-copy">
+                    Aucune information complémentaire pour ce lieu.
+                  </p>
+                )}
+              {!detail && !loadError && occurrence?.source !== 'custom' && (
+                <p role="status" className="trip-detail-empty-copy">
+                  Chargement des informations du lieu…
+                </p>
+              )}
+            </>
+          )}
+          {coordinates && (
+            <p className="trip-detail-coordinates">
+              <LocateFixed className="size-3.5" aria-hidden="true" />
+              {coordinates.latitude.toFixed(5)} · {coordinates.longitude.toFixed(5)}
+            </p>
+          )}
+        </section>
         {detail?.relations.length ? (
-          <section className="trip-detail-section">
-            <h4>À découvrir avec ce lieu</h4>
+          <section className="trip-detail-section trip-detail-relations">
+            <div className="trip-detail-section-heading">
+              <Route className="size-4" aria-hidden="true" />
+              <h4>À découvrir avec ce lieu</h4>
+            </div>
             <ul className="trip-related-list">
               {detail.relations.map((r) => (
                 <li key={r.id}>
@@ -647,71 +893,30 @@ export function TripPlaceDetails({
             </ul>
           </section>
         ) : null}
-        {person && (
-          <div className="trip-detail-author">
-            <span>Ajouté par</span>
-            <UserIdentity user={person} compact />
-          </div>
-        )}
-        {entry.published && (
-          <Link href={entryHref(guild, entry)} className="trip-full-entry">
-            Consulter la fiche complète <ArrowUpRight className="size-3.5" />
-          </Link>
-        )}
-        {!occurrence && canEdit && fullEntry && (
-          <Button disabled={busy} onClick={() => void addEntry(fullEntry)}>
-            {present(entry.id)
-              ? 'Ajouter une autre visite'
-              : parentId
-                ? 'Ajouter un arrêt'
-                : 'Ajouter une étape'}
-          </Button>
-        )}
-        {!occurrence && canEdit && externalPlaceId && addSource && (
-          <Button
-            onClick={async () => {
-              const result = await addSource(await external!.reference(externalPlaceId, query), {
-                day: targetDay,
-                parent: parentId,
-              });
-              if (result.ok) {
-                setAdded(true);
-                setError('');
-              } else setError(result.error);
-            }}
-          >
-            {added ? 'Ajouter une autre visite' : 'Ajouter une étape'}
-          </Button>
-        )}
-        {added && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {parentId ? 'Arrêt ajouté à cette activité.' : 'Lieu ajouté au voyage.'}
-          </p>
-        )}
-        {item && canEdit && (
-          <button
-            type="button"
-            className="trip-remove-link"
-            disabled={busy}
-            onClick={() => setConfirm(true)}
-          >
-            <Trash2 className="size-3.5" /> Retirer du voyage
-          </button>
-        )}
-        {(error || loadError) && (
-          <Alert role="alert">
-            {error || loadError}
-            {loadError && !detail && (
-              <button
-                type="button"
-                className="ml-2 underline"
-                onClick={() => setRetry((v) => v + 1)}
-              >
-                Réessayer
-              </button>
-            )}
-          </Alert>
-        )}
+
+        <footer className="trip-detail-footer">
+          {entry.published && (
+            <Link href={entryHref(guild, entry)} className="trip-full-entry">
+              Consulter la fiche complète <ArrowUpRight className="size-3.5" aria-hidden="true" />
+            </Link>
+          )}
+          {person && (
+            <div className="trip-detail-author">
+              <span>Ajouté par</span>
+              <UserIdentity user={person} compact />
+            </div>
+          )}
+          {item && canEdit && (
+            <button
+              type="button"
+              className="trip-remove-link"
+              disabled={busy}
+              onClick={() => setConfirm(true)}
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" /> Retirer du voyage
+            </button>
+          )}
+        </footer>
       </div>
       {confirm && item && canEdit && (
         <RemoveTripStepDialog

@@ -921,6 +921,7 @@ export function TripWorkbench({
                     id={`${prefix}-panel`}
                     tabIndex={-1}
                     className="trip-context-panel"
+                    data-panel={panel}
                     aria-label={panel === 'catalog' ? 'Catalogue du voyage' : 'Détails de l’étape'}
                     initial={reduced ? false : { opacity: 0, x: 12 }}
                     animate={{ opacity: 1, x: 0 }}

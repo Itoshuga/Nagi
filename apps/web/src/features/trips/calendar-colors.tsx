@@ -32,6 +32,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  cn,
 } from '@nagi/ui';
 import {
   calendarEventColor,
@@ -361,18 +362,31 @@ export function CalendarColorsProvider({
   );
 }
 
-export function CalendarColorAction({ item }: { item: TripPlanItem }) {
+export function CalendarColorAction({
+  item,
+  className,
+  children,
+}: {
+  item: TripPlanItem;
+  className?: string;
+  children?: ReactNode;
+}) {
   const access = useCalendarColors();
   if (!access?.visible) return null;
   return (
     <button
       type="button"
-      className="trip-detail-color"
+      className={cn('trip-detail-color', className)}
+      aria-label="Couleur du calendrier"
       disabled={!access.enabled}
       onClick={(event) => access.open(item, undefined, event.currentTarget)}
     >
-      <Palette className="size-4" aria-hidden="true" />
-      <span>Couleur du calendrier</span>
+      {children ?? (
+        <>
+          <Palette className="size-4" aria-hidden="true" />
+          <span>Couleur du calendrier</span>
+        </>
+      )}
       <span
         className="calendar-current-color"
         style={
