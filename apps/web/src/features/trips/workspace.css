@@ -1906,15 +1906,6 @@ html:has(.trip-workspace.is-sorting) * {
   background: color-mix(in srgb, var(--trip-calendar-color) 8%, transparent);
   pointer-events: none;
 }
-.trip-calendar-event.trip-calendar-drag-preview {
-  position: relative;
-  top: auto;
-  left: auto;
-  padding: 0;
-  opacity: 0.95;
-  pointer-events: none;
-  box-shadow: 0 2px 6px #142b4815;
-}
 .trip-calendar-drag-time,
 .trip-calendar-resize-time {
   position: absolute;
@@ -1930,11 +1921,6 @@ html:has(.trip-workspace.is-sorting) * {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-}
-.trip-agenda-row[data-calendar-colored='true'] {
-  border-left: 2px solid color-mix(in srgb, var(--trip-calendar-color) 75%, var(--foreground));
-  padding-left: 8px;
-  background: color-mix(in srgb, var(--trip-calendar-color) 7%, var(--card));
 }
 .trip-calendar-day-card em[data-calendar-colored='true'] {
   border-left: 2px solid var(--trip-calendar-color);
@@ -1996,9 +1982,6 @@ html:has(.trip-workspace.is-sorting) * {
 }
 .trip-calendar-day-card.is-active {
   outline: 1px solid var(--primary);
-}
-.trip-calendar-mobile {
-  display: none;
 }
 .trip-map-workspace {
   display: flex;
@@ -2748,44 +2731,6 @@ html:has(.trip-workspace.is-sorting) * {
   .trip-calendar-desktop {
     display: none;
   }
-  .trip-calendar-mobile {
-    display: block;
-    overflow: auto;
-    padding-bottom: 20px;
-  }
-  .trip-calendar-mobile h3 {
-    font-size: 15px;
-    font-weight: 700;
-    margin-block: 8px 15px;
-  }
-  .trip-agenda-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 72px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  }
-  .trip-agenda-row > button:first-child,
-  .trip-agenda-row > span {
-    width: 48px;
-    flex-shrink: 0;
-    font-size: 11px;
-  }
-  .trip-agenda-row > button:last-child {
-    text-align: left;
-    flex: 1;
-    min-width: 0;
-  }
-  .trip-agenda-row strong {
-    display: block;
-    font-size: 12px;
-  }
-  .trip-agenda-row small {
-    display: block;
-    font-size: 10px;
-    color: var(--muted-foreground);
-    margin-top: 5px;
-  }
   .trip-calendar-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
@@ -3193,13 +3138,6 @@ html:has(.trip-workspace.is-sorting) * {
   }
   .trip-calendar-period-navigation {
     gap: 2px;
-  }
-  .trip-calendar-mobile h3 {
-    margin-block: 6px 10px;
-    font-size: 13px;
-  }
-  .trip-agenda-row {
-    min-height: 64px;
   }
 }
 

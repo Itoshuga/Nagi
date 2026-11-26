@@ -227,7 +227,7 @@ with sync_playwright() as p:
         page.mouse.down()
         page.mouse.move(x + 8, y, steps=3)
         page.mouse.move(x, y + 56, steps=10)
-        expect(page.locator('.trip-calendar-drag-time')).to_contain_text('14:15')
+        expect(page.locator('.trip-calendar-drag-card .trip-calendar-drag-time')).to_contain_text('14:15')
         page.mouse.up()
         saved()
         assert len(state()['items']) == count

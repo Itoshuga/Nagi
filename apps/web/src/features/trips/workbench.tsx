@@ -10,6 +10,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   Archive,
@@ -55,6 +56,7 @@ import { UserIdentity } from '@/features/profiles/identity';
 import { archivePlannedTrip, removeTrip } from './actions';
 import { TripItinerary } from './itinerary';
 import { TripDragOverlay } from './drag-overlay';
+import { calendarKeyboardCoordinates } from './calendar-model';
 import { TripDayEditor } from './plan-dialogs';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
@@ -82,6 +84,7 @@ import {
   catalogHintKey,
   isCatalogDrag,
   isCalendarDrop,
+  dragPointer as initialDragPointer,
   type CatalogEntry,
   type CatalogPlacement,
 } from './catalog-drag';
@@ -239,7 +242,18 @@ export function TripWorkbench({
   const [dragged, setDragged] = useState<TripPlanItem | TripPlanStop>();
   const [draggedEntry, setDraggedEntry] = useState<CatalogEntry>();
   const [dragSnapshot, setDragSnapshot] = useState<TripPlan>();
-  const dragPointer = useDragPointer(!!draggedEntry);
+  const dragPointerRef = useDragPointer(!!dragSnapshot || !!draggedEntry);
+  const activeDragDataRef = useRef<Record<string, unknown> | undefined>(undefined);
+  const detectCollision: CollisionDetection = useCallback(
+    (args) =>
+      tripCollision({
+        ...args,
+        active: args.active.data.current?.type
+          ? args.active
+          : { ...args.active, data: { current: activeDragDataRef.current } },
+      }),
+    [],
+  );
   const { state: sync, queue } = useTripMutations(
     guild,
     initialPlan,
@@ -273,7 +287,7 @@ export function TripWorkbench({
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: calendarKeyboardCoordinates }),
   );
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -504,9 +518,19 @@ export function TripWorkbench({
     <DndContext
       id={prefix}
       sensors={sensors}
-      collisionDetection={tripCollision}
-      autoScroll={{ threshold: { x: 0.12, y: 0.12 }, acceleration: 5 }}
-      onDragStart={({ active }) => {
+      collisionDetection={detectCollision}
+      autoScroll={{
+        threshold: { x: 0.12, y: 0.12 },
+        acceleration: 5,
+        canScroll: (element) => {
+          const point = dragPointerRef.current;
+          // Pointer scrolling follows the calendar's live visible grid bounds.
+          return !element.matches('.trip-calendar-scroll') || !point;
+        },
+      }}
+      onDragStart={({ active, activatorEvent }) => {
+        activeDragDataRef.current = active.data.current;
+        dragPointerRef.current = initialDragPointer({ activatorEvent, delta: { x: 0, y: 0 } });
         dragVersion.current = displayed.version;
         setDragSnapshot(displayed);
         setDragged(
@@ -517,29 +541,32 @@ export function TripWorkbench({
         setDraggedEntry(isCatalogDrag(active.data.current) ? active.data.current.entry : undefined);
       }}
       onDragCancel={() => {
+        activeDragDataRef.current = undefined;
         setDragSnapshot(undefined);
         setDragged(undefined);
         setDraggedEntry(undefined);
       }}
       onDragEnd={(event) => {
         const { active, over } = event;
+        const data = active.data.current?.type ? active.data.current : activeDragDataRef.current;
+        activeDragDataRef.current = undefined;
         setDragSnapshot(undefined);
         setDragged(undefined);
         setDraggedEntry(undefined);
         if (!editing) return;
-        if (isCatalogDrag(active.data.current)) {
-          const point = dragPointer.current;
+        if (isCatalogDrag(data)) {
+          const point = dragPointerRef.current;
           const hit = point ? document.elementFromPoint(point.x, point.y) : null;
           if (!hit?.closest('.trip-workspace-canvas,.trip-day-navigation')) return;
-          if (isCalendarDrop(over?.data.current) && !hit.closest('.trip-calendar-scroll')) return;
+          if (isCalendarDrop(over?.data.current) && !hit.closest('[data-calendar-zone]')) return;
           const placement = catalogPlacement(
             queue.getSnapshot().plan,
-            active.data.current,
+            data,
             event,
-            dragPointer.current,
+            dragPointerRef.current,
           );
           if (!placement) return;
-          const source = active.data.current;
+          const source = data;
           void (async () => {
             try {
               const resolved = await source.onCommit?.();
@@ -576,10 +603,10 @@ export function TripWorkbench({
         if (isCalendarDrop(over?.data.current)) return;
         const target = over?.data.current as Parameters<typeof tripDropChange>[2] | undefined;
         const latest = queue.getSnapshot().plan;
-        const source = tripDragSource(latest.items, active.data.current, active.id);
-        const original = tripDragSource(displayed.items, active.data.current, active.id);
+        const source = tripDragSource(latest.items, data, active.id);
+        const original = tripDragSource(displayed.items, data, active.id);
         if (!target || !source || !original) return;
-        const feedback = tripDropFeedback(latest, active.data.current, active.id, target);
+        const feedback = tripDropFeedback(latest, data, active.id, target);
         if (!feedback?.valid) {
           if (feedback?.label) setError(feedback.label);
           else if (
@@ -615,7 +642,11 @@ export function TripWorkbench({
               : 'Étape saisie.',
           onDragOver: ({ active, over }) => {
             if (isCalendarDrop(over?.data.current))
-              return 'Créneau du calendrier sélectionné. Les horaires suivent la grille.';
+              return over.data.current.zone === 'unscheduled'
+                ? 'Zone sans horaire sélectionnée. La durée est conservée.'
+                : over.data.current.zone === 'overview'
+                  ? 'Journée sélectionnée. L’horaire est conservé.'
+                  : 'Créneau du calendrier sélectionné. Les horaires suivent la grille.';
             if (!over?.data.current) return 'Aucune destination.';
             const feedback = tripDropFeedback(
               displayed,
@@ -1067,7 +1098,9 @@ export function TripWorkbench({
               />
             )}
           </div>
-          <TripDragOverlay item={dragged} entry={draggedEntry} reduced={reduced} />
+          {(!dragSnapshot || dragged || draggedEntry) && (
+            <TripDragOverlay item={dragged} entry={draggedEntry} reduced={reduced} />
+          )}
         </CalendarColorsProvider>
       </ExternalPlacesProvider>
     </DndContext>

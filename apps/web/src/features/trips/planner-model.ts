@@ -5,6 +5,7 @@ import type { CatalogPlacement } from './catalog-drag';
 import type { TripPlan, EntryCardRow } from '@nagi/database';
 
 export type TripMutationContext = {
+  calendar?: boolean;
   item?: TripPlanItem;
   stop?: TripPlanStop;
   day?: TripPlannerDay;

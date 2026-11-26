@@ -13,7 +13,7 @@ import { usePlacePresentation } from '@/features/integrations/mapbox/components'
 
 // The preview is narrower than the source row. Keep its centre on the pointer,
 // regardless of where the user originally grabbed the card.
-const followPointer: Modifier = ({
+export const followPointer: Modifier = ({
   activatorEvent,
   activeNodeRect,
   overlayNodeRect,

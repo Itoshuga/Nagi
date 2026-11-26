@@ -150,7 +150,11 @@ export class TripMutationQueue {
         : plan;
       const normalized = transportTripChange(intent, change);
       if (!normalized) return Promise.resolve({ ok: true, version: plan.version });
-      const expected = tripMutationGuards(intent, normalized),
+      const expected = tripMutationGuards(
+          intent,
+          normalized,
+          context?.calendar === true || change.operation === 'schedule_item',
+        ),
         keys = tripMutationKeys(plan, normalized);
       for (const key of keys)
         if (key.startsWith('entity:')) this.failedEntities.delete(key.slice(7));

@@ -10,7 +10,8 @@ import {
   type RefObject,
   type CSSProperties,
 } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { GripVertical } from 'lucide-react';
+import { useCalendarCardDrag } from './calendar-card';
 import { cn } from '@nagi/ui';
 import type { TripPlanItem } from '@nagi/database';
 import { calendarEventColor, formatTripDuration, tripStopCount } from '@nagi/shared';
@@ -27,6 +28,7 @@ import {
   resizedCalendarSchedule,
   unchangedCalendarSchedule,
   type CalendarSchedule,
+  type TimedCalendarSchedule,
 } from './calendar-model';
 import { useCalendarColors } from './calendar-colors';
 import { CalendarPlaceTitle } from './calendar-place-title';
@@ -71,7 +73,7 @@ export const CalendarEventCopy = memo(
     return (
       <span ref={host} className="trip-calendar-event-content">
         <CalendarPlaceTitle item={item} />
-        {presentation.time && (
+        {presentation.time && schedule.start != null && (
           <span className="trip-calendar-event-time">
             {calendarScheduleLabel(schedule)}
             {presentation.details &&
@@ -113,15 +115,15 @@ export const CalendarEvent = memo(function CalendarEvent({
   lanes: number;
   scroll: RefObject<HTMLDivElement | null>;
 }) {
-  const { setNodeRef, listeners, isDragging } = useDraggable({
-    id: item.id,
-    data: { type: 'calendar-item', id: item.id },
-    disabled: !props.canEdit || props.busy,
-  });
+  const { setNodeRef, attributes, listeners, cardListeners, isDragging } = useCalendarCardDrag(
+    item,
+    !props.canEdit || props.busy,
+    'timed',
+  );
   const colors = useCalendarColors();
   const display = usePlacePresentation(item, item.entry);
   const copy = useRef<HTMLButtonElement>(null);
-  const [resize, setResize] = useState<CalendarSchedule>();
+  const [resize, setResize] = useState<TimedCalendarSchedule>();
   const resizing = useRef<ResizeBase | null>(null),
     preview = useRef<CalendarSchedule | undefined>(undefined);
   const start = timeMinutes(item.start_time!),
@@ -222,7 +224,7 @@ export const CalendarEvent = memo(function CalendarEvent({
         lanes > 1 && 'has-conflict',
         compact && 'is-compact',
         resizingActive && 'is-resizing',
-        props.selectedItem === item.id && 'is-selected',
+        props.selectedItem === item.id && !props.selectedStop && 'is-selected',
       )}
       style={
         {
@@ -236,15 +238,7 @@ export const CalendarEvent = memo(function CalendarEvent({
         } as CSSProperties
       }
       data-save-state={props.mutationStates?.[item.id]}
-      onPointerDown={(event) => {
-        if (event.button === 0 && !resizing.current) listeners?.onPointerDown?.(event);
-      }}
-      onMouseDown={(event) => {
-        if (event.button === 0 && !resizing.current) listeners?.onMouseDown?.(event);
-      }}
-      onTouchStart={(event) => {
-        if (!resizing.current) listeners?.onTouchStart?.(event);
-      }}
+      {...cardListeners}
       onContextMenu={(event) => {
         if (!props.canEdit) return;
         event.preventDefault();
@@ -259,7 +253,7 @@ export const CalendarEvent = memo(function CalendarEvent({
         className="trip-calendar-event-copy"
         title={description}
         aria-label={item.source === 'mapbox' ? undefined : description}
-        aria-pressed={props.selectedItem === item.id}
+        aria-pressed={props.selectedItem === item.id && !props.selectedStop}
         onClick={() => {
           if (!isDragging && !resizing.current) props.onDetails(item);
         }}
@@ -281,6 +275,19 @@ export const CalendarEvent = memo(function CalendarEvent({
       >
         <CalendarEventCopy item={item} schedule={schedule} />
       </button>
+      {props.canEdit && (
+        <button
+          type="button"
+          className="trip-calendar-drag-handle"
+          aria-label={`Déplacer ${display.title}`}
+          title="Déplacer · Espace puis les flèches"
+          {...attributes}
+          {...listeners}
+          disabled={props.busy}
+        >
+          <GripVertical aria-hidden="true" className="size-3" />
+        </button>
+      )}
       {props.mutationStates?.[item.id] && (
         <span className="trip-calendar-event-state" role="status">
           <span className="sr-only">

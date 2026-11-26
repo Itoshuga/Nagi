@@ -1,37 +1,39 @@
 'use client';
 import { calendarColorStyle } from './calendar-color-style';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { DragOverlay, type DragMoveEvent, useDroppable, useDndMonitor } from '@dnd-kit/core';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import {
+  DragOverlay,
+  useDndContext,
+  type DragMoveEvent,
+  useDroppable,
+  useDndMonitor,
+} from '@dnd-kit/core';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button, cn } from '@nagi/ui';
 import type { TripPlanItem, TripPlannerDay } from '@nagi/database';
-import {
-  calendarEventColor,
-  formatTripDuration,
-  formatTripTime,
-  tripDayLabel,
-  tripDateLabel,
-} from '@nagi/shared';
+import { calendarEventColor, formatTripDuration, tripDayLabel, tripDateLabel } from '@nagi/shared';
 import {
   itemDuration,
   createCalendarLayoutCache,
   minuteTime,
   type WorkspaceViewProps,
 } from './planner-model';
-import { QuickStepEditor } from './step-editor';
+import { CalendarCompactEvent } from './calendar-card';
 import { TripItinerary } from './itinerary';
-import { CalendarEvent, CalendarEventCopy, CalendarPlaceTitle } from './calendar-event';
-import { useCalendarColors } from './calendar-colors';
+import { CalendarEvent, CalendarPlaceTitle } from './calendar-event';
+import './calendar-interactions.css';
+import { followPointer } from './drag-overlay';
 import { useDragPointer } from './drag-pointer';
 import { useCalendarClock } from './use-calendar-clock';
+import { useCalendarScroll } from './use-calendar-scroll';
 import {
   calendarHourHeight,
   calendarMinuteHeight,
-  calendarScheduleFields,
+  calendarItemDestination,
+  calendarMoveChange,
   calendarScheduleLabel,
-  movedCalendarSchedule,
-  unchangedCalendarSchedule,
-  type CalendarSchedule,
+  calendarSnapMinutes,
+  type CalendarDestination,
 } from './calendar-model';
 
 import {
@@ -39,11 +41,14 @@ import {
   isCatalogDrag,
   isCalendarDrop,
   type CatalogDragData,
+  dragPointer,
+  calendarDropRect,
 } from './catalog-drag';
 
 const hourHeight = calendarHourHeight,
   minuteHeight = calendarMinuteHeight;
 const emptyCalendarItems: TripPlanItem[] = [];
+const calendarOverlayModifiers = [followPointer];
 function Slot({
   day,
   minute,
@@ -95,16 +100,19 @@ export function TripCalendar(props: WorkspaceViewProps) {
   );
   const [dragged, setDragged] = useState<TripPlanItem>(),
     dragSource = useRef<
-      { item: TripPlanItem; trip: number; width: number; height: number } | undefined
+      { item: TripPlanItem; trip: number; grab: number; zone: string } | undefined
     >(undefined),
     scroll = useRef<HTMLDivElement>(null);
   const [activeSlot, setActiveSlot] = useState<{ day?: string; minute: number }>({ minute: 540 });
-  const [dragBox, setDragBox] = useState<{ width: number; height: number }>();
-  const [destination, setDestination] = useState<CalendarSchedule>();
+  const [destination, setDestination] = useState<CalendarDestination>();
   const [catalog, setCatalog] = useState<CatalogDragData>();
-  const pointer = useDragPointer(!!catalog || !!dragged);
+  const pointerRef = useDragPointer(!!catalog || !!dragged);
+  useCalendarScroll(scroll, pointerRef, !!catalog || !!dragged, `${mode}:${selectedDay}`);
   const [scheduleLayout] = useState(() => createCalendarLayoutCache());
-  const colors = useCalendarColors();
+  const { measureDroppableContainers } = useDndContext();
+  const periodTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const periodHover = useRef<string | undefined>(undefined);
+  useEffect(() => () => clearTimeout(periodTimer.current), []);
   const index = dated.findIndex((d) => d.id === chosen?.id),
     start = Math.floor(Math.max(0, index) / 7) * 7;
   const days = useMemo(
@@ -119,6 +127,7 @@ export function TripCalendar(props: WorkspaceViewProps) {
       if (list) list.push(item);
       else grouped.set(item.trip_day_id, [item]);
     }
+    for (const list of grouped.values()) list.sort((a, b) => a.sort_order - b.sort_order);
     return grouped;
   }, [plan.items]);
   const hasUnscheduled = useMemo(
@@ -126,6 +135,55 @@ export function TripCalendar(props: WorkspaceViewProps) {
     [days, itemsByDay],
   );
   const keyboardDay = days.some((d) => d.id === activeSlot.day) ? activeSlot.day : chosen?.id;
+  useEffect(() => {
+    if ((!dragged && !catalog) || !scroll.current) return;
+    let frame = 0;
+    const refresh = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => measureDroppableContainers([]));
+    };
+    const observer = new ResizeObserver(refresh);
+    observer.observe(scroll.current);
+    if (scroll.current.firstElementChild) observer.observe(scroll.current.firstElementChild);
+    scroll.current.addEventListener('scroll', refresh, { passive: true });
+    const element = scroll.current;
+    refresh();
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('scroll', refresh);
+      cancelAnimationFrame(frame);
+    };
+  }, [dragged, catalog, measureDroppableContainers, mode, selectedDay]);
+  function hoverPeriod(point?: { x: number; y: number }) {
+    const button = point
+      ? document
+          .elementFromPoint(point.x, point.y)
+          ?.closest<HTMLButtonElement>('[data-calendar-period],[data-calendar-mode]')
+      : undefined;
+    const direction =
+      button && !button.disabled && button.dataset.calendarMode !== mode
+        ? (button.dataset.calendarPeriod ?? `mode:${button.dataset.calendarMode}`)
+        : undefined;
+    if (direction === periodHover.current) return;
+    clearTimeout(periodTimer.current);
+    periodHover.current = direction;
+    if (!direction) return;
+    periodTimer.current = setTimeout(() => {
+      if (direction.startsWith('mode:')) {
+        const nextMode = direction.slice(5);
+        if (nextMode === 'day' || nextMode === 'week' || nextMode === 'overview') {
+          if (nextMode === 'day' && dragged?.trip_day_id) onDay(dragged.trip_day_id);
+          setMode(nextMode);
+        }
+        return;
+      }
+      const target =
+        direction === 'next'
+          ? dated[Math.min(dated.length - 1, mode === 'day' ? index + 1 : start + 7)]
+          : dated[Math.max(0, mode === 'day' ? index - 1 : start - 7)];
+      if (target) onDay(target.id);
+    }, 750);
+  }
   useEffect(() => {
     if (scroll.current) scroll.current.scrollTop = 7 * hourHeight;
   }, [mode, selectedDay]);
@@ -140,25 +198,79 @@ export function TripCalendar(props: WorkspaceViewProps) {
   }, []);
   function targetSchedule(
     event: Pick<DragMoveEvent, 'active' | 'over' | 'delta' | 'activatorEvent'>,
-  ) {
-    const data = event.active.data.current;
-    if (isCatalogDrag(data)) return catalogCalendarSchedule(data, event, pointer.current);
+  ): CalendarDestination | undefined {
+    const target = event.over?.data.current;
+    if (!isCalendarDrop(target) || !plan.days.some((day) => day.id === target.day)) return;
+    const point = pointerRef.current ?? dragPointer(event);
+    const rect = calendarDropRect(target, event.over!.rect);
+    if (
+      point &&
+      (point.x < rect.left || point.x > rect.right || point.y < rect.top || point.y > rect.bottom)
+    )
+      return;
+    const data = event.active.data.current?.type ? event.active.data.current : catalog;
+    if (isCatalogDrag(data)) {
+      const timed = catalogCalendarSchedule(data, event, point);
+      if (timed) return { ...timed, zone: 'timed', before: null };
+      if (!target.zone || target.zone === 'timed') return;
+      return {
+        day: target.day,
+        start: null,
+        end: null,
+        duration: data.entry.suggested_duration_minutes ?? null,
+        zone: target.zone,
+        before: target.before ?? null,
+      };
+    }
     const source = dragSource.current;
-    if (!source || !isCalendarDrop(event.over?.data.current)) return;
-    return movedCalendarSchedule(
-      source.item,
-      event.over.data.current.day,
-      event.delta.y / minuteHeight,
-    );
+    if (!source) return;
+    let minute: number | undefined;
+    let preserve = false;
+    if (!target.zone || target.zone === 'timed') {
+      if (point) {
+        minute = (point.y - rect.top - source.grab) / minuteHeight;
+        // Horizontal moves retain even non-rounded existing clocks if the
+        // vertical movement remains within half a snap, including scroll.
+        if (source.zone === 'timed' && source.item.start_time) {
+          const initial =
+            Number(source.item.start_time.slice(0, 2)) * 60 +
+            Number(source.item.start_time.slice(3, 5));
+          if (Math.abs(minute - initial) < calendarSnapMinutes / 2) {
+            minute = initial;
+            preserve = true;
+          }
+        }
+      } else {
+        const translated = event.active.rect.current.translated;
+        minute = translated ? (translated.top - rect.top) / minuteHeight : undefined;
+      }
+    }
+    if (target.before === source.item.id) return;
+    const next = calendarItemDestination(source.item, target, minute, preserve);
+    if (
+      next?.zone === 'unscheduled' &&
+      source.item.start_time &&
+      next.day === source.item.trip_day_id
+    ) {
+      next.before =
+        itemsByDay
+          .get(next.day)
+          ?.find((item) => !item.start_time && item.sort_order > source.item.sort_order)?.id ??
+        null;
+    }
+    return next;
   }
   function resetDrag() {
     setDragged(undefined);
     setCatalog(undefined);
     setDestination(undefined);
     dragSource.current = undefined;
+    clearTimeout(periodTimer.current);
+    periodHover.current = undefined;
   }
   useDndMonitor({
-    onDragStart: ({ active }) => {
+    onDragStart: ({ active, activatorEvent }) => {
+      pointerRef.current = dragPointer({ activatorEvent, delta: { x: 0, y: 0 } });
       if (isCatalogDrag(active.data.current)) {
         setCatalog(active.data.current);
         return;
@@ -166,19 +278,32 @@ export function TripCalendar(props: WorkspaceViewProps) {
       if (active.data.current?.type !== 'calendar-item') return;
       const item = plan.items.find((entry) => entry.id === active.data.current?.id);
       if (!item) return;
-      const rect = active.rect.current.initial;
+      const rect =
+        document
+          .querySelector<HTMLElement>(`[data-calendar-item-id="${item.id}"]`)
+          ?.getBoundingClientRect() ?? active.rect.current.initial;
       dragSource.current = {
         item,
         trip: plan.version,
-        width: rect?.width ?? 120,
-        height: rect?.height ?? 56,
+        zone: String(active.data.current?.zone ?? 'timed'),
+        grab: 0,
       };
-      setDragBox({ width: rect?.width ?? 120, height: rect?.height ?? 56 });
+      const point = dragPointer({ activatorEvent, delta: { x: 0, y: 0 } });
+      if (dragSource.current.zone === 'timed' && point && rect)
+        dragSource.current.grab = point.y - rect.top;
       setDragged(item);
     },
     onDragMove: (event) => {
+      hoverPeriod(pointerRef.current ?? dragPointer(event));
       const next = targetSchedule(event);
-      setDestination((old) => (old?.day === next?.day && old?.start === next?.start ? old : next));
+      setDestination((old) =>
+        old?.day === next?.day &&
+        old?.start === next?.start &&
+        old?.zone === next?.zone &&
+        old?.before === next?.before
+          ? old
+          : next,
+      );
     },
     onDragOver: (event) => {
       const next = targetSchedule(event);
@@ -189,19 +314,9 @@ export function TripCalendar(props: WorkspaceViewProps) {
       const source = dragSource.current,
         next = targetSchedule(event);
       resetDrag();
-      if (!canEdit || !source || !next || unchangedCalendarSchedule(source.item, next)) return;
-      void props.mutate(
-        {
-          operation: 'schedule_item',
-          data: {
-            id: source.item.id,
-            item_version: source.item.version,
-            ...calendarScheduleFields(next),
-          },
-        },
-        source.trip,
-        { item: source.item },
-      );
+      if (!canEdit || !source || !next) return;
+      const change = calendarMoveChange(source.item, next);
+      if (change) void props.mutate(change, source.trip, { item: source.item, calendar: true });
     },
   });
   const previewItem =
@@ -241,7 +356,14 @@ export function TripCalendar(props: WorkspaceViewProps) {
         </div>
         <div className="trip-calendar-modes" role="group" aria-label="Période du calendrier">
           {(['day', 'week', 'overview'] as const).map((m) => (
-            <button type="button" key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>
+            <button
+              type="button"
+              key={m}
+              data-calendar-mode={m}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+              title={dragged || catalog ? 'Maintenir ici pour changer de vue' : undefined}
+            >
               {m === 'day' ? 'Jour' : m === 'week' ? 'Semaine' : 'Séjour'}
             </button>
           ))}
@@ -255,6 +377,10 @@ export function TripCalendar(props: WorkspaceViewProps) {
             type="button"
             className="trip-icon-button"
             aria-label="Période précédente"
+            data-calendar-period="previous"
+            title={
+              dragged || catalog ? 'Maintenir ici pour changer de période' : 'Période précédente'
+            }
             disabled={mode === 'overview' || (mode === 'week' ? start <= 0 : index <= 0)}
             onClick={() => onDay(dated[Math.max(0, mode === 'day' ? index - 1 : start - 7)]!.id)}
           >
@@ -264,6 +390,10 @@ export function TripCalendar(props: WorkspaceViewProps) {
             type="button"
             className="trip-icon-button"
             aria-label="Période suivante"
+            data-calendar-period="next"
+            title={
+              dragged || catalog ? 'Maintenir ici pour changer de période' : 'Période suivante'
+            }
             disabled={
               mode === 'overview' ||
               (mode === 'week' ? start + 7 >= dated.length : index >= dated.length - 1)
@@ -282,32 +412,33 @@ export function TripCalendar(props: WorkspaceViewProps) {
             <CalendarDayTarget
               key={d.id}
               day={d.id}
-              editable={canEdit}
-              button
+              editable={canEdit && !busy}
+              zone="overview"
+              active={destination?.day === d.id && destination.zone === 'overview'}
               className={cn('trip-calendar-day-card', d.id === selectedDay && 'is-active')}
-              onClick={() => {
-                onDay(d.id);
-                setMode('day');
-              }}
             >
-              <small>Jour {i + 1}</small>
-              <strong className={cn(d.date === clock?.date && 'is-today')}>
-                {tripDateLabel(d.date!, { weekday: 'short', day: 'numeric', month: 'short' })}
-              </strong>
-              <span>{dayItems(d).length} étapes</span>
-              {dayItems(d)
-                .slice(0, 3)
-                .map((item) => (
-                  <em
-                    key={item.id}
-                    data-calendar-colored={!!item.calendar_color}
-                    style={calendarColorStyle(
-                      calendarEventColor(item.calendar_color, item.entry?.category?.color),
-                    )}
-                  >
-                    {formatTripTime(item.start_time) ?? '—'} <CalendarPlaceTitle item={item} />
-                  </em>
-                ))}
+              <button
+                type="button"
+                className="trip-calendar-day-open"
+                onClick={() => {
+                  onDay(d.id);
+                  setMode('day');
+                }}
+              >
+                <small>Jour {i + 1}</small>
+                <strong className={cn(d.date === clock?.date && 'is-today')}>
+                  {tripDateLabel(d.date!, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </strong>
+                <span>{dayItems(d).length} étapes</span>
+              </button>
+              {dayItems(d).map((item) => (
+                <CalendarCompactEvent key={item.id} item={item} props={props} zone="overview" />
+              ))}
+              {destination?.day === d.id && destination.zone === 'overview' && (
+                <span className="trip-calendar-zone-hint">
+                  Déplacer vers cette journée · horaire conservé
+                </span>
+              )}
             </CalendarDayTarget>
           ))}
         </div>
@@ -345,7 +476,10 @@ export function TripCalendar(props: WorkspaceViewProps) {
                           day: 'numeric',
                           month: 'long',
                         })}
-                        className={cn(d.date === clock?.date && 'is-today')}
+                        className={cn(
+                          d.date === clock?.date && 'is-today',
+                          destination?.day === d.id && 'is-drop-target',
+                        )}
                         onClick={() => onDay(d.id)}
                       >
                         <span className="trip-calendar-weekday">
@@ -360,50 +494,42 @@ export function TripCalendar(props: WorkspaceViewProps) {
                   </div>
                   <div className={cn('trip-calendar-unscheduled', !hasUnscheduled && 'is-empty')}>
                     <span className="trip-calendar-corner">
-                      <span className={cn(!hasUnscheduled && 'sr-only')}>Sans horaire</span>
+                      <span>Sans horaire</span>
                     </span>
                     {days.map((d) => (
-                      <CalendarDayTarget key={d.id} day={d.id} editable={canEdit}>
+                      <CalendarDayTarget
+                        key={d.id}
+                        day={d.id}
+                        editable={canEdit && !busy}
+                        zone="unscheduled"
+                        active={destination?.day === d.id && destination.zone === 'unscheduled'}
+                      >
                         {dayItems(d)
-                          .filter((i) => !i.start_time)
+                          .filter((item) => !item.start_time)
                           .map((item) => (
-                            <button
-                              type="button"
+                            <CalendarCompactEvent
                               key={item.id}
-                              className={cn(props.selectedItem === item.id && 'is-selected')}
-                              data-save-state={props.mutationStates?.[item.id]}
-                              aria-pressed={props.selectedItem === item.id}
-                              onClick={() => props.onDetails(item)}
-                              style={calendarColorStyle(
-                                calendarEventColor(
-                                  item.calendar_color,
-                                  item.entry?.category?.color,
-                                ),
-                              )}
-                              onContextMenu={(event) => {
-                                if (canEdit) {
-                                  event.preventDefault();
-                                  colors?.open(
-                                    item,
-                                    { x: event.clientX, y: event.clientY },
-                                    event.currentTarget,
-                                  );
-                                }
-                              }}
-                              onKeyDown={(event) => {
-                                if (
-                                  canEdit &&
-                                  (event.key === 'ContextMenu' ||
-                                    (event.shiftKey && event.key === 'F10'))
-                                ) {
-                                  event.preventDefault();
-                                  colors?.open(item, undefined, event.currentTarget);
-                                }
-                              }}
-                            >
-                              <CalendarPlaceTitle item={item} />
-                            </button>
+                              item={item}
+                              props={props}
+                              zone="unscheduled"
+                              insertion={
+                                destination?.zone === 'unscheduled' &&
+                                destination.day === d.id &&
+                                destination.before === item.id
+                              }
+                            />
                           ))}
+                        {destination?.day === d.id && destination.zone === 'unscheduled' && (
+                          <span className="sr-only" role="status">
+                            {dragged?.start_time ? 'Retirer l’horaire' : 'Sans horaire'} ·{' '}
+                            {tripDayLabel(d.date!)}
+                          </span>
+                        )}
+                        {!dayItems(d).some((item) => !item.start_time) && (
+                          <span className="trip-calendar-unscheduled-empty" aria-hidden="true">
+                            {dragged || catalog ? 'Déposer sans horaire' : '—'}
+                          </span>
+                        )}
                       </CalendarDayTarget>
                     ))}
                   </div>
@@ -494,124 +620,91 @@ export function TripCalendar(props: WorkspaceViewProps) {
                           scroll={scroll}
                         />
                       ))}
-                      {previewItem && destination?.day === d.id && (
-                        <div
-                          className="trip-calendar-drop-preview"
-                          aria-hidden="true"
-                          style={{
-                            ...calendarColorStyle(
-                              calendarEventColor(
-                                previewItem.calendar_color,
-                                previewItem.entry?.category?.color,
+                      {previewItem &&
+                        destination?.day === d.id &&
+                        destination.start != null &&
+                        destination.zone === 'timed' && (
+                          <div
+                            className="trip-calendar-drop-preview"
+                            aria-hidden="true"
+                            style={{
+                              ...calendarColorStyle(
+                                calendarEventColor(
+                                  previewItem.calendar_color,
+                                  previewItem.entry?.category?.color,
+                                ),
                               ),
-                            ),
-                            top: destination.start * minuteHeight,
-                            height: Math.max(
-                              1,
-                              Math.min(1440 - destination.start, destination.duration ?? 30) *
-                                minuteHeight,
-                            ),
-                            width: catalog ? 'calc(100% - 6px)' : dragBox?.width,
-                          }}
-                        >
-                          {catalog && (
-                            <>
-                              <strong>{catalog.entry.title}</strong>
-                              <span className="trip-calendar-drag-time">
-                                {calendarScheduleLabel(destination)} · {destination.duration} min{' '}
-                                {catalog.entry.suggested_duration_minutes
-                                  ? 'conseillées'
-                                  : 'initiales'}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      )}
+                              top: destination.start * minuteHeight,
+                              height: Math.max(
+                                1,
+                                Math.min(1440 - destination.start, destination.duration ?? 30) *
+                                  minuteHeight,
+                              ),
+                              width: 'calc(100% - 6px)',
+                            }}
+                          >
+                            {(catalog || dragged) && (
+                              <>
+                                <strong>
+                                  {catalog ? (
+                                    catalog.entry.title
+                                  ) : (
+                                    <CalendarPlaceTitle item={dragged!} load={false} />
+                                  )}
+                                </strong>
+                                <span className="trip-calendar-drag-time">
+                                  {calendarScheduleLabel(destination)}
+                                  {destination.duration == null
+                                    ? ' · Durée libre'
+                                    : ` · ${formatTripDuration(destination.duration)}`}
+                                  <small>{tripDayLabel(d.date!)}</small>
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        )}
                     </CalendarColumn>
                   ))}
                 </div>
               </div>
-              <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
-                {dragged &&
-                  dragBox &&
-                  (() => {
-                    const current =
-                      destination ?? movedCalendarSchedule(dragged, dragged.trip_day_id!, 0);
-                    return (
-                      <div
-                        className={cn(
-                          'trip-calendar-event',
-                          'trip-calendar-drag-preview',
-                          current.duration != null && current.duration <= 30 && 'is-compact',
-                        )}
-                        style={{
-                          ...calendarColorStyle(
-                            calendarEventColor(
-                              dragged.calendar_color,
-                              dragged.entry?.category?.color,
-                            ),
-                          ),
-                          width: dragBox.width,
-                          height: dragBox.height,
-                        }}
-                      >
-                        <div className="trip-calendar-event-copy">
-                          <CalendarEventCopy item={dragged} schedule={current} />
-                        </div>
-                        <span className="trip-calendar-drag-time" role="status">
-                          {calendarScheduleLabel(current)}
-                        </span>
-                      </div>
-                    );
-                  })()}
-              </DragOverlay>
             </div>
           </div>
-          <CalendarDayTarget day={chosen.id} editable={canEdit} className="trip-calendar-mobile">
-            <h3>{tripDayLabel(chosen.date!)}</h3>
-            {[...dayItems(chosen)]
-              .sort((a, b) => (a.start_time ?? '99:99').localeCompare(b.start_time ?? '99:99'))
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="trip-agenda-row"
-                  data-calendar-colored={!!item.calendar_color}
-                  style={calendarColorStyle(
-                    calendarEventColor(item.calendar_color, item.entry?.category?.color),
-                  )}
-                >
-                  {canEdit ? (
-                    <QuickStepEditor item={item} plan={plan} busy={busy} mutate={props.mutate} />
-                  ) : (
-                    <span>{formatTripTime(item.start_time) ?? 'Libre'}</span>
-                  )}
-                  <button type="button" onClick={() => props.onDetails(item)}>
-                    <CalendarPlaceTitle item={item} />
-                    <small>
-                      {[
-                        item.entry?.category?.name,
-                        itemDuration(item) ? formatTripDuration(itemDuration(item)) : null,
-                        item.stops?.length
-                          ? `${item.stops.length} ${item.stops.length > 1 ? 'arrêts' : 'arrêt'}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </small>
-                  </button>
-                </div>
-              ))}
-            {canEdit && (
-              <button
-                type="button"
-                className="trip-add-step"
-                onClick={() => props.onAdd(chosen.id)}
-              >
-                <Plus className="size-4" /> Ajouter une étape
-              </button>
-            )}
-          </CalendarDayTarget>
         </>
+      )}
+      {dragged && (
+        <DragOverlay
+          modifiers={calendarOverlayModifiers}
+          dropAnimation={null}
+          style={{ pointerEvents: 'none' }}
+        >
+          <div
+            className="trip-calendar-drag-card"
+            style={calendarColorStyle(
+              calendarEventColor(dragged.calendar_color, dragged.entry?.category?.color),
+            )}
+          >
+            <CalendarPlaceTitle item={dragged} load={false} />
+            <span className="trip-calendar-drag-time" role="status">
+              {destination
+                ? calendarScheduleLabel(destination)
+                : (dragged.start_time?.slice(0, 5) ?? 'Sans horaire')}
+              {itemDuration(dragged) == null
+                ? ' · Durée libre'
+                : ` · ${formatTripDuration(itemDuration(dragged))}`}
+              {destination && (
+                <span className="sr-only">
+                  {' '}
+                  · {tripDayLabel(plan.days.find((day) => day.id === destination.day)?.date ?? '')}
+                </span>
+              )}
+            </span>
+            {destination && (
+              <small>
+                {tripDayLabel(plan.days.find((day) => day.id === destination.day)?.date ?? '')}
+              </small>
+            )}
+          </div>
+        </DragOverlay>
       )}
     </div>
   );
@@ -628,11 +721,16 @@ function CalendarColumn({
 }) {
   const { setNodeRef } = useDroppable({
     id: `calendar-column:${day}`,
-    data: { type: 'calendar', day },
+    data: { type: 'calendar', zone: 'timed', day },
     disabled: !editable,
   });
   return (
-    <div ref={setNodeRef} className="trip-calendar-column" data-calendar-day={day}>
+    <div
+      ref={setNodeRef}
+      className="trip-calendar-column"
+      data-calendar-day={day}
+      data-calendar-zone="timed"
+    >
       {children}
     </div>
   );
@@ -640,30 +738,30 @@ function CalendarColumn({
 function CalendarDayTarget({
   day,
   editable,
-  button,
   className,
   children,
-  onClick,
+  zone,
+  active,
 }: {
   day: string;
   editable: boolean;
-  button?: boolean;
   className?: string;
   children: React.ReactNode;
-  onClick?: () => void;
+  zone: 'unscheduled' | 'overview';
+  active?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `calendar-day:${day}:${button ? 'overview' : (className ?? 'unscheduled')}`,
-    data: { day, before: null },
+  const { setNodeRef } = useDroppable({
+    id: `calendar-day:${day}:${zone}`,
+    data: { type: 'calendar', zone, day, before: null },
     disabled: !editable,
   });
-  const classes = cn(className, isOver && 'is-catalog-day-over');
-  return button ? (
-    <button type="button" ref={setNodeRef} className={classes} onClick={onClick}>
-      {children}
-    </button>
-  ) : (
-    <div ref={setNodeRef} className={classes}>
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(className, active && 'is-calendar-day-over')}
+      data-calendar-zone={zone}
+      data-calendar-day={day}
+    >
       {children}
     </div>
   );

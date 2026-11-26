@@ -189,13 +189,13 @@ with sync_playwright() as playwright:
             page.mouse.down()
             page.mouse.move(box['x'] + 38, box['y'] + 12, steps=3)
             page.mouse.move(box['x'] + 38, box['y'] + 68, steps=8)
-            expect(page.locator('.trip-calendar-drag-preview')).to_be_visible()
-            expect(page.locator('.trip-calendar-drag-time')).to_be_visible()
+            expect(page.locator('.trip-calendar-drag-card')).to_be_visible()
+            expect(page.locator('.trip-calendar-drag-card .trip-calendar-drag-time')).to_be_visible()
 
         begin_drag()
         page.keyboard.press('Escape')
         page.mouse.up()
-        expect(page.locator('.trip-calendar-drag-preview')).to_have_count(0)
+        expect(page.locator('.trip-calendar-drag-card')).to_have_count(0)
         assert next(i for i in state()['items'] if i['id'] == medium)['start_time'] == before_move['start_time']
         begin_drag()
         page.mouse.up()
@@ -227,7 +227,7 @@ with sync_playwright() as playwright:
         expect(page.locator('.trip-calendar-column')).to_have_count(1)
         expect(page.locator('[data-calendar-item-id]')).to_have_count(0)
         expect(page.locator('.trip-calendar-now')).to_have_count(0)
-        assert page.locator('.trip-calendar-unscheduled').bounding_box()['height'] <= 12
+        assert page.locator('.trip-calendar-unscheduled').bounding_box()['height'] >= 30
         page.get_by_role('button', name='Période précédente', exact=True).click()
         expect(page.locator('.trip-calendar-now')).to_have_count(1)
         align()
@@ -235,19 +235,20 @@ with sync_playwright() as playwright:
         page.get_by_role('button', name='Séjour', exact=True).click()
         expect(page.locator('.trip-calendar-day-card')).to_have_count(4)
         page.screenshot(path=str(args.output / 'calendar-overview.png'))
-        page.locator('.trip-calendar-day-card').first.click()
+        page.locator('.trip-calendar-day-open').first.click()
         expect(page.locator('.trip-calendar-column')).to_have_count(1)
-        log('Day and stay views, empty days, collapsed unscheduled strip and period navigation work')
+        log('Day and stay views, empty days, empty unscheduled drop strip and period navigation work')
         for width, height in [(834, 1112), (390, 844), (320, 568)]:
             page.set_viewport_size({'width': width, 'height': height})
             if width >= 640:
                 page.get_by_role('button', name='Semaine', exact=True).click()
                 align()
             else:
-                expect(page.locator('.trip-calendar-mobile')).to_be_visible()
-                expect(page.locator('.trip-calendar-desktop')).not_to_be_visible()
+                expect(page.locator('.trip-calendar-desktop')).to_be_visible()
+                expect(page.locator('.trip-calendar-column')).to_have_count(1)
+                expect(page.get_by_role('button', name='Jour', exact=True)).to_have_attribute('aria-pressed', 'true')
                 if height <= 600:
-                    assert page.locator('.trip-calendar-mobile').bounding_box()['height'] >= 80
+                    assert page.locator('.trip-calendar-desktop').bounding_box()['height'] >= 80
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), width
             page.screenshot(path=str(args.output / f'calendar-{width}.png'))
         page.evaluate("document.documentElement.classList.add('dark')")

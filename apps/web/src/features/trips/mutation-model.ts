@@ -88,7 +88,11 @@ export function transportTripChange(plan: TripPlan, change: TripEdit): TripTrans
 
 /** Guards express intent at property level; trip-wide revisions are cursors, not
  * a lock on unrelated edits. Structural operations guard their actual anchors. */
-export function tripMutationGuards(plan: TripPlan, change: TripTransportChange): Guard {
+export function tripMutationGuards(
+  plan: TripPlan,
+  change: TripTransportChange,
+  calendar = false,
+): Guard {
   const guards: Guard = { items: {}, stops: {}, days: {} };
   const root = (id: string | null | undefined, full = false) => {
     const row = plan.items.find((i) => i.id === id);
@@ -104,6 +108,12 @@ export function tripMutationGuards(plan: TripPlan, change: TripTransportChange):
           calendar_color: row.calendar_color,
         }
       : { trip_day_id: row.trip_day_id, sort_order: row.sort_order };
+    if (calendar)
+      Object.assign(guards.items[row.id]!, {
+        start_time: clock(row.start_time) as string | null,
+        end_time: clock(row.end_time) as string | null,
+        estimated_duration_minutes: row.estimated_duration_minutes,
+      });
     if (full)
       for (const stop of row.stops)
         guards.stops[stop.id] = {
@@ -146,6 +156,15 @@ export function tripMutationGuards(plan: TripPlan, change: TripTransportChange):
         clock((row as unknown as Record<string, unknown>)[key]),
       ]),
     ) as Guard['items'][string];
+    if (calendar && change.operation === 'patch_item') {
+      const item = plan.items.find((item) => item.id === row.id)!;
+      Object.assign(guards.items[row.id]!, {
+        trip_day_id: item.trip_day_id,
+        start_time: clock(item.start_time),
+        end_time: clock(item.end_time),
+        estimated_duration_minutes: item.estimated_duration_minutes,
+      });
+    }
     return guards;
   }
   const data = change.data as {

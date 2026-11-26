@@ -144,7 +144,8 @@ export const tripCollision: CollisionDetection = (args) => {
     if (container.data.current?.type === 'calendar')
       return (
         (catalog || args.active.data.current?.type === 'calendar-item') &&
-        (!pointed || !!pointed.closest('.trip-calendar-scroll'))
+        (!pointed ||
+          !!pointed.closest(`[data-calendar-zone="${container.data.current.zone ?? 'timed'}"]`))
       );
     if (catalog && !args.active.data.current?.reference && isActivityDrop(container.data.current))
       return false;
@@ -164,7 +165,7 @@ export const tripCollision: CollisionDetection = (args) => {
   const hits = pointerWithin(filtered);
   const priority = (id: string | number) => {
     const target = containers.find((container) => container.id === id)?.data.current;
-    if (target?.type === 'calendar') return 6;
+    if (target?.type === 'calendar') return target.before ? 7 : 6;
     return isStopDrop(target)
       ? target.before
         ? 4
