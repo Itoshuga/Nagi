@@ -106,10 +106,24 @@ await db.query(
   `insert into public.entry_relations(source_id,target_id,relation_type_id) select $1,$2,id from public.relation_types where slug='located-in'`,
   [entryIds[2], entryIds[0]],
 );
-await db.exec(
-  `insert into public.trips(id,guild_id,title,description,created_by,destination_country_id,start_date,end_date,timezone,status) values('${trip}','${guild}','Tokyo, à notre rythme','Un séjour en commun.','${uid}','00000001-1111-4111-8111-111111111111','2028-12-22','2028-12-25','Asia/Tokyo','planned');`,
+// Optional day-navigation cases; historical recipes keep their four-day fixture.
+const dayCount = Number(process.env.NAGI_QA_DAYS ?? 4);
+if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 90)
+  throw new Error('NAGI_QA_DAYS must be an integer from 1 to 90');
+const endDate = new Date('2028-12-22T12:00:00Z');
+endDate.setUTCDate(endDate.getUTCDate() + dayCount - 1);
+const timezone = process.env.NAGI_QA_TIMEZONE ?? 'Asia/Tokyo';
+new Intl.DateTimeFormat('fr-FR', { timeZone: timezone }).format(endDate);
+await db.query(
+  `insert into public.trips(id,guild_id,title,description,created_by,destination_country_id,start_date,end_date,timezone,status) values($1,$2,'Tokyo, à notre rythme','Un séjour en commun.',$3,'00000001-1111-4111-8111-111111111111','2028-12-22',$4,$5,'planned')`,
+  [trip, guild, uid, endDate.toISOString().slice(0, 10), timezone],
 );
 const days = (await db.query('select * from public.trip_days order by date')).rows;
+if (process.env.NAGI_QA_DAY_NAV === '1' && days[1])
+  await db.query('update public.trip_days set title=$1 where id=$2', [
+    'Une très longue journée à explorer les quartiers de Tokyo, les boutiques et les jardins cachés avec toute notre équipe',
+    days[1].id,
+  ]);
 await db.query(
   `insert into public.trip_items(trip_id,trip_day_id,entry_id,added_by,sort_order,start_time,estimated_duration_minutes,notes) values($1,$2,$3,$4,1024,'09:00',60,'Réserver les billets'),($1,$2,$5,$4,2048,null,null,''),($1,null,$6,$4,1024,null,null,'Une idée pour plus tard')`,
   [trip, days[0].id, entryIds[0], uid, entryIds[4], entryIds[5]],

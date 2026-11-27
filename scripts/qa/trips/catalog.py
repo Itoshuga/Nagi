@@ -142,7 +142,7 @@ with sync_playwright() as p:
         day3 = nav.get_by_role('button', name='Jour 3', exact=False)
         drop(day3)
         drop(day3)
-        assert nav.get_by_role('button', name='Tout le voyage', exact=False).get_attribute('aria-current') == 'date'
+        assert nav.get_by_role('button', name='Tout le voyage', exact=False).get_attribute('aria-current') == 'true'
         log('Repeated sidebar drops create independent visits without changing the selected day')
         page.locator('.trip-workspace-canvas').evaluate('(node)=>node.scrollTop=430')
         begin()
@@ -196,7 +196,7 @@ with sync_playwright() as p:
         log('Calendar edge auto-scroll advances smoothly during catalogue drag')
         scroll.evaluate('(node)=>node.scrollTop=12*56')
         begin()
-        column = page.locator(f'''[data-calendar-day="{days[1]['id']}"]''')
+        column = page.locator(f'''[data-calendar-day="{days[1]['id']}"][data-calendar-zone="timed"]''')
         box = column.bounding_box()
         page.mouse.move(box['x'] + box['width'] / 2, box['y'] + 870 * 56 / 60, steps=15)
         expect(page.locator('.trip-calendar-drop-preview')).to_contain_text('14:30 – 15:00')
@@ -323,7 +323,7 @@ with sync_playwright() as p:
         expect(panel.get_by_label('Ajouter à', exact=True)).to_have_value('')
         page.locator('.trip-day-timeline').nth(2).get_by_role('button',name='Ajouter une étape',exact=True).click()
         expect(panel.get_by_label('Ajouter à', exact=True)).to_have_value(days[2]['id'])
-        expect(nav.get_by_role('button', name='Tout le voyage', exact=False)).to_have_attribute('aria-current','date')
+        expect(nav.get_by_role('button', name='Tout le voyage', exact=False)).to_have_attribute('aria-current','true')
         panel.get_by_label('Ajouter à', exact=True).select_option(days[3]['id'])
         expect(panel.locator('[data-catalog-entry]')).to_have_count(1)
         count_before = len(state()['items'])
@@ -408,6 +408,30 @@ with sync_playwright() as p:
         page.reload(wait_until='domcontentloaded')
         expect(page.locator(f'[data-stops-parent="{parent["id"]}"] [data-stop-id]')).to_have_count(len(children))
         log('Moving a parent across days preserves every child, clock, duration and color; its concurrent remote note survives the drop and reload')
+
+        # The fixed footer remains a real drop target for existing activities.
+        root = page.locator(f'[data-activity-id="{parent["id"]}"] .trip-step-main')
+        root.scroll_into_view_if_needed()
+        pending = nav.locator('[data-day-kind="pending"]')
+        pending_before = int(pending.locator('.trip-day-count').inner_text())
+        box = root.bounding_box()
+        x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + 10, y, steps=3)
+        expect(page.locator('.trip-drag-preview')).to_be_visible()
+        box = pending.bounding_box()
+        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2, steps=12)
+        expect(pending).to_have_class(re.compile('is-over'))
+        expect(nav.locator('[data-day-kind="all"]')).to_have_attribute('aria-current', 'true')
+        page.mouse.up()
+        saved()
+        expect(pending.locator('.trip-day-count')).to_have_text(str(pending_before + 1))
+        unplanned = next(i for i in state()['items'] if i['id'] == parent['id'])
+        assert unplanned['trip_day_id'] is None
+        assert all(unplanned[key] == moved[key] for key in ['start_time', 'end_time', 'estimated_duration_minutes', 'calendar_color', 'entry_id', 'notes'])
+        assert [s for s in state()['stops'] if s['trip_item_id'] == parent['id']] == children
+        log('The fixed pending destination accepts an existing parent, keeps its children and clocks, updates its count and does not select itself on hover')
 
         page.goto(ROOT + PATH + '?mode=read', wait_until='domcontentloaded')
         page.get_by_role('button', name='Explorer le catalogue', exact=True).click()

@@ -7,7 +7,6 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
-  useDroppable,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -23,7 +22,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
-  Plus,
   Route,
   Settings,
   Trash2,
@@ -57,7 +55,7 @@ import { archivePlannedTrip, removeTrip } from './actions';
 import { TripItinerary } from './itinerary';
 import { TripDragOverlay } from './drag-overlay';
 import { calendarKeyboardCoordinates } from './calendar-model';
-import { TripDayEditor } from './plan-dialogs';
+import { TripDaysNavigation } from './day-navigation';
 import { TripPlaceDetails } from './step-editor';
 import { TripPlacePicker } from './place-picker';
 import { ExternalPlacesProvider } from '@/features/integrations/mapbox/components';
@@ -98,44 +96,6 @@ const tabs = [
   { id: 'calendar', label: 'Calendrier', icon: CalendarDays },
   { id: 'map', label: 'Carte', icon: MapPin },
 ] as const;
-function DayNav({
-  id,
-  active,
-  label,
-  sub,
-  count,
-  onClick,
-  editable,
-}: {
-  id: string;
-  editable: boolean;
-  active: boolean;
-  label: string;
-  sub?: string;
-  count: number;
-  onClick: () => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `nav:${id}`,
-    data: { day: id === 'pending' ? null : id, before: null },
-    disabled: !editable || id === 'all',
-  });
-  return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      aria-current={active ? 'date' : undefined}
-      className={cn('trip-day-nav-item', active && 'is-active', isOver && 'is-over')}
-      onClick={onClick}
-    >
-      <span>
-        <strong>{label}</strong>
-        {sub && <small>{sub}</small>}
-      </span>
-      <span className="trip-day-count">{count}</span>
-    </button>
-  );
-}
 function DeleteTripDialog({
   guild,
   plan,
@@ -305,11 +265,6 @@ export function TripWorkbench({
         ?.focus();
     else if (panel) panelRef.current?.focus();
   }, [panel]);
-  useEffect(() => {
-    document
-      .querySelector('.trip-day-nav-item.is-active')
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [activeDay]);
   useEffect(() => {
     if (!recentItem) return;
     const timer = setTimeout(() => setRecentItem(undefined), 1500);
@@ -920,69 +875,16 @@ export function TripWorkbench({
             <div
               className={cn('trip-workspace-body', !sidebar && 'days-hidden', panel && 'has-panel')}
             >
-              <nav className="trip-day-navigation" aria-label="Journées du voyage">
-                <div className="trip-days-top">
-                  <span>Votre séjour</span>
-                  {editing && (
-                    <TripDayEditor plan={displayed} mutate={mutate}>
-                      <button
-                        type="button"
-                        className="trip-icon-button"
-                        aria-label="Ajouter une journée"
-                        disabled={busy}
-                      >
-                        <Plus className="size-3.5" />
-                      </button>
-                    </TripDayEditor>
-                  )}
-                </div>
-                <DayNav
-                  editable={editing}
-                  id="all"
-                  active={activeDay === 'all'}
-                  label="Tout le voyage"
-                  count={displayed.items.length}
-                  onClick={() => chooseDay('all')}
-                />
-                <div className="trip-day-links">
-                  {displayed.days.map((d, i) => (
-                    <DayNav
-                      key={d.id}
-                      editable={editing}
-                      id={d.id}
-                      active={activeDay === d.id}
-                      label={`Jour ${i + 1}`}
-                      sub={[
-                        d.date
-                          ? new Intl.DateTimeFormat('fr-FR', {
-                              day: 'numeric',
-                              month: 'short',
-                              timeZone: 'UTC',
-                            }).format(new Date(`${d.date}T12:00:00Z`))
-                          : null,
-                        d.title,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                      count={displayed.items.filter((item) => item.trip_day_id === d.id).length}
-                      onClick={() => chooseDay(d.id)}
-                    />
-                  ))}
-                </div>
-                <DayNav
-                  editable={editing}
-                  id="pending"
-                  active={activeDay === 'pending'}
-                  label="À organiser"
-                  count={displayed.items.filter((i) => !i.trip_day_id).length}
-                  onClick={() => chooseDay('pending')}
-                />
-                <p className="trip-timezone">
-                  Horaires locaux
-                  <br />
-                  {plan.timezone}
-                </p>
-              </nav>
+              <TripDaysNavigation
+                plan={displayed}
+                selectedDay={activeDay}
+                visible={sidebar}
+                editing={editing}
+                busy={busy}
+                dragging={!!dragSnapshot || !!draggedEntry}
+                mutate={mutate}
+                onDay={chooseDay}
+              />
               <motion.section
                 key={view}
                 id={`${prefix}-view`}

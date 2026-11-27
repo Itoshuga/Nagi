@@ -232,53 +232,107 @@
 .trip-workspace-body.days-hidden .trip-day-navigation {
   display: none;
 }
+/* Shared day navigation: fixed landmarks around one scrolling list. */
 .trip-day-navigation {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 15px 12px;
+  min-width: 0;
+  padding: 10px 9px;
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--background) 65%, var(--card));
-  overflow-y: auto;
+  overflow: hidden;
 }
 .trip-days-top {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
+  min-height: 34px;
   padding-left: 10px;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
   color: var(--muted-foreground);
   font-size: 10px;
-  font-weight: 650;
-}
-.trip-day-links {
-  display: grid;
-  gap: 3px;
-  margin-block: 12px;
-}
-.trip-day-nav-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 10px;
-  text-align: left;
-  min-height: 43px;
-  width: 100%;
-}
-.trip-day-nav-item strong {
-  display: block;
-  font-size: 11px;
   font-weight: 600;
 }
-.trip-day-nav-item small {
-  display: block;
-  max-width: 130px;
-  margin-top: 3px;
-  font-size: 10px;
-  line-height: 1.4;
+.trip-day-add-button {
+  width: 32px;
+  height: 32px;
+}
+.trip-days-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.trip-day-links {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 44px;
+  gap: 2px;
+  margin-top: 6px;
+  padding-block: 6px;
+  border-top: 1px solid var(--border);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.trip-day-nav-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.trip-day-nav-item[data-day-kind='all'],
+.trip-day-nav-item[data-day-kind='pending'] {
+  grid-template-columns: 14px minmax(0, 1fr) 18px;
+}
+.trip-day-nav-icon {
+  width: 14px;
+  height: 14px;
   color: var(--muted-foreground);
+  stroke-width: 1.6;
+}
+.trip-day-copy {
+  min-width: 0;
+}
+.trip-day-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+}
+.trip-day-nav-item strong {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.trip-day-line time {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.trip-day-custom-title {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -287,24 +341,68 @@
   background: var(--muted);
 }
 .trip-day-nav-item.is-active {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
   color: var(--primary-ink);
 }
+.trip-day-nav-item.is-active::before {
+  position: absolute;
+  inset: 12px auto 12px 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--primary-ink);
+  content: '';
+}
+.trip-day-nav-item.is-active strong {
+  font-weight: 700;
+}
+.trip-day-nav-item:focus-visible,
+.trip-day-add-button:focus-visible {
+  outline: 2px solid var(--primary-ink);
+  outline-offset: -2px;
+}
 .trip-day-nav-item.is-over {
-  outline: 2px dashed var(--primary);
+  outline: 2px dashed var(--primary-ink);
+  outline-offset: -2px;
   background: var(--accent);
 }
 .trip-day-count {
+  width: 18px;
   color: var(--muted-foreground);
   font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.trip-day-nav-item.is-active .trip-day-count,
+.trip-day-nav-item.is-active .trip-day-nav-icon {
+  color: var(--primary-ink);
+}
+.trip-days-footer {
+  flex-shrink: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
 .trip-timezone {
-  margin-top: auto;
-  padding: 24px 10px 2px;
-  font-size: 9px;
-  line-height: 1.7;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 6px 10px;
   color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.trip-timezone svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.trip-timezone span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .trip-workspace-canvas {
   min-width: 0;
@@ -984,7 +1082,8 @@ html:has(.trip-workspace.is-sorting) * {
 }
 @media (prefers-reduced-motion: reduce) {
   .trip-itinerary .trip-step,
-  .trip-itinerary button {
+  .trip-itinerary button,
+  .trip-day-nav-item {
     transition: none;
   }
 }
@@ -2703,42 +2802,57 @@ html:has(.trip-workspace.is-sorting) * {
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
-    gap: 5px;
-    padding: 8px 14px;
+    overflow: hidden;
+    gap: 6px;
+    padding: 7px 12px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+  .trip-days-scroll {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
     scrollbar-width: none;
   }
-  .trip-day-links {
+  .trip-day-links,
+  .trip-days-footer {
     display: contents;
   }
   .trip-day-nav-item {
     width: auto;
-    min-width: 70px;
-    gap: 6px;
-    flex-shrink: 0;
+    min-width: 112px;
+    max-width: 172px;
+    gap: 8px;
     padding: 8px 10px;
+  }
+  .trip-day-nav-item[data-day-kind='all'],
+  .trip-day-nav-item[data-day-kind='pending'] {
+    min-width: auto;
   }
   .trip-day-nav-item strong {
     font-size: 10px;
-  }
-  .trip-day-nav-item small {
-    font-size: 9px;
-    max-width: 90px;
   }
   .trip-day-count {
     font-size: 9px;
   }
   .trip-days-top {
     order: 1;
+    justify-content: center;
+    align-self: center;
     padding: 0;
     margin: 0;
   }
-  .trip-days-top > span,
-  .trip-timezone {
+  .trip-days-top > span {
     display: none;
+  }
+  .trip-timezone {
+    flex-shrink: 0;
+    align-self: center;
+    margin: 0;
+    border-left: 1px solid var(--border);
   }
   .trip-toggle-days {
     display: none;
