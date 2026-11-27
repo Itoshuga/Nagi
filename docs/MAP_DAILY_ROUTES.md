@@ -1,5 +1,7 @@
 # Carte — trajets journaliers, phase 4.12
 
+La présentation et la sélection du panneau Carte ont été affinées en [phase 4.13](MAP_SIDEBAR.md), avec une sélection indépendante des étapes et des arrêts.
+
 La sélection de journée reste celle du planificateur commun. **Tout le voyage** et **À organiser** affichent uniquement les lieux, sans appel Directions ni total de déplacement. Une journée précise affiche automatiquement le trajet de toutes ses étapes et de tous ses arrêts géolocalisés, dans leur ordre, avec le profil **à vélo** imposé. Aucune inclusion manuelle ni sélection de transport. Le calcul ne modifie pas l’itinéraire.
 
 ## Moteur et interface

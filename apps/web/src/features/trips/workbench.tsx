@@ -409,11 +409,17 @@ export function TripWorkbench({
   function details(item: TripPlanItem | TripPlanStop) {
     setPreviewMapbox(undefined);
     setReplacement(undefined);
-    lastTrigger.current = document.activeElement as HTMLElement;
+    lastTrigger.current =
+      (view === 'map'
+        ? document.querySelector<HTMLElement>(
+            `[data-map-visit="${item.id}"] .trip-map-visit-button`,
+          )
+        : null) ?? (document.activeElement as HTMLElement);
     setSelectedId(item.id);
     setPreview(undefined);
     setPreviewParent(undefined);
     setPanel('detail');
+    if (panel === 'detail') panelRef.current?.focus();
   }
   function closePanel() {
     setPreviewMapbox(undefined);
@@ -447,13 +453,15 @@ export function TripWorkbench({
   function returnFocus() {
     const occurrenceTrigger = selectedId
       ? document.querySelector<HTMLElement>(
-          `[data-stop-id="${selectedId}"] .trip-stop-main, [data-activity-id="${selectedId}"] .trip-step-main`,
+          `[data-map-visit="${selectedId}"] .trip-map-visit-button, [data-stop-id="${selectedId}"] .trip-stop-main, [data-activity-id="${selectedId}"] .trip-step-main`,
         )
       : null;
-    const target = lastTrigger.current?.isConnected
-      ? lastTrigger.current
-      : (occurrenceTrigger ??
-        document.querySelector<HTMLElement>('.trip-primary-add, .trip-day-nav-item.is-active'));
+    const target =
+      lastTrigger.current?.isConnected && lastTrigger.current !== document.body
+        ? lastTrigger.current
+        : (occurrenceTrigger ??
+          (view === 'map' ? document.querySelector<HTMLElement>('.trip-leaflet-map') : null) ??
+          document.querySelector<HTMLElement>('.trip-primary-add, .trip-day-nav-item.is-active'));
     target?.focus();
   }
   function openStopPicker(parent: string) {
@@ -988,7 +996,9 @@ export function TripWorkbench({
               >
                 {view === 'itinerary' && <TripItinerary {...props} />}
                 {view === 'calendar' && <TripCalendar {...props} />}
-                {view === 'map' && <TripMap {...props} onPreview={previewEntry} add={add} />}
+                {view === 'map' && (
+                  <TripMap {...props} onStopDetails={details} onPreview={previewEntry} add={add} />
+                )}
               </motion.section>
               <AnimatePresence initial={false}>
                 {panel && (
@@ -998,7 +1008,13 @@ export function TripWorkbench({
                     tabIndex={-1}
                     className="trip-context-panel"
                     data-panel={panel}
-                    aria-label={panel === 'catalog' ? 'Catalogue du voyage' : 'Détails de l’étape'}
+                    aria-label={
+                      panel === 'catalog'
+                        ? 'Catalogue du voyage'
+                        : currentStop
+                          ? 'Détails de l’arrêt'
+                          : 'Détails de l’étape'
+                    }
                     initial={reduced ? false : { opacity: 0, x: 12 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: reduced ? 0 : 8 }}

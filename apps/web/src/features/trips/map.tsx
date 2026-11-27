@@ -3,22 +3,14 @@ import 'leaflet/dist/leaflet.css';
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GeoJSON, LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
-import { Bike, Compass, LocateFixed, List, LoaderCircle, Plus, X } from 'lucide-react';
+import { Bike, Compass, LocateFixed, List, LoaderCircle, X } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
-import {
-  calendarEventColor,
-  calendarSwatchInk,
-  tripMapLongitudes,
-  tripPoints,
-  tripStepCount,
-  tripStopCount,
-} from '@nagi/shared';
+import { calendarEventColor, calendarSwatchInk, tripMapLongitudes, tripPoints } from '@nagi/shared';
 import { EntryImage } from '@/features/media/image';
 import {
   type PlaceAdder,
   type WorkspaceViewProps,
-  stepTime,
   visibleTripItems,
   tripMapVisits,
   groupTripMapPoints,
@@ -26,13 +18,13 @@ import {
 import { tripTileProvider } from './map-config';
 import {
   prepareDayRoute,
-  routeDistanceLabel,
-  routeDurationLabel,
   unwrapRoute,
   type RouteVisit,
   type RouteFeature,
 } from './map-route-model';
 import { useDayRoute } from './map-route-client';
+import { MapSidebar } from './map-sidebar';
+import { selectedMapVisit, mapRouteHighlights, mapVisitTitle } from './map-sidebar-model';
 import {
   useExternalPlaces,
   useExternalPlaceVersion,
@@ -104,7 +96,11 @@ function enableMarkerKeyboard(marker: Marker) {
 }
 
 export default function TripMap(
-  props: WorkspaceViewProps & { onPreview: (entry: EntryCardRow) => void; add: PlaceAdder },
+  props: WorkspaceViewProps & {
+    onStopDetails: NonNullable<WorkspaceViewProps['onStopDetails']>;
+    onPreview: (entry: EntryCardRow) => void;
+    add: PlaceAdder;
+  },
 ) {
   const { plan, selectedDay, selectedItem, onDetails, canEdit, add } = props;
   const external = useExternalPlaces();
@@ -143,13 +139,22 @@ export default function TripMap(
   const lastRetry = useRef(0);
   const lastSelected = useRef<string | undefined>(undefined);
   const [hovered, setHovered] = useState<string>();
-  const activeId = props.selectedStop ?? selectedItem;
+  const [focused, setFocused] = useState<string>();
+  const [hoveredSegment, setHoveredSegment] = useState<string>();
   const daily = selectedDay !== 'all' && selectedDay !== 'pending';
   const visible = useMemo(
     () => visibleTripItems({ items: plan.items, days: plan.days }, selectedDay),
     [plan.items, plan.days, selectedDay],
   );
   const visits = useMemo(() => tripMapVisits(visible), [visible]);
+  const selection = useMemo(
+    () => selectedMapVisit(visits, selectedItem, props.selectedStop),
+    [visits, selectedItem, props.selectedStop],
+  );
+  const activeId = selection?.id;
+  const highlightedId = [hovered, focused].find(
+    (id) => id && visits.some((visit) => visit.id === id),
+  );
   const references = JSON.stringify([
     ...new Map(
       visits
@@ -215,6 +220,7 @@ export default function TripMap(
     });
   }, [visits, routePlaces]);
   const { located, missing } = useMemo(() => tripPoints(locatedVisits, 'all'), [locatedVisits]);
+  const missingIds = useMemo(() => new Set(missing.map((visit) => visit.id)), [missing]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
     return located.map((p, i) => ({
@@ -248,11 +254,15 @@ export default function TripMap(
     const point = points.find((p) => p.item.id === visit.id);
     if (point && map.current) {
       manualCamera.current = true;
+      map.current.invalidateSize({ pan: false });
       map.current.setView([point.latitude, point.longitude], Math.max(14, map.current.getZoom()), {
         animate: false,
       });
     }
-    if (visit.stop && props.onStopDetails) props.onStopDetails(visit.stop);
+    const panel = listNode.current;
+    if (point && panel && getComputedStyle(panel).position === 'absolute')
+      map.current?.panBy([0, (panel.offsetHeight + 46) / 2], { animate: false });
+    if (visit.stop) props.onStopDetails(visit.stop);
     else onDetails(visit.parent);
   }
   function fitMap(bounds: import('leaflet').LatLngBounds) {
@@ -386,9 +396,9 @@ export default function TripMap(
         item.stop?.calendar_color ?? item.parent.calendar_color,
         item.entry?.category?.color,
       );
-      const title = grouped
-        ? `${group.length} lieux au même emplacement`
-        : (item.entry?.title ?? 'Étape');
+      const title =
+        active || !grouped ? mapVisitTitle(item) : `${group.length} lieux au même emplacement`;
+      const selectionLabel = `${item.stop ? 'Arrêt' : 'Étape'} ${number}, ${mapVisitTitle(item)}`;
       const point: [number, number] = [latitude, longitude];
       b.extend(point);
       const marker = leaflet
@@ -399,7 +409,13 @@ export default function TripMap(
           icon: leaflet.divIcon({
             className: `nagi-trip-marker${active ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop && !grouped ? ' is-stop' : ''}`,
             html: mapPin(
-              grouped ? (daily ? group[0]!.number : String(group.length)) : number,
+              active
+                ? number
+                : grouped
+                  ? daily
+                    ? group[0]!.number
+                    : String(group.length)
+                  : number,
               color,
               grouped,
               !!item.stop && !grouped,
@@ -414,7 +430,11 @@ export default function TripMap(
         .bindTooltip(
           markerTooltip(
             title,
-            grouped ? 'Choisir une étape' : item.stop ? `Arrêt ${number}` : `Étape ${number}`,
+            grouped
+              ? `${active ? `${item.stop ? 'Arrêt' : 'Étape'} ${number} · ` : ''}${group.length} lieux au même emplacement`
+              : item.stop
+                ? `Arrêt ${number}`
+                : `Étape ${number}`,
           ),
           { direction: 'top', offset: [0, -6], className: 'trip-map-pin-tooltip', opacity: 1 },
         )
@@ -429,6 +449,11 @@ export default function TripMap(
         for (const point of group) {
           const button = document.createElement('button');
           button.type = 'button';
+          button.setAttribute('aria-pressed', String(point.item.id === activeId));
+          button.addEventListener('focus', () => setFocused(point.item.id));
+          button.addEventListener('blur', () => setFocused(undefined));
+          button.addEventListener('mouseenter', () => setHovered(point.item.id));
+          button.addEventListener('mouseleave', () => setHovered(undefined));
           button.textContent = `${point.number}. ${point.item.entry?.title ?? 'Fiche indisponible'}`;
           button.addEventListener('click', () => {
             instance.closePopup();
@@ -445,11 +470,19 @@ export default function TripMap(
         .getElement()
         ?.setAttribute(
           'aria-label',
-          grouped
-            ? `${group.length} lieux au même emplacement`
-            : `${number}. ${item.entry?.title ?? 'Étape'}`,
+          active
+            ? `${selectionLabel}${grouped ? ` · ${group.length} lieux au même emplacement` : ''}`
+            : grouped
+              ? `${group.length} lieux au même emplacement`
+              : selectionLabel,
         );
       marker.getElement()?.setAttribute('aria-pressed', String(active));
+      if (active && selection) {
+        marker.getElement()?.setAttribute('data-map-selected-id', selection.id);
+        marker.getElement()?.setAttribute('data-map-selected-type', selection.type);
+      }
+      marker.getElement()?.addEventListener('focus', () => setFocused(item.id));
+      marker.getElement()?.addEventListener('blur', () => setFocused(undefined));
       enableMarkerKeyboard(marker);
     }
     if (!b.isValid() && fitted.current === null) {
@@ -477,6 +510,7 @@ export default function TripMap(
     points,
     selectedDay,
     activeId,
+    selection?.type,
     onDetails,
     props.onStopDetails,
     resolving,
@@ -534,22 +568,28 @@ export default function TripMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, route.result, daily, selectedDay]);
   useEffect(() => {
-    const focused = hovered ? pinRegistry.current.get(hovered) : undefined;
+    const emphasized = highlightedId ? pinRegistry.current.get(highlightedId) : undefined;
     new Set(pinRegistry.current.values()).forEach((marker) =>
-      marker.getElement()?.classList.toggle('is-highlighted', marker === focused),
+      marker.getElement()?.classList.toggle('is-highlighted', marker === emphasized),
+    );
+    const highlights = mapRouteHighlights(
+      route.result?.segments ?? [],
+      activeId,
+      highlightedId,
+      hoveredSegment,
     );
     routeLayer.current?.eachLayer((layer) => {
       const line = layer as import('leaflet').Polyline & { feature?: RouteFeature };
-      const highlighted =
-        !!hovered &&
-        route.result?.segments.some(
-          (s) =>
-            line.feature?.properties.segments.includes(s.id) &&
-            [...s.from, ...s.to].includes(hovered),
-        );
-      line.setStyle({ color: highlighted ? '#3977b9' : '#73A6DF', weight: highlighted ? 5 : 4 });
+      const states =
+        line.feature?.properties.segments.map((id: string) => highlights.get(id)) ?? [];
+      const hover = states.includes('hovered'),
+        selected = states.includes('selected');
+      line.setStyle({
+        color: hover ? '#3977b9' : selected ? '#4f84bb' : '#73A6DF',
+        weight: hover ? 5 : selected ? 4.5 : 4,
+      });
     });
-  }, [hovered, route.result, points, activeId]);
+  }, [highlightedId, hoveredSegment, route.result, points, activeId]);
   const boundKey = JSON.stringify(bounds);
   useEffect(() => {
     if (!explore || !bounds) return;
@@ -689,150 +729,24 @@ export default function TripMap(
       </div>
       <div className="trip-map-layout">
         {list && (
-          <div ref={listNode} className="trip-map-place-list">
-            <h2>
-              {selectedDay === 'all'
-                ? 'Tout le voyage'
-                : selectedDay === 'pending'
-                  ? 'À organiser'
-                  : `Jour ${plan.days.findIndex((d) => d.id === selectedDay) + 1}`}
-              <small>
-                {tripStepCount(visible.length)}
-                {visits.length > visible.length
-                  ? ` · ${tripStopCount(visits.length - visible.length)}`
-                  : ''}
-              </small>
-            </h2>
-            {daily && (
-              <div className="trip-route-summary" role="status" aria-live="polite">
-                <strong>
-                  {route.result?.status === 'partial' ? 'Trajet partiel' : 'Trajet du jour'}
-                </strong>
-                {route.loading || resolving ? (
-                  <p>Calcul du parcours…</p>
-                ) : route.error ? (
-                  <p>{route.error}</p>
-                ) : routePlan.points.length < 2 ? (
-                  <p>
-                    {routePlan.points.length
-                      ? 'Un seul emplacement à rejoindre.'
-                      : 'Aucun déplacement calculable.'}
-                  </p>
-                ) : route.result?.segments.some((s) => s.status === 'ok') ? (
-                  <p>
-                    {routeDistanceLabel(route.result.distance)} ·{' '}
-                    {routeDurationLabel(route.result.duration)} de déplacement
-                    {route.result.status === 'partial' ? ' calculé' : ''}
-                  </p>
-                ) : (
-                  <p>Trajet indisponible pour ces lieux et ce mode.</p>
-                )}
-                {route.result?.segments.some((s) => s.status !== 'ok') && (
-                  <small>
-                    {route.result.segments.filter((s) => s.status !== 'ok').length} liaison(s) non
-                    calculée(s)
-                    {route.result.segments.some((s) => s.status === 'quota' || s.status === 'limit')
-                      ? ' · Limite de calcul atteinte'
-                      : route.result.segments.some((s) => s.status === 'too-far')
-                        ? ' · Distance incompatible avec ce mode'
-                        : ''}
-                    .
-                  </small>
-                )}
-                <details className="trip-route-notes">
-                  <summary>À propos du trajet</summary>
-                  {routePlan.sameLocation > 0 && (
-                    <small>
-                      {routePlan.sameLocation} arrêt(s) au même emplacement, sans déplacement
-                      ajouté.
-                    </small>
-                  )}
-                  {!!routePlan.missing.length && (
-                    <small>{routePlan.missing.length} lieu(x) sans position ignoré(s).</small>
-                  )}
-                  <small>Visites exclues des durées · Métro, train et bus non calculés.</small>
-                </details>
-              </div>
-            )}
-            <ol>
-              {points.map(({ item, number }) => (
-                <li
-                  key={item.id}
-                  data-map-visit={item.id}
-                  className={item.stop ? 'trip-map-stop' : undefined}
-                  onMouseEnter={() => setHovered(item.id)}
-                  onMouseLeave={() => setHovered(undefined)}
-                  onFocus={() => setHovered(item.id)}
-                  onBlur={() => setHovered(undefined)}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={item.id === activeId}
-                    onClick={() => openVisit(item)}
-                  >
-                    <span>{number}</span>
-                    <div>
-                      <strong>{item.entry?.title}</strong>
-                      <small>
-                        {[
-                          item.stop
-                            ? `Arrêt dans ${item.parent.entry?.title ?? 'cette activité'}`
-                            : stepTime(item.parent),
-                          item.entry?.neighborhood?.name ?? item.entry?.city?.name,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </small>
-                    </div>
-                  </button>
-                  {daily && (
-                    <div className="trip-map-route-detail">
-                      {route.result?.segments
-                        .filter((s) => s.from.at(-1) === item.id)
-                        .map((segment) => (
-                          <p
-                            key={segment.id}
-                            className="trip-route-leg"
-                            data-route-leg={segment.id}
-                          >
-                            {segment.status === 'ok'
-                              ? `${routeDistanceLabel(segment.distance!)} · ${routeDurationLabel(segment.duration!)} → ${visits.find((v) => v.id === segment.to[0])?.entry?.title ?? 'lieu suivant'}`
-                              : 'Liaison suivante indisponible'}
-                          </p>
-                        ))}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ol>
-            {missing.length > 0 && (
-              <div className="trip-map-missing">
-                <p>Sans coordonnées</p>
-                {missing.map((item) => (
-                  <button type="button" key={item.id} onClick={() => openVisit(item)}>
-                    {item.entry?.title ?? 'Fiche indisponible'}
-                    <small>Position indisponible</small>
-                  </button>
-                ))}
-              </div>
-            )}
-            {!points.length && (
-              <p className="trip-empty-inline">Les lieux avec des coordonnées apparaîtront ici.</p>
-            )}
-            {canEdit && (
-              <button
-                type="button"
-                className="trip-add-step"
-                onClick={() =>
-                  props.onAdd(
-                    selectedDay === 'all' || selectedDay === 'pending' ? null : selectedDay,
-                  )
-                }
-              >
-                <Plus className="size-4" /> Ajouter une étape
-              </button>
-            )}
-          </div>
+          <MapSidebar
+            panelRef={listNode}
+            plan={plan}
+            day={selectedDay}
+            visits={locatedVisits}
+            missingIds={missingIds}
+            selection={selection}
+            highlightedId={highlightedId}
+            route={route}
+            routePlan={routePlan}
+            resolving={resolving}
+            canEdit={canEdit}
+            onOpen={openVisit}
+            onHover={setHovered}
+            onFocus={setFocused}
+            onSegmentHover={setHoveredSegment}
+            onAdd={() => props.onAdd(daily ? selectedDay : null)}
+          />
         )}
         <div className="trip-map-frame">
           <a
