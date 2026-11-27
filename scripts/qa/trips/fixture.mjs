@@ -43,7 +43,7 @@ for (const f of readdirSync(root + '/supabase/migrations')
   .filter((f) => f.endsWith('.sql'))
   .sort())
   await db.exec(readFileSync(root + '/supabase/migrations/' + f, 'utf8').replace(/\r\n/g, '\n'));
-if (process.env.NAGI_QA_IMAGES === '1')
+if (process.env.NAGI_QA_IMAGES === '1' || process.env.NAGI_QA_ROUTES === '1')
   await db.exec('update private.mapbox_settings set enabled=true where singleton');
 const uid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -53,6 +53,7 @@ const app = '111111111111111111',
   stateFile = join(output, 'state.json'),
   configFile = join(output, 'config.json');
 writeAtomic(configFile, '{}');
+if (process.env.NAGI_QA_ROUTES === '1') writeAtomic(join(output, 'directions.json'), '[]');
 await db.exec(
   `insert into auth.users(id) values('${uid}'),('${other}');insert into public.profiles(id,discord_id,username,display_name,role) values('${uid}','999999999999999999','camille','Camille','admin'),('${other}','888888888888888888','haru','Haru','user');`,
 );
@@ -421,6 +422,37 @@ globalThis.fetch = async (input, init = {}) => {
         : [{ id: guild, name: 'Équipe Nagi', icon: null, owner: true, permissions: '8' }],
     );
   if (url.hostname === 'localhost' && url.port === port) return original(input, init);
+  if (
+    process.env.NAGI_QA_ROUTES === '1' &&
+    url.hostname === 'api.mapbox.com' &&
+    url.pathname.startsWith('/directions/v5/mapbox/')
+  ) {
+    const points = url.pathname
+      .split('/')
+      .at(-1)
+      .split(';')
+      .map((p) => p.split(',').map(Number));
+    const callsFile = join(output, 'directions.json');
+    let calls = [];
+    try {
+      calls = JSON.parse(readFileSync(callsFile, 'utf8'));
+    } catch {
+      /* First call. */
+    }
+    calls.push({ profile: url.pathname.split('/').at(-2), points });
+    writeAtomic(callsFile, JSON.stringify(calls));
+    if (cfg().directionsQuota)
+      return new Response(null, { status: 429, headers: { 'Retry-After': '1' } });
+    if (cfg().directionsNoRoute) return json({ code: 'NoRoute' });
+    const coordinates = [points[0]];
+    const legs = points.slice(1).map((p, i) => {
+      coordinates.push([(points[i][0] + p[0]) / 2, p[1] + 0.0002], p);
+      return { distance: 120 + i, duration: 90 + i, annotation: { distance: [60, 60] } };
+    });
+    if (cfg().directionsDelay)
+      await new Promise((resolve) => setTimeout(resolve, cfg().directionsDelay));
+    return json({ code: 'Ok', routes: [{ geometry: { type: 'LineString', coordinates }, legs }] });
+  }
   if (process.env.NAGI_QA_IMAGES === '1') {
     const name = 'Shibuya PARCO';
     if (url.hostname === 'api.mapbox.com') {
@@ -596,6 +628,7 @@ globalThis.fetch = async (input, init = {}) => {
         actor,
         [
           'reserve_mapbox_places',
+          'reserve_mapbox_directions',
           'mapbox_place_reference',
           'mapbox_error',
           'mapbox_available',

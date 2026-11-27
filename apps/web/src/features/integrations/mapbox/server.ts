@@ -141,6 +141,9 @@ export async function searchMapbox(
         id: place.id,
         query: input.query,
         kind: input.kind === 'suggest' ? 'suggestion' : 'resolved',
+        ...(input.kind !== 'suggest' && place.coordinates
+          ? { coordinates: place.coordinates, featureType: place.featureType }
+          : {}),
         ...(input.kind === 'suggest' ? { session: input.session } : {}),
         ...(input.context.proximity ? { proximity: input.context.proximity } : {}),
       }),
@@ -217,6 +220,8 @@ async function resolve(
           id: known.id,
           query: reference.query,
           kind: 'resolved',
+          coordinates: known.coordinates,
+          featureType: known.featureType,
           ...(proximity ? { proximity } : {}),
         }),
       };
@@ -270,6 +275,8 @@ async function resolve(
       id: place.id,
       query: reference.query,
       kind: 'resolved',
+      coordinates: place.coordinates,
+      featureType: place.featureType,
       ...(proximity ? { proximity } : {}),
     }),
   };

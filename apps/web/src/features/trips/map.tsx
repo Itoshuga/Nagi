@@ -2,8 +2,8 @@
 import 'leaflet/dist/leaflet.css';
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
-import { Compass, List, LoaderCircle, Plus, X } from 'lucide-react';
+import type { GeoJSON, LayerGroup, Map as LeafletMap, Marker } from 'leaflet';
+import { Bike, Compass, LocateFixed, List, LoaderCircle, Plus, X } from 'lucide-react';
 import { cn } from '@nagi/ui';
 import type { EntryCardRow } from '@nagi/database';
 import {
@@ -25,13 +25,22 @@ import {
 } from './planner-model';
 import { tripTileProvider } from './map-config';
 import {
+  prepareDayRoute,
+  routeDistanceLabel,
+  routeDurationLabel,
+  unwrapRoute,
+  type RouteVisit,
+  type RouteFeature,
+} from './map-route-model';
+import { useDayRoute } from './map-route-client';
+import {
   useExternalPlaces,
   useExternalPlaceVersion,
   externalStatus,
 } from '@/features/integrations/mapbox/components';
 import { catalogPlaceEntry } from '@/features/integrations/mapbox/model';
 
-function mapPin(label: string, color: string, grouped = false, stop = false) {
+function mapPin(label: string, color: string, grouped = false, stop = false, extra = 0) {
   const pin = document.createElement('span');
   pin.className = 'trip-map-pin';
   pin.setAttribute('aria-hidden', 'true');
@@ -62,6 +71,12 @@ function mapPin(label: string, color: string, grouped = false, stop = false) {
   face.className = 'trip-map-pin-label';
   face.textContent = label;
   pin.append(face);
+  if (extra) {
+    const count = document.createElement('span');
+    count.className = 'trip-map-pin-count';
+    count.textContent = `+${extra}`;
+    pin.append(count);
+  }
   return pin;
 }
 
@@ -96,6 +111,7 @@ export default function TripMap(
   useExternalPlaceVersion();
   const [mapboxError, setMapboxError] = useState(''),
     [mapboxRetry, setMapboxRetry] = useState(0);
+  const listNode = useRef<HTMLDivElement>(null);
   const node = useRef<HTMLDivElement>(null),
     map = useRef<LeafletMap>(null),
     markers = useRef<LayerGroup>(null),
@@ -120,6 +136,15 @@ export default function TripMap(
     [searching, setSearching] = useState(false),
     [addStatus, setAddStatus] = useState('');
   const fitted = useRef<string | null>(null);
+  const routeFitted = useRef<string | null>(null);
+  const manualCamera = useRef(false);
+  const routeLayer = useRef<GeoJSON>(null);
+  const pinRegistry = useRef(new Map<string, Marker>());
+  const lastRetry = useRef(0);
+  const lastSelected = useRef<string | undefined>(undefined);
+  const [hovered, setHovered] = useState<string>();
+  const activeId = props.selectedStop ?? selectedItem;
+  const daily = selectedDay !== 'all' && selectedDay !== 'pending';
   const visible = useMemo(
     () => visibleTripItems({ items: plan.items, days: plan.days }, selectedDay),
     [plan.items, plan.days, selectedDay],
@@ -139,10 +164,10 @@ export default function TripMap(
     if (!external) return;
     let active = true;
     const refs = JSON.parse(references) as { id: string; query: string }[];
+    const force = lastRetry.current !== mapboxRetry;
+    lastRetry.current = mapboxRetry;
     void Promise.allSettled(
-      refs
-        .filter((r) => r.id && r.query)
-        .map((r) => external.ensure(r.id, r.query, mapboxRetry > 0)),
+      refs.filter((r) => r.id && r.query).map((r) => external.ensure(r.id, r.query, force)),
     ).then((results) => {
       if (active)
         setMapboxError(
@@ -158,24 +183,37 @@ export default function TripMap(
   const coordinateKey = JSON.stringify(
     JSON.parse(references).map((r: { id: string }) => {
       const p = external?.get(r.id).place;
-      return p ? { source: p.source, id: p.id, title: p.title, coordinates: p.coordinates } : null;
+      return p
+        ? {
+            source: p.source,
+            id: p.id,
+            title: p.title,
+            coordinates: p.coordinates,
+            featureType: p.featureType,
+            category: p.category,
+          }
+        : null;
     }),
   );
+  const routePlaces = useMemo(
+    () =>
+      new Map(
+        (JSON.parse(coordinateKey) as (import('@nagi/shared').CatalogPlace | null)[])
+          .filter((p): p is import('@nagi/shared').CatalogPlace => p !== null)
+          .map((p) => [p.id, p]),
+      ),
+    [coordinateKey],
+  );
   const locatedVisits = useMemo(() => {
-    const places = new Map(
-      (JSON.parse(coordinateKey) as (import('@nagi/shared').CatalogPlace | null)[])
-        .filter((p): p is import('@nagi/shared').CatalogPlace => p !== null)
-        .map((p) => [p.id, p]),
-    );
     return visits.map((visit) => {
       const row = visit.stop ?? visit.parent;
       const place =
         row.source === 'mapbox' && row.external_place_id
-          ? places.get(row.external_place_id)
+          ? routePlaces.get(row.external_place_id)
           : undefined;
       return place?.coordinates ? { ...visit, entry: catalogPlaceEntry(place) } : visit;
     });
-  }, [visits, coordinateKey]);
+  }, [visits, routePlaces]);
   const { located, missing } = useMemo(() => tripPoints(locatedVisits, 'all'), [locatedVisits]);
   const points = useMemo(() => {
     const lons = tripMapLongitudes(located.map((p) => p.longitude));
@@ -185,9 +223,73 @@ export default function TripMap(
       number: p.item.number,
     }));
   }, [located]);
+  const routePlan = useMemo(() => prepareDayRoute(visits, routePlaces), [visits, routePlaces]);
+  const resolved = JSON.parse(references) as { id: string; query: string }[];
+  const resolving =
+    !!external &&
+    resolved.some((r) => {
+      const state = external.get(r.id);
+      return !state.error && (!state.place?.coordinates || state.loading);
+    });
+  const route = useDayRoute(
+    `/app/${props.guild}/trips/${plan.id}/directions`,
+    {
+      day: selectedDay,
+      plan: routePlan,
+      places: resolved.flatMap((r) => {
+        const place = external?.get(r.id).place;
+        return place?.coordinates && place.proof ? [{ ...r, proof: place.proof }] : [];
+      }),
+    },
+    daily && phase === 'ready' && !resolving,
+    mapboxRetry,
+  );
+  function openVisit(visit: RouteVisit) {
+    const point = points.find((p) => p.item.id === visit.id);
+    if (point && map.current) {
+      manualCamera.current = true;
+      map.current.setView([point.latitude, point.longitude], Math.max(14, map.current.getZoom()), {
+        animate: false,
+      });
+    }
+    if (visit.stop && props.onStopDetails) props.onStopDetails(visit.stop);
+    else onDetails(visit.parent);
+  }
+  function fitMap(bounds: import('leaflet').LatLngBounds) {
+    const instance = map.current;
+    if (!instance || !bounds.isValid()) return;
+    instance.invalidateSize({ pan: false });
+    const panel = listNode.current;
+    const overlay = panel && getComputedStyle(panel).position === 'absolute';
+    // The mobile place list overlays the canvas. Keep the route and pin tips in
+    // the usable area above it, while respecting the attribution underneath.
+    const bottom = overlay ? Math.min(instance.getSize().y * 0.7, panel.offsetHeight + 70) : 48;
+    instance.fitBounds(bounds, {
+      paddingTopLeft: [48, 48],
+      paddingBottomRight: [48, bottom],
+      maxZoom: 15,
+      animate: false,
+    });
+  }
+  function recenter() {
+    const instance = map.current,
+      leaflet = library.current;
+    if (!instance || !leaflet) return;
+    const bounds = leaflet.latLngBounds(points.map((p) => [p.latitude, p.longitude]));
+    const anchor = points[0]?.longitude ?? 0;
+    route.result?.geometry.features.forEach((f) =>
+      unwrapRoute(f.geometry.coordinates, anchor).forEach(([lon, lat]) =>
+        bounds.extend([lat, lon]),
+      ),
+    );
+    fitMap(bounds);
+    manualCamera.current = false;
+  }
   useEffect(() => {
+    const pins = pinRegistry.current;
     let mounted = true;
     let observer: ResizeObserver | undefined;
+    let cleanInteractions: (() => void) | undefined;
     (async () => {
       if (external) {
         const status = await externalStatus(external);
@@ -231,6 +333,19 @@ export default function TripMap(
           });
         };
         instance.on('moveend', update);
+        const interact = () => {
+          manualCamera.current = true;
+        };
+        instance.on('dragstart', interact);
+        instance.getContainer().addEventListener('wheel', interact, { passive: true });
+        instance.getContainer().addEventListener('pointerdown', interact);
+        instance.getContainer().addEventListener('keydown', interact);
+        cleanInteractions = () => {
+          instance.off('dragstart', interact);
+          instance.getContainer().removeEventListener('wheel', interact);
+          instance.getContainer().removeEventListener('pointerdown', interact);
+          instance.getContainer().removeEventListener('keydown', interact);
+        };
         update();
         observer = new ResizeObserver(() => instance.invalidateSize({ pan: false }));
         observer.observe(node.current);
@@ -242,6 +357,9 @@ export default function TripMap(
     return () => {
       mounted = false;
       observer?.disconnect();
+      cleanInteractions?.();
+      routeLayer.current = null;
+      pins.clear();
       map.current?.remove();
       map.current = null;
       markers.current = null;
@@ -257,12 +375,13 @@ export default function TripMap(
     // runs. Centre the selected pin using the current viewport dimensions.
     instance.invalidateSize({ pan: false });
     layer.clearLayers();
+    pinRegistry.current.clear();
     const b = leaflet.latLngBounds([]);
     for (const group of groupTripMapPoints(points)) {
-      const representative = group.find((p) => p.item.parent.id === selectedItem) ?? group[0]!;
+      const representative = group.find((p) => p.item.id === activeId) ?? group[0]!;
       const { item, latitude, longitude, number } = representative;
       const grouped = group.length > 1;
-      const active = group.some((p) => p.item.parent.id === selectedItem);
+      const active = group.some((p) => p.item.id === activeId);
       const color = calendarEventColor(
         item.stop?.calendar_color ?? item.parent.calendar_color,
         item.entry?.category?.color,
@@ -280,10 +399,11 @@ export default function TripMap(
           icon: leaflet.divIcon({
             className: `nagi-trip-marker${active ? ' is-selected' : ''}${grouped ? ' is-group' : ''}${item.stop && !grouped ? ' is-stop' : ''}`,
             html: mapPin(
-              grouped ? String(group.length) : number,
+              grouped ? (daily ? group[0]!.number : String(group.length)) : number,
               color,
               grouped,
               !!item.stop && !grouped,
+              daily && grouped ? group.length - 1 : 0,
             ),
             iconSize: [44, 48],
             iconAnchor: [22, 44],
@@ -312,12 +432,15 @@ export default function TripMap(
           button.textContent = `${point.number}. ${point.item.entry?.title ?? 'Fiche indisponible'}`;
           button.addEventListener('click', () => {
             instance.closePopup();
-            onDetails(point.item.parent);
+            openVisit(point.item);
           });
           choices.append(button);
         }
         marker.bindPopup(choices, { className: 'trip-map-location-popup' });
-      } else marker.on('click', () => onDetails(item.parent));
+      } else marker.on('click', () => openVisit(item));
+      group.forEach((p) => pinRegistry.current.set(p.item.id, marker));
+      marker.on('mouseover', () => setHovered(item.id));
+      marker.on('mouseout', () => setHovered(undefined));
       marker
         .getElement()
         ?.setAttribute(
@@ -334,18 +457,99 @@ export default function TripMap(
       const longitudes = tripMapLongitudes(fallback.map((p) => p.longitude));
       fallback.forEach((p, i) => b.extend([p.latitude, longitudes[i]!]));
     }
-    const fitKey = `${selectedDay}:${points.map((p) => `${p.item.parent.id}:${p.latitude}:${p.longitude}`).join('|')}`;
-    if (b.isValid() && fitted.current !== fitKey) {
-      instance.fitBounds(b, { padding: [64, 64], maxZoom: 15, animate: false });
-      fitted.current = fitKey;
+    if (b.isValid() && fitted.current !== selectedDay && !resolving) {
+      fitMap(b);
+      fitted.current = selectedDay;
+      routeFitted.current = null;
+      manualCamera.current = false;
     }
-    const chosen = points.find((p) => p.item.parent.id === selectedItem);
-    if (chosen)
+    const chosen = points.find((p) => p.item.id === activeId);
+    if (chosen && lastSelected.current !== activeId)
       instance.panInside([chosen.latitude, chosen.longitude], {
-        padding: [64, 64],
+        padding: [48, 48],
         animate: false,
       });
-  }, [phase, points, selectedDay, selectedItem, onDetails, plan.items]);
+    lastSelected.current = activeId;
+    // openVisit is an event callback; rebuild marker handlers with the current visits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    phase,
+    points,
+    selectedDay,
+    activeId,
+    onDetails,
+    props.onStopDetails,
+    resolving,
+    plan.items,
+    daily,
+  ]);
+  useEffect(() => {
+    const instance = map.current,
+      leaflet = library.current;
+    if (phase !== 'ready' || !instance || !leaflet) return;
+    routeLayer.current?.remove();
+    routeLayer.current = null;
+    const result = route.result;
+    if (!daily || !result?.geometry.features.length) return;
+    const anchor = points[0]?.longitude ?? 0;
+    const data = {
+      ...result.geometry,
+      features: result.geometry.features.map((f) => ({
+        ...f,
+        geometry: { ...f.geometry, coordinates: unwrapRoute(f.geometry.coordinates, anchor) },
+      })),
+    };
+    const casing = leaflet
+      .geoJSON(data, {
+        interactive: false,
+        style: { color: '#fff', weight: 7, opacity: 0.9, lineCap: 'round', lineJoin: 'round' },
+      })
+      .addTo(instance);
+    const line = leaflet
+      .geoJSON(data, {
+        interactive: false,
+        style: {
+          color: '#73A6DF',
+          weight: 4,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round',
+          className: 'trip-day-route',
+        },
+      })
+      .addTo(instance);
+    routeLayer.current = line;
+    if (routeFitted.current !== selectedDay && !manualCamera.current) {
+      const bounds = line.getBounds();
+      points.forEach((p) => bounds.extend([p.latitude, p.longitude]));
+      fitMap(bounds);
+    }
+    routeFitted.current = selectedDay;
+    return () => {
+      casing.remove();
+      line.remove();
+      if (routeLayer.current === line) routeLayer.current = null;
+    };
+    // Geometry is already tied to the exact day/coordinate signature by useDayRoute.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, route.result, daily, selectedDay]);
+  useEffect(() => {
+    const focused = hovered ? pinRegistry.current.get(hovered) : undefined;
+    new Set(pinRegistry.current.values()).forEach((marker) =>
+      marker.getElement()?.classList.toggle('is-highlighted', marker === focused),
+    );
+    routeLayer.current?.eachLayer((layer) => {
+      const line = layer as import('leaflet').Polyline & { feature?: RouteFeature };
+      const highlighted =
+        !!hovered &&
+        route.result?.segments.some(
+          (s) =>
+            line.feature?.properties.segments.includes(s.id) &&
+            [...s.from, ...s.to].includes(hovered),
+        );
+      line.setStyle({ color: highlighted ? '#3977b9' : '#73A6DF', weight: highlighted ? 5 : 4 });
+    });
+  }, [hovered, route.result, points, activeId]);
   const boundKey = JSON.stringify(bounds);
   useEffect(() => {
     if (!explore || !bounds) return;
@@ -434,7 +638,7 @@ export default function TripMap(
   return (
     <div className="trip-map-workspace">
       <div className="trip-map-toolbar">
-        {mapboxError && (
+        {(mapboxError || route.code === 'refresh_places') && (
           <button
             type="button"
             className="trip-explore-button"
@@ -457,18 +661,35 @@ export default function TripMap(
           type="button"
           className={cn('trip-explore-button', explore && 'is-active')}
           aria-pressed={explore}
+          aria-label="Explorer les alentours"
           onClick={() => {
             setExplore((v) => !v);
             setSearching(false);
           }}
         >
-          <Compass className="size-4" /> Explorer les alentours
+          <Compass className="size-4" />{' '}
+          <span className="trip-explore-copy">
+            Explorer <span>les alentours</span>
+          </span>
         </button>
+        <button
+          type="button"
+          className="trip-icon-button"
+          aria-label="Recentrer la carte"
+          onClick={recenter}
+        >
+          <LocateFixed className="size-4" />
+        </button>
+        {daily && (
+          <span className="trip-route-mode">
+            <Bike className="size-3.5" aria-hidden="true" /> À vélo
+          </span>
+        )}
         {searching && <LoaderCircle className="size-3.5 animate-spin" />}
       </div>
       <div className="trip-map-layout">
         {list && (
-          <div className="trip-map-place-list">
+          <div ref={listNode} className="trip-map-place-list">
             <h2>
               {selectedDay === 'all'
                 ? 'Tout le voyage'
@@ -482,13 +703,72 @@ export default function TripMap(
                   : ''}
               </small>
             </h2>
+            {daily && (
+              <div className="trip-route-summary" role="status" aria-live="polite">
+                <strong>
+                  {route.result?.status === 'partial' ? 'Trajet partiel' : 'Trajet du jour'}
+                </strong>
+                {route.loading || resolving ? (
+                  <p>Calcul du parcours…</p>
+                ) : route.error ? (
+                  <p>{route.error}</p>
+                ) : routePlan.points.length < 2 ? (
+                  <p>
+                    {routePlan.points.length
+                      ? 'Un seul emplacement à rejoindre.'
+                      : 'Aucun déplacement calculable.'}
+                  </p>
+                ) : route.result?.segments.some((s) => s.status === 'ok') ? (
+                  <p>
+                    {routeDistanceLabel(route.result.distance)} ·{' '}
+                    {routeDurationLabel(route.result.duration)} de déplacement
+                    {route.result.status === 'partial' ? ' calculé' : ''}
+                  </p>
+                ) : (
+                  <p>Trajet indisponible pour ces lieux et ce mode.</p>
+                )}
+                {route.result?.segments.some((s) => s.status !== 'ok') && (
+                  <small>
+                    {route.result.segments.filter((s) => s.status !== 'ok').length} liaison(s) non
+                    calculée(s)
+                    {route.result.segments.some((s) => s.status === 'quota' || s.status === 'limit')
+                      ? ' · Limite de calcul atteinte'
+                      : route.result.segments.some((s) => s.status === 'too-far')
+                        ? ' · Distance incompatible avec ce mode'
+                        : ''}
+                    .
+                  </small>
+                )}
+                <details className="trip-route-notes">
+                  <summary>À propos du trajet</summary>
+                  {routePlan.sameLocation > 0 && (
+                    <small>
+                      {routePlan.sameLocation} arrêt(s) au même emplacement, sans déplacement
+                      ajouté.
+                    </small>
+                  )}
+                  {!!routePlan.missing.length && (
+                    <small>{routePlan.missing.length} lieu(x) sans position ignoré(s).</small>
+                  )}
+                  <small>Visites exclues des durées · Métro, train et bus non calculés.</small>
+                </details>
+              </div>
+            )}
             <ol>
               {points.map(({ item, number }) => (
-                <li key={item.id} className={item.stop ? 'trip-map-stop' : undefined}>
+                <li
+                  key={item.id}
+                  data-map-visit={item.id}
+                  className={item.stop ? 'trip-map-stop' : undefined}
+                  onMouseEnter={() => setHovered(item.id)}
+                  onMouseLeave={() => setHovered(undefined)}
+                  onFocus={() => setHovered(item.id)}
+                  onBlur={() => setHovered(undefined)}
+                >
                   <button
                     type="button"
-                    aria-pressed={item.parent.id === selectedItem}
-                    onClick={() => onDetails(item.parent)}
+                    aria-pressed={item.id === activeId}
+                    onClick={() => openVisit(item)}
                   >
                     <span>{number}</span>
                     <div>
@@ -505,6 +785,23 @@ export default function TripMap(
                       </small>
                     </div>
                   </button>
+                  {daily && (
+                    <div className="trip-map-route-detail">
+                      {route.result?.segments
+                        .filter((s) => s.from.at(-1) === item.id)
+                        .map((segment) => (
+                          <p
+                            key={segment.id}
+                            className="trip-route-leg"
+                            data-route-leg={segment.id}
+                          >
+                            {segment.status === 'ok'
+                              ? `${routeDistanceLabel(segment.distance!)} · ${routeDurationLabel(segment.duration!)} → ${visits.find((v) => v.id === segment.to[0])?.entry?.title ?? 'lieu suivant'}`
+                              : 'Liaison suivante indisponible'}
+                          </p>
+                        ))}
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>
@@ -512,8 +809,9 @@ export default function TripMap(
               <div className="trip-map-missing">
                 <p>Sans coordonnées</p>
                 {missing.map((item) => (
-                  <button type="button" key={item.id} onClick={() => onDetails(item.parent)}>
+                  <button type="button" key={item.id} onClick={() => openVisit(item)}>
                     {item.entry?.title ?? 'Fiche indisponible'}
+                    <small>Position indisponible</small>
                   </button>
                 ))}
               </div>

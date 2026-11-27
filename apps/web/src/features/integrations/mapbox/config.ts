@@ -17,5 +17,8 @@ export function mapboxConfig() {
     detailsMonthly: limit('MAPBOX_DETAILS_MONTHLY_LIMIT', 900),
     minCharacters: limit('MAPBOX_MIN_CHARACTERS', 3),
     photos: process.env.MAPBOX_PHOTOS_ENABLED === 'true',
+    directionsUserDaily: limit('MAPBOX_DIRECTIONS_USER_DAILY_LIMIT', 120),
+    directionsGlobalDaily: limit('MAPBOX_DIRECTIONS_GLOBAL_DAILY_LIMIT', 1000),
+    directionsUserMinute: limit('MAPBOX_DIRECTIONS_USER_MINUTE_LIMIT', 12),
   };
 }

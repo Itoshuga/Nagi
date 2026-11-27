@@ -18,7 +18,7 @@ const env = {
   NAGI_OWNER_DISCORD_IDS: '',
   NAGI_COVER_MAX_MIB: '8',
   NAGI_IMAGE_USER_AGENT: 'NagiImageResolverQA/1.0 (https://example.org/contact)',
-  ...(process.env.NAGI_QA_IMAGES === '1'
+  ...(process.env.NAGI_QA_IMAGES === '1' || process.env.NAGI_QA_ROUTES === '1'
     ? {
         MAPBOX_ENABLED: 'true',
         MAPBOX_ACCESS_TOKEN: 'fixture-server-token',

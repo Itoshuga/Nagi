@@ -1327,6 +1327,7 @@ export type Database = {
       renew_bot_lease: { Args: { p_application_id: string; p_scope: string; p_token: string; p_connected: boolean }; Returns: boolean; };
       reserve_image_discovery: { Args: { p_actor: string; p_key: string; p_query_hash: string; p_pages?: number | null; p_total_pages?: number | null; p_concurrent?: number | null; p_global_day?: number | null; p_user_day?: number | null; p_user_minute?: number | null; p_continue?: boolean | null; p_refresh?: boolean | null; p_refresh_seconds?: number | null }; Returns: Json; };
       reserve_image_resolution: { Args: { p_actor: string; p_key: string; p_openverse?: boolean | null; p_coordinates?: boolean | null }; Returns: string; };
+      reserve_mapbox_directions: { Args: { p_actor: string; p_user_daily: number; p_global_daily: number; p_user_minute: number }; Returns: undefined; };
       reserve_mapbox_places: { Args: { p_actor: string; p_kind: string; p_user_daily: number; p_global_daily: number; p_user_minute: number; p_details_monthly: number }; Returns: undefined; };
       resolve_social_profile: { Args: { p_handle: string }; Returns: Json; };
       review_image_candidate: { Args: { p_id: string; p_status: string; p_creator?: string | null; p_license?: string | null; p_license_url?: string | null; p_evidence?: string | null; p_excluded?: boolean | null }; Returns: undefined; };

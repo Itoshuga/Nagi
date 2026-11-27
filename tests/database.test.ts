@@ -2193,6 +2193,41 @@ describe('Collaborative planner transactions', () => {
       /trip_forbidden/,
     );
   });
+  it('protects Directions reservations, counts only operational usage and enforces all ceilings', async () => {
+    await asUser();
+    await fails(`select public.reserve_mapbox_directions('${userId}',2,4,2)`, /permission denied/);
+    await asService();
+    await db.exec(
+      `select public.reserve_mapbox_directions('${userId}',2,4,2);select public.reserve_mapbox_directions('${userId}',2,4,2)`,
+    );
+    await fails(`select public.reserve_mapbox_directions('${userId}',2,4,2)`, /mapbox_quota/);
+    await db.exec(
+      `select public.reserve_mapbox_directions('${adminId}',2,4,2);select public.reserve_mapbox_directions('${adminId}',2,4,2)`,
+    );
+    await fails(`select public.reserve_mapbox_directions('${otherId}',2,4,2)`, /mapbox_quota/);
+    await fails(`select public.reserve_mapbox_directions('${otherId}',null,4,2)`, /mapbox_invalid/);
+    await db.exec('reset role');
+    expect(
+      await scalar(
+        `select sum(requests)::integer as value from private.mapbox_usage where kind='directions' and scope='global_day'`,
+      ),
+    ).toBe(4);
+    await db.exec(`delete from private.mapbox_usage;
+      insert into private.mapbox_usage(bucket,scope,subject,kind,requests) values(date_trunc('second',now()),'global_second','all','forward',8)`);
+    await asService();
+    await fails(`select public.reserve_mapbox_directions('${userId}',120,1000,12)`, /mapbox_quota/);
+    await db.exec(`reset role;delete from private.mapbox_usage;
+      insert into private.mapbox_usage(bucket,scope,subject,kind,requests) values(date_trunc('second',now())-interval '10 seconds','global_second','all','directions',240)`);
+    await asService();
+    await fails(`select public.reserve_mapbox_directions('${userId}',120,1000,12)`, /mapbox_quota/);
+    await asUser(adminId);
+    await scalar('select public.mapbox_admin(false) as value');
+    await asService();
+    await fails(
+      `select public.reserve_mapbox_directions('${userId}',120,1000,12)`,
+      /mapbox_disabled/,
+    );
+  });
   it('requires server privileges for Mapbox budgets and records atomic rate limits and admin switches', async () => {
     await asUser();
     await fails(

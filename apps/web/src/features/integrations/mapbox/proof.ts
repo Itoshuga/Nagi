@@ -12,6 +12,11 @@ const schema = z
     session: z.uuid().optional(),
     proximity: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]).optional(),
     expires: z.number().int(),
+    coordinates: z
+      .object({ longitude: z.number().min(-180).max(180), latitude: z.number().min(-90).max(90) })
+      .strict()
+      .optional(),
+    featureType: z.string().max(40).optional(),
   })
   .strict();
 type Proof = z.infer<typeof schema>;

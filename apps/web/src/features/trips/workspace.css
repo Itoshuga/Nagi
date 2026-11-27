@@ -1991,6 +1991,7 @@ html:has(.trip-workspace.is-sorting) * {
 }
 .trip-map-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 10px 17px;
@@ -2009,6 +2010,80 @@ html:has(.trip-workspace.is-sorting) * {
 .trip-explore-button.is-active {
   background: var(--accent);
   color: var(--primary-ink);
+}
+.trip-route-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.trip-route-summary {
+  padding: 11px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, #73a6df 25%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, #73a6df 7%, var(--card));
+  font-size: 11px;
+  line-height: 1.6;
+}
+.trip-map-place-list .trip-route-summary small {
+  line-height: 1.5;
+}
+.trip-map-place-list .trip-map-route-detail {
+  padding: 0 5px 7px 26px;
+}
+.trip-map-route-detail:empty {
+  display: none;
+}
+.trip-route-notes {
+  margin-top: 6px;
+}
+.trip-route-notes summary {
+  cursor: pointer;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+.trip-map-pin-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 3px;
+  border: 2px solid white;
+  border-radius: 6px;
+  background: #365d8a;
+  color: white;
+  font-size: 8px;
+  font-weight: 750;
+  line-height: 12px;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .trip-map-toolbar {
+    padding: 8px 10px;
+    gap: 5px;
+  }
+  .trip-explore-copy > span {
+    display: none;
+  }
+  .trip-map-frame .leaflet-control-attribution {
+    max-width: calc(100vw - 110px);
+    font-size: 8px;
+  }
+}
+.trip-route-leg {
+  padding: 7px 0 4px;
+  font-size: 9px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.trip-map-place-list li:focus-within {
+  border-radius: 8px;
+  background: var(--muted);
 }
 .trip-map-layout {
   display: flex;
@@ -2154,6 +2229,7 @@ html:has(.trip-workspace.is-sorting) * {
   white-space: nowrap;
   transition: box-shadow 160ms ease;
 }
+.nagi-trip-marker.is-highlighted .trip-map-pin,
 .nagi-trip-marker:hover .trip-map-pin,
 .nagi-catalog-marker:hover .trip-map-pin {
   transform: scale(1.08);
@@ -2743,7 +2819,7 @@ html:has(.trip-workspace.is-sorting) * {
   }
   .trip-map-place-list {
     position: absolute;
-    bottom: 12px;
+    bottom: 46px;
     left: 12px;
     right: 12px;
     width: auto;
