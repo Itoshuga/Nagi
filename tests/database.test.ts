@@ -778,6 +778,46 @@ describe('Geographic catalog', () => {
     await fails("update public.cities set longitude='NaN' where slug='tokyo'", /longitude/i);
   });
 
+  it('imports a country batch as drafts atomically and leaves existing published countries intact', async () => {
+    await asUser(adminId);
+    await db.exec(
+      "insert into public.countries(name,slug,iso_code,is_published,description,sort_order) values('Japon','japon','JP',true,'À conserver',7)",
+    );
+    const result =
+      await db.query(`insert into public.countries(name,slug,iso_code,is_published,description,cover_image_url,sort_order) values
+      ('France','france','FR',false,null,null,2),('Nouveau nom','nouveau-nom','JP',false,null,null,0)
+      on conflict(iso_code) do nothing returning iso_code`);
+    expect(result.rows).toEqual([{ iso_code: 'FR' }]);
+    expect(
+      await scalar(
+        "select jsonb_build_object('name',name,'published',is_published,'description',description,'order',sort_order) as value from public.countries where iso_code='JP'",
+      ),
+    ).toEqual({ name: 'Japon', published: true, description: 'À conserver', order: 7 });
+    expect(
+      await scalar(
+        "select jsonb_build_object('published',is_published,'description',description,'image',cover_image_url,'order',sort_order) as value from public.countries where iso_code='FR'",
+      ),
+    ).toEqual({ published: false, description: null, image: null, order: 2 });
+    await fails(
+      `insert into public.countries(name,slug,iso_code,is_published) values ('Italie','italie','IT',false),('Collision','japon','DE',false) on conflict(iso_code) do nothing`,
+      /countries_slug_key/,
+    );
+    expect(
+      await scalar("select count(*)::integer as value from public.countries where iso_code='IT'"),
+    ).toBe(0);
+    await asUser();
+    await fails(
+      "insert into public.countries(name,slug,iso_code,is_published) values('Italie','italie','IT',false) on conflict(iso_code) do nothing",
+      /row-level security/,
+    );
+    await db.exec(
+      "set local role anon;set local request.jwt.claim.sub='';set local request.jwt.claim.role='anon'",
+    );
+    expect(
+      await scalar("select count(*)::integer as value from public.countries where iso_code='FR'"),
+    ).toBe(0);
+  });
+
   it('guards city modes, preserves dependencies and permits explicit reorganization', async () => {
     await asUser(adminId);
     await db.exec(`insert into public.countries(name,slug,iso_code) values ('Japon','japon','JP');

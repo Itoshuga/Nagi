@@ -7,6 +7,7 @@ import type { DestinationKind } from '@nagi/shared';
 import { requireAdmin } from '@/features/auth/session';
 import { sessionDatabase } from '@/lib/supabase/server';
 import { DestinationMenu } from './admin-menu';
+import { CountryImportButton } from './country-import';
 import { DestinationCover } from './cover';
 import {
   destinationLabels,
@@ -177,12 +178,15 @@ export async function AdminDestinationList({
             catalogue
           </p>
         </div>
-        <Button asChild>
-          <Link href={withQuery(`${path}/new`, { pays: parentId })}>
-            <Plus className="size-4" />
-            {labels.add}
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {kind === 'countries' && <CountryImportButton />}
+          <Button asChild>
+            <Link href={withQuery(`${path}/new`, { pays: parentId })}>
+              <Plus className="size-4" />
+              {labels.add}
+            </Link>
+          </Button>
+        </div>
       </div>
       <Form
         action={path}

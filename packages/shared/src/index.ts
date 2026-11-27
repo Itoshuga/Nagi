@@ -4,6 +4,7 @@ export { describeError } from './diagnostics';
 export { slugSchema, snowflakeSchema } from './identifiers';
 export * from './collaboration';
 export * from './geography';
+export * from './country-import';
 export * from './trip-planner';
 export * from './trip-format';
 export * from './calendar-colors';

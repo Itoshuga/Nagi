@@ -198,6 +198,12 @@ async function sync() {
       stops: stops.rows,
       palette: palette.rows,
       entries: entryIds,
+      ...(process.env.NAGI_QA_COUNTRY_IMPORT === '1'
+        ? {
+            countries: (await db.query('select * from public.countries order by sort_order,name'))
+              .rows,
+          }
+        : {}),
     }),
   );
 }
@@ -740,6 +746,42 @@ globalThis.fetch = async (input, init = {}) => {
     );
     await sync();
     return json(null);
+  }
+  if (
+    method === 'POST' &&
+    table === 'countries' &&
+    url.searchParams.get('on_conflict') === 'iso_code'
+  ) {
+    try {
+      if (!h.get('Prefer')?.includes('resolution=ignore-duplicates'))
+        throw new Error('Expected a non-destructive import');
+      const records = Array.isArray(body) ? body : [body],
+        keys = [
+          'name',
+          'slug',
+          'iso_code',
+          'sort_order',
+          'description',
+          'is_published',
+          'cover_image_url',
+        ];
+      if (
+        !records.length ||
+        !records.every(
+          (record) =>
+            Object.keys(record).length === keys.length &&
+            Object.keys(record).every((key) => keys.includes(key)),
+        )
+      )
+        throw new Error('Invalid country payload');
+      const values = records.flatMap((record) => keys.map((key) => record[key]));
+      const sql = `insert into public.countries(${keys.join(',')}) values ${records.map((_, row) => '(' + keys.map((_, column) => '$' + (row * keys.length + column + 1)).join(',') + ')').join(',')} on conflict(iso_code) do nothing returning id`;
+      const result = await authQuery((tx) => tx.query(sql, values), actor);
+      await sync();
+      return json(result.rows);
+    } catch (error) {
+      return json({ code: error.code ?? 'XX000', message: error.message }, 400);
+    }
   }
   if (method === 'POST' && table === 'trips') {
     await db.exec(`update public.discord_guilds set last_synced_at=now()`);

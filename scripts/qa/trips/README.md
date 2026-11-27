@@ -1,5 +1,7 @@
 # Recette locale du planificateur
 
+La recette `country-import.py` réutilise ce serveur pour tester l’import de pays : démarrer une base fraîche avec `NAGI_QA_COUNTRY_IMPORT=1`, puis lancer le script avec la même URL et le même répertoire de sortie. Voir [le format et la procédure complète](../../../docs/COUNTRY_JSON_IMPORT.md).
+
 Ce banc utilise le vrai build Next, les migrations PostgreSQL, les RPC et leurs contrôles RLS dans PGlite. Les identités Discord, Auth et Storage sont fictives. Un adaptateur Phoenix simule uniquement le transport Supabase Realtime : le serveur SSE lit toujours le journal SQL autorisé. Les appels vers un domaine non prévu échouent ; aucune donnée de production n’est modifiée.
 
 Prérequis : dépendances du dépôt, Python avec Playwright et son Chromium (`python3 -m pip install playwright`, puis `python3 -m playwright install chromium`).
